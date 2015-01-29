@@ -1,3 +1,7 @@
 [submodule "sts/hassel"]
 	path = sts/hassel
 	url = https://bitbucket.org/colin_scott/hassel-sts.git
+[submodule "pox"]
+	path = pox
+	url = https://github.com/jmiserez/pox.git
+	branch = hb
