@@ -832,6 +832,60 @@ class MeshTopology(Topology):
 
       LinkTracker.__init__(self, dpid2switch, port2access_link,
                            interface2access_link, port2internal_link)
+      
+class StarTopology(Topology):
+  def __init__(self, num_hosts=2, create_io_worker=None, netns_hosts=False,
+               gui=False, ip_format_str="123.123.%d.%d"):
+    '''
+    Populate the topology as a single switch connected to all hosts, connect
+    the switch to the controllers and hosts
+
+    Optional argument(s):
+      - num_hosts. The total number of hosts to connect.
+      - netns_switches. Whether to create network namespace hosts instead of
+        normal hosts.
+      - ip_format_str: a format string for assigning IP addresses to hosts.
+        Takes two digits to be interpolated, the switch dpid and the port
+        number. For example, "10.%d.%d.255" will assign hosts the IP address
+        10.DPID.PORT_NUMBER.255, where DPID is the dpid of their ingress
+        switch, and PORT_NUMBER is the number of the switch's access link.
+    '''
+    Topology.__init__(self, create_io_worker=create_io_worker, gui=gui)
+
+    # Every switch has a link to every host,
+    ports_per_switch = num_hosts
+
+    # Initialize switches
+    switch = create_switch(1, ports_per_switch)
+    switches = [ switch ]
+    self._populate_dpid2switch(switches)
+    if netns_hosts:
+      host_access_link_pairs = [ create_netns_host(create_io_worker, switch)
+                                 for i in range(1, num_hosts+1)  ]
+    else:
+      host_access_link_pairs = [ create_host(switch, get_switch_port=lambda _: switch.ports[sorted(switch.ports.keys())[i-1]], ip_format_str=ip_format_str)
+                                 for i in range(1, num_hosts+1)  ]
+    access_link_list_list = []
+    for host, access_link_list in host_access_link_pairs:
+      self.hid2host[host.hid] = host
+      access_link_list_list.append(access_link_list)
+
+    # this is python's .flatten:
+    access_links = list(itertools.chain.from_iterable(access_link_list_list))
+
+    port2access_link = { access_link.switch_port: access_link
+                         for access_link in access_links }
+    interface2access_link = { access_link.interface: access_link
+                              for access_link in access_links }
+    port2internal_link = {}
+
+    self.link_tracker = LinkTracker(self.dpid2switch, port2access_link,
+                           interface2access_link, port2internal_link)
+
+    self.get_connected_port = self.link_tracker
+
+    if self.gui is not None:
+      self.gui.launch()
 
 class FatTree (Topology):
   ''' Construct a FatTree topology with a given number of pods '''
@@ -1085,3 +1139,4 @@ class FatTree (Topology):
     def __init__(self, port2access_link, interface2access_link, port2internal_link, dpid2switch):
       LinkTracker.__init__(self, dpid2switch, port2access_link,
                            interface2access_link, port2internal_link)
+      
