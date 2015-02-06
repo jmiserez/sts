@@ -39,6 +39,8 @@ from sts.util.convenience import object_fullname
 from sts.util.convenience import class_fullname
 from sts.util.convenience import load_class
 
+from sts.util.revent_mixins import CombiningEventMixinMetaclass, AbstractCombiningEventMixinMetaclass
+from sts.happensbefore.hb_events import TraceHostDpPacketIn
 
 class HostInterfaceAbstractClass(object):
   """Represents a host's network interface (e.g. eth0)"""
@@ -239,7 +241,7 @@ class HostAbstractClass(object):
 #    |            |           |
 # switch_port  switch_port  switch_port
 
-class Host(HostAbstractClass, EventMixin):
+class SimpleHost(HostAbstractClass, EventMixin):
   """
   A very simple Host entity.
 
@@ -259,7 +261,7 @@ class Host(HostAbstractClass, EventMixin):
       name: human readable name of the host
       hid: unique ID for the host
     """
-    super(Host, self).__init__(interfaces, name, hid)
+    super(SimpleHost, self).__init__(interfaces, name, hid)
     self.log = logging.getLogger(name)
     self.send_capabilities = False
 
@@ -356,6 +358,16 @@ class Host(HostAbstractClass, EventMixin):
   def __repr__(self):
     return "Host(%d)" % self.hid
 
+class TracingHost(SimpleHost, EventMixin):
+  __metaclass__ = AbstractCombiningEventMixinMetaclass
+  _eventMixin_events = set([TraceHostDpPacketIn])
+   
+  def receive(self, interface, packet):
+    self.raiseEvent(TraceHostDpPacketIn(self, interface, packet))
+    SimpleHost.receive(self, interface, packet)
+
+class Host(TracingHost):
+  pass
 
 class NamespaceHost(Host):
   """

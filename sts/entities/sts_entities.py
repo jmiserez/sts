@@ -20,9 +20,9 @@ This module defines the basic simulated entities, such as openflow switches and
 links.
 """
 
-from pox.openflow.software_switch import DpPacketOut, OFConnection
+from pox.openflow.software_switch import DpPacketOut, OFConnection, SwitchFlowTable
 from pox.openflow.nx_software_switch import NXSoftwareSwitch
-from pox.openflow.flow_table import FlowTableModification
+from pox.openflow.flow_table import TableEntry
 from pox.openflow.libopenflow_01 import *
 from pox.lib.revent import EventMixin
 import pox.lib.packet.ethernet as ethernet
@@ -37,7 +37,8 @@ from sts.util.tabular import Tabular
 from sts.entities.base import DirectedLinkAbstractClass
 from sts.entities.base import BiDirectionalLinkAbstractClass
 from sts.entities.hosts import HostInterface
-
+from sts.util.revent_mixins import CombiningEventMixinMetaclass
+from sts.happensbefore.hb_events import *
 
 import Queue
 import logging
@@ -46,7 +47,18 @@ import random
 import time
 
 
-class DeferredOFConnection(OFConnection):
+class TracingOFConnection(OFConnection, EventMixin):
+  __metaclass__ = CombiningEventMixinMetaclass
+  _eventMixin_events = set([TraceOfMessageOut])
+  
+  def __init__(self, *args, **kw):
+    OFConnection.__init__(self, *args, **kw)
+    
+  def send(self, ofp_message):
+    self.raiseEvent(TraceOfMessageOut(self.dpid, self.cid, ofp_message, self))
+    super(TracingOFConnection, self).send(ofp_message)
+
+class DeferredOFConnection(TracingOFConnection):
   def __init__(self, io_worker, cid, dpid, openflow_buffer):
     super(DeferredOFConnection, self).__init__(io_worker)
     self.cid = cid
@@ -116,6 +128,235 @@ class ConnectionlessOFConnection(object):
   def read (self, ofp_message):
     self.on_message_handler(self, ofp_message)
 
+class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
+  __metaclass__ = CombiningEventMixinMetaclass
+  _eventMixin_events = set([TraceFlowTableModificationBegin, TraceFlowTableModificationEnd, TraceFlowTableModificationExpired])
+  
+  def __init__(self, switch, *args, **kw):
+    SwitchFlowTable.__init__(self, *args, **kw)
+    self.switch = switch
+  
+  def remove_expired_entries(self, now=None):
+    removed = super(TracingSwitchFlowTable, self).remove_expired_entries(now)
+    self.raiseEvent(TraceFlowTableModificationExpired(self.switch, self, removed))
+  
+  def process_flow_mod(self, flow_mod):
+    """ Process a flow mod sent to the switch
+    @return a tuple (added|modified|removed, [list of affected entries])
+    """
+    self.raiseEvent(TraceFlowTableModificationBegin(self.switch, self, flow_mod))
+    super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
+    self.raiseEvent(TraceFlowTableModificationEnd(self.switch, self, flow_mod))
+
+class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
+  """
+  A NXSoftwareSwitch with added methods for tracing packets and Openflow messages
+  """
+  # use metaclass to add new events
+  __metaclass__ = CombiningEventMixinMetaclass
+  _eventMixin_events = set([TraceSwitchDpPacketIn,
+    TraceOfMessageIn, 
+    TraceFlowTableModificationBegin, TraceFlowTableModificationEnd,
+    TraceFlowTableModificationExpired, TraceFlowTableMatch, TraceFlowTableTouch,
+    TracePacketActionModificationBegin, TracePacketActionModificationEnd,
+    TracePacketActionOutput, TracePacketActionResubmit,
+    TracePacketBufferRead, TracePacketBufferAllocate, TracePacketBufferFree])
+  
+  def __init__(self, *args, **kw):
+    NXSoftwareSwitch.__init__(self, *args, **kw)
+    self.table = TracingSwitchFlowTable(self) # overwrite SwitchFlowTable
+    def reraise_event(event):
+      self.raiseEvent(event)
+    self.table.addListener(TraceFlowTableModificationBegin, reraise_event)
+    self.table.addListener(TraceFlowTableModificationEnd, reraise_event)
+    self.table.addListener(TraceFlowTableModificationExpired, reraise_event)
+
+  def on_message_received(self, connection, msg):
+    self.raiseEvent(TraceOfMessageIn(self, connection, msg))
+    super(TracingNXSoftwareSwitch, self).on_message_received(connection, msg)
+  
+  def process_packet(self, packet, in_port):
+    # this completely overrides SoftwareSwitch's implementation and does not call super
+    assert_type("packet", packet, ethernet, none_ok=False)
+    assert_type("in_port", in_port, int, none_ok=False)
+    
+    self.raiseEvent(TraceSwitchDpPacketIn(self, in_port, packet))
+    entry = self.table.entry_for_packet(packet, in_port)
+    if(entry != None):
+      self.raiseEvent(TraceFlowTableMatch(self, in_port, packet, self.table, entry))
+      now = time.time()
+      plen = len(packet)
+      self.raiseEvent(TraceFlowTableTouch(self, in_port, packet, self.table, entry, plen, now))
+      entry.touch_packet(plen, now)
+      self._process_actions_for_packet(entry.actions, packet, in_port)
+    else:
+      # no matching entry
+      buffer_id = self._buffer_packet(packet, in_port)
+      self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
+  
+  def _buffer_packet(self, packet, in_port=None):
+    """ Find a free buffer slot to buffer the packet in. """
+    for (i, value) in enumerate(self.packet_buffer):
+      if(value==None):
+        self.packet_buffer[i] = (packet, in_port)
+        return i + 1
+    self.packet_buffer.append( (packet, in_port) )
+    buffer_id = len(self.packet_buffer)
+    self.raiseEvent(TracePacketBufferAllocate(self, in_port, packet, buffer_id))
+    return buffer_id
+  
+  def _process_actions_for_packet_from_buffer(self, actions, buffer_id):
+    """ output and release a packet from the buffer """
+    buffer_id = buffer_id - 1
+    if(buffer_id >= len(self.packet_buffer)):
+      self.log.warn("Invalid output buffer id: %x", buffer_id)
+      return
+    if(self.packet_buffer[buffer_id] is None):
+      self.log.warn("Buffer %x has already been flushed", buffer_id)
+      return
+    (packet, in_port) = self.packet_buffer[buffer_id]
+    self.raiseEvent(TracePacketBufferRead(self, in_port, packet, buffer_id))
+    self._process_actions_for_packet(actions, packet, in_port)
+    self.raiseEvent(TracePacketBufferFree(self, in_port, buffer_id+1))
+    self.packet_buffer[buffer_id] = None
+
+  def _process_actions_for_packet(self, actions, packet, in_port):
+    """ process the output actions for a packet """
+    assert_type("packet", packet, [ethernet, str], none_ok=False)
+    if not isinstance(packet, ethernet):
+      packet = ethernet.unpack(packet)
+
+    def output_packet(action, packet):
+      self._output_packet(packet, action.port, in_port)
+      return packet
+    def set_vlan_id(action, packet):
+      if not isinstance(packet.next, vlan):
+        packet.next = vlan(prev = packet.next)
+        packet.next.eth_type = packet.type
+        packet.type = ethernet.VLAN_TYPE
+      packet.id = action.vlan_id
+      return packet
+    def set_vlan_pcp(action, packet):
+      if not isinstance(packet.next, vlan):
+        packet.next = vlan(prev = packet)
+        packet.next.eth_type = packet.type
+        packet.type = ethernet.VLAN_TYPE
+      packet.pcp = action.vlan_pcp
+      return packet
+    def strip_vlan(action, packet):
+      if isinstance(packet.next, vlan):
+        packet.type = packet.next.eth_type
+        packet.next = packet.next.next
+      return packet
+    def set_dl_src(action, packet):
+      packet.src = action.dl_addr
+      return packet
+    def set_dl_dst(action, packet):
+      packet.dst = action.dl_addr
+      return packet
+    def set_nw_src(action, packet):
+      if(isinstance(packet.next, ipv4)):
+        packet.next.nw_src = action.nw_addr
+      return packet
+    def set_nw_dst(action, packet):
+      if(isinstance(packet.next, ipv4)):
+        packet.next.nw_dst = action.nw_addr
+      return packet
+    def set_nw_tos(action, packet):
+      if(isinstance(packet.next, ipv4)):
+        packet.next.tos = action.nw_tos
+      return packet
+    def set_tp_src(action, packet):
+      if(isinstance(packet.next, udp) or isinstance(packet.next, tcp)):
+        packet.next.srcport = action.tp_port
+      return packet
+    def set_tp_dst(action, packet):
+      if(isinstance(packet.next, udp) or isinstance(packet.next, tcp)):
+        packet.next.dstport = action.tp_port
+      return packet
+    def enqueue(action, packet):
+      self.log.warn("output_enqueue not supported yet. Performing regular output")
+      return output_packet(action.tp_port, packet)
+    def push_mpls_tag(action, packet):
+      bottom_of_stack = isinstance(packet.next, mpls)
+      packet.next = mpls(prev = packet.pack())
+      if bottom_of_stack:
+        packet.next.s = 1
+      packet.type = action.ethertype
+      return packet
+    def pop_mpls_tag(action, packet):
+      if not isinstance(packet.next, mpls):
+        return packet
+      if not isinstance(packet.next.next, str):
+        packet.next.next = packet.next.next.pack()
+      if action.ethertype in ethernet.type_parsers:
+        packet.next = ethernet.type_parsers[action.ethertype](packet.next.next)
+      else:
+        packet.next = packet.next.next
+      packet.ethertype = action.ethertype
+      return packet
+    def set_mpls_label(action, packet):
+      if not isinstance(packet.next, mpls):
+        mock = ofp_action_push_mpls()
+        packet = push_mpls_tag(mock, packet)
+      packet.next.label = action.mpls_label
+      return packet
+    def set_mpls_tc(action, packet):
+      if not isinstance(packet.next, mpls):
+        mock = ofp_action_push_mpls()
+        packet = push_mpls_tag(mock, packet)
+      packet.next.tc = action.mpls_tc
+      return packet
+    def set_mpls_ttl(action, packet):
+      if not isinstance(packet.next, mpls):
+        mock = ofp_action_push_mpls()
+        packet = push_mpls_tag(mock, packet)
+      packet.next.ttl = action.mpls_ttl
+      return packet
+    def dec_mpls_ttl(action, packet):
+      if not isinstance(packet.next, mpls):
+        return packet
+      packet.next.ttl = packet.next.ttl - 1
+      return packet
+    handler_map = {
+        OFPAT_OUTPUT: output_packet,
+        OFPAT_SET_VLAN_VID: set_vlan_id,
+        OFPAT_SET_VLAN_PCP: set_vlan_pcp,
+        OFPAT_STRIP_VLAN: strip_vlan,
+        OFPAT_SET_DL_SRC: set_dl_src,
+        OFPAT_SET_DL_DST: set_dl_dst,
+        OFPAT_SET_NW_SRC: set_nw_src,
+        OFPAT_SET_NW_DST: set_nw_dst,
+        OFPAT_SET_NW_TOS: set_nw_tos,
+        OFPAT_SET_TP_SRC: set_tp_src,
+        OFPAT_SET_TP_DST: set_tp_dst,
+        OFPAT_ENQUEUE: enqueue,
+        OFPAT_PUSH_MPLS: push_mpls_tag,
+        OFPAT_POP_MPLS: pop_mpls_tag,
+        OFPAT_SET_MPLS_LABEL: set_mpls_label,
+        OFPAT_SET_MPLS_TC: set_mpls_tc,
+        OFPAT_SET_MPLS_TTL: set_mpls_ttl,
+        OFPAT_DEC_MPLS_TTL: dec_mpls_ttl,
+    }
+    for action in actions: 
+      # TODO JM: this seems to be a bug in STS, check with authors
+      if action.type is ofp_action_type_rev_map['OFPAT_RESUBMIT']:
+        self.raiseEvent(TracePacketActionResubmit(self, in_port, packet, action))
+        self.process_packet(packet, in_port)
+        return
+      elif action.type in (ofp_action_type_rev_map['OFPAT_OUTPUT'], ofp_action_type_rev_map['OFPAT_ENQUEUE']):
+        self.raiseEvent(TracePacketActionOutput(self, in_port, packet, action))
+        packet = handler_map[action.type](action, packet)
+      else:
+        if(action.type not in handler_map):
+          raise NotImplementedError("Unknown action type: %x " % type)
+        # all other events modify packets without nested calls
+        self.raiseEvent(TracePacketActionModificationBegin(self, in_port, packet, action))
+        packet = handler_map[action.type](action, packet)
+        self.raiseEvent(TracePacketActionModificationEnd(self, in_port, packet, action))
+      
+  
+
 # A note on FuzzSoftwareSwitch Command Buffering
 #   - When delaying flow_mods, we would like to buffer them and perturb the order in which they are processed.
 #     self.barrier_deque is a queue of priority queues, with each priority queue representing an epoch, defined by one or two
@@ -142,7 +383,7 @@ class ConnectionlessOFConnection(object):
 #                                                                                         (until the queue in front is not
 #                                                                                           empty or only one queue is left)
 
-class FuzzSoftwareSwitch (NXSoftwareSwitch):
+class FuzzSoftwareSwitch (TracingNXSoftwareSwitch):
   """
   A mock switch implementation for testing purposes. Can simulate dropping dead.
   FuzzSoftwareSwitch supports three features:
@@ -159,7 +400,7 @@ class FuzzSoftwareSwitch (NXSoftwareSwitch):
   def __init__(self, dpid, name=None, ports=4, miss_send_len=128,
                n_buffers=100, n_tables=1, capabilities=None,
                can_connect_to_endhosts=True):
-    NXSoftwareSwitch.__init__(self, dpid, name, ports, miss_send_len,
+    TracingNXSoftwareSwitch.__init__(self, dpid, name, ports, miss_send_len,
                               n_buffers, n_tables, capabilities)
 
     # Whether this is a core or edge switch

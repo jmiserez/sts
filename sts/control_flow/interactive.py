@@ -256,6 +256,7 @@ class Interactive(ControlFlow):
     #   DELAY,      # The user also controls message delays
     #   EVERYTHING  # The user controls everything, including message ordering
     # ]
+    self.results_dir=None
 
   def _log_input_event(self, event, **kws):
     # TODO(cs): redundant with Fuzzer._log_input_event
@@ -264,6 +265,7 @@ class Interactive(ControlFlow):
       self._input_logger.log_input_event(event, **kws)
 
   def init_results(self, results_dir):
+    self.results_dir = results_dir
     if self._input_logger is not None:
       self._input_logger.open(results_dir)
 
@@ -276,7 +278,8 @@ class Interactive(ControlFlow):
                bound_objects=()):
     if simulation is None:
       self.simulation = self.simulation_cfg.bootstrap(self.sync_callback,
-                                                      boot_controllers=boot_controllers)
+                                                      boot_controllers=boot_controllers,
+                                                      results_dir=self.results_dir)
       if connect_to_controllers is None:
         self.default_connect_to_controllers(self.simulation)
       else:

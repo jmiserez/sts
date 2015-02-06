@@ -85,7 +85,9 @@ class SimulationConfig(object):
                violation_persistence_threshold=None,
                kill_controllers_on_exit=True,
                interpose_on_controllers=False,
-               ignore_interposition=False):
+               ignore_interposition=False,
+               hb_logger_class=None,
+               hb_logger_params=None):
     '''
     Constructor parameters:
       topology_class    => a sts.topology.Topology class (not object!)
@@ -133,8 +135,11 @@ class SimulationConfig(object):
       # TODO(cs): also remove "sts.util.socket_mux.pox_monkeypatcher" from start_cmd and
       #           set SimulationConfig.multiplex_sockets = False?
       self.interpose_on_controllers = False
+    self._hb_logger_class = hb_logger_class
+    self._hb_logger_params = hb_logger_params
 
-  def bootstrap(self, sync_callback=None, boot_controllers=default_boot_controllers):
+  def bootstrap(self, sync_callback=None, boot_controllers=default_boot_controllers,
+                results_dir=None):
     '''Return a simulation object encapsulating the state of
        the system in its initial starting point:
        - boots controllers
@@ -214,6 +219,10 @@ class SimulationConfig(object):
     patch_panel = self._patch_panel_class(topology.switches, topology.hosts,
                                           topology.get_connected_port)
     openflow_buffer = OpenFlowBuffer()
+    if self._hb_logger_class is not None:
+      # connect it to switches, hosts, and (later) connections
+      hb_logger = self._hb_logger_class(patch_panel)
+      hb_logger.open(results_dir)
     dataplane_trace = None
     if self._dataplane_trace_path is not None:
       dataplane_trace = Trace(self._dataplane_trace_path, topology)
@@ -229,7 +238,8 @@ class SimulationConfig(object):
     simulation = Simulation(topology, controller_manager, dataplane_trace,
                             openflow_buffer, io_master, controller_patch_panel,
                             patch_panel, sync_callback, mux_select, demuxers,
-                            violation_tracker, self._kill_controllers_on_exit)
+                            violation_tracker, self._kill_controllers_on_exit,
+                            hb_logger)
     if self.ignore_interposition:
       simulation.set_pass_through()
     self.current_simulation = simulation
@@ -265,7 +275,8 @@ class Simulation(object):
   def __init__(self, topology, controller_manager, dataplane_trace,
                openflow_buffer, io_master, controller_patch_panel, patch_panel,
                controller_sync_callback, mux_select, demuxers,
-               violation_tracker, kill_controllers_on_exit):
+               violation_tracker, kill_controllers_on_exit,
+               hb_logger):
     self.topology = topology
     self.controller_manager = controller_manager
     self.controller_manager.set_simulation(self)
@@ -281,6 +292,7 @@ class Simulation(object):
     self.mux_select = mux_select
     self.multiplex_sockets = mux_select is not None
     self.demuxers = demuxers
+    self.hb_logger = hb_logger
 
   def set_exit_code(self, code):
     self.exit_code = code
@@ -323,6 +335,7 @@ class Simulation(object):
     msg.unset_io_master()
     if self._io_master is not None:
       self._io_master.close_all()
+    self.hb_logger.close()
 
   @property
   def io_master(self):
@@ -346,6 +359,8 @@ class Simulation(object):
     sock.setblocking(0)
     io_worker = DeferredIOWorker(self.io_master.create_worker_for_socket(sock))
     connection = DeferredOFConnection(io_worker, controller_info.cid, switch.dpid, self.openflow_buffer)
+    if self.hb_logger is not None:
+      self.hb_logger.subscribe_to_DeferredOFConnection(connection)
     return connection
 
   def connect_to_controllers(self):
