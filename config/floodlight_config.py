@@ -16,22 +16,6 @@ controllers = [ControllerConfig(start_cmd, cwd="/home/jeremie/mscthesis/floodlig
 topology_class = StarTopology
 topology_params = "num_hosts=2"
 
-#simulation_config = SimulationConfig(controller_configs=controllers,
-#                                     topology_class=topology_class,
-#                                     topology_params=topology_params)
-#
-#control_flow = Fuzzer(simulation_config,
-#                      input_logger=InputLogger(),
-#                      invariant_check_name="InvariantChecker.check_blackholes",
-#                      check_interval=5,
-#                      halt_on_violation=True)
-
-
-# simulation_config = SimulationConfig(controller_configs=controllers,
-#                                      topology_class=topology_class,
-#                                      topology_params=topology_params)
-
-
 # include all defaults
 simulation_config = SimulationConfig(controller_configs=controllers,
                                      topology_class=topology_class,
