@@ -262,7 +262,8 @@ class Replayer(ControlFlow):
       self.dag = self.transform_dag(self.dag)
       log.info("Proceeding with normal replay")
 
-    self.simulation = self.simulation_cfg.bootstrap(self.sync_callback)
+    self.simulation = self.simulation_cfg.bootstrap(self.sync_callback,
+                                                    results_dir=self.replay_id)
     assert(isinstance(self.simulation.patch_panel, BufferedPatchPanel))
     # TODO(aw): remove this hack
     self.simulation.fail_to_interactive = self.fail_to_interactive
