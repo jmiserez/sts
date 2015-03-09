@@ -11,9 +11,9 @@ STS simulates the devices of your network, allowing you to programmatically gene
 STS depends on [pox](http://www.noxrepo.org/pox/about-pox/). To install STS, you'll just need to clone both repositories and load the hassel submodule:
 
 ```
-$ git clone git://github.com/ucb-sts/sts.git
+$ git clone git://github.com/jmiserez/sts.git
 $ cd sts
-$ git clone -b debugger git://github.com/ucb-sts/pox.git
+$ git submodule update --init --recursive
 $ ./tools/install_hassel_python.sh
 ```
 
