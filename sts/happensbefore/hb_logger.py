@@ -9,16 +9,131 @@ from pox.lib.revent import Event, EventMixin
 from pox.openflow.libopenflow_01 import ofp_phy_port
 from sts.happensbefore.hb_events import *
 
+from sts.entities.hosts import Host, HostInterface
+
+from pox.lib.util import assert_type, dpidToStr
+from pox.lib.revent import Event, EventMixin
+from pox.lib.packet import *
+from pox.openflow.software_switch import DpPacketOut
+from pox.openflow.libopenflow_01 import *
+from pox.lib.addresses import IPAddr
+
+from sts.util.convenience import object_fullname
+from sts.util.convenience import class_fullname
+from sts.util.convenience import load_class
+from sts.util.convenience import get_json_attr
+
 import sys
 import time
 import logging
 import json
-from sts.entities.hosts import Host, HostInterface
+import base64
+import collections
+import itertools
+from functools import partial
+from __builtin__ import list
+from collections import OrderedDict, defaultdict
+
+class TraceEvent(object):
+  _ids = itertools.count(0)
+  
+  def __init__(self):
+    Event.__init__(self)
+    self.id = self._ids.next()
+    self.type = self.__class__.__name__
+      
+  def to_json(self):
+    """
+    Serialize every field that exists, optionally using an encoding function.
+    """  
+    attrs = [ 'id', # int
+              'type', # str
+              'dpid',
+              'hid',
+              'cid',
+              'mid_in',
+              'mid_out',
+              'pid_in',
+              'pid_out',
+              'msg_type',
+              'msg_reason',
+              'msg_xid',
+              'in_port',
+              'out_port',
+              ('table_reads_writes', lambda xs: [x.to_json() for x in xs])
+#               ('packet', lambda packet: base64.b64encode(packet.pack()).replace("\n", "")),
+#               ('msg', lambda msg: base64.b64encode(msg.pack()).replace("\n", "")),
+#               ('flow_mod', lambda flow_mod: base64.b64encode(flow_mod.pack()).replace("\n", "")),
+#               ('flow_table', 
+#                  lambda flow_table: [base64.b64encode(entry.to_flow_mod().pack()).replace("\n", "") for entry in flow_table.table]),
+#               ('expired_flows',
+#                  lambda expired_flows: [base64.b64encode(entry.to_flow_mod().pack()).replace("\n", "") for entry in expired_flows]),
+#               ('matched_flow',
+#                  lambda matched_flow: base64.b64encode(matched_flow.to_flow_mod().pack()).replace("\n", "")),
+#               ('touched_flow',
+#                  lambda touched_flow: base64.b64encode(touched_flow.to_flow_mod().pack()).replace("\n", "")),
+#               'touched_flow_bytes',
+#               ('touched_flow_now', lambda fp: repr(fp)), # str() is not precise for floating point numbers in Python < v3.2
+#               ('action', lambda action: base64.b64encode(action.pack()).replace("\n", "")),
+#               ('actions', 
+#                  lambda actions: [base64.b64encode(action.pack()).replace("\n", "") for action in actions])
+             ]
+    json_dict = OrderedDict()
+    for i in attrs:
+      if isinstance(i, tuple):
+        attr = i[0]
+        fun = i[1]
+        if hasattr(self, attr):
+          json_dict[attr] = fun(getattr(self, attr))
+      elif hasattr(self, i):
+        json_dict[i] = getattr(self, i)
+        
+    return json.dumps(json_dict, sort_keys=False)
+
+class PacketHandle(TraceEvent):
+  def __init__(self, dpid, pid_in):
+    self.dpid = None
+    self.pid_in = None
+    self.mid_out = None
+    
+    self.packet = None
+    self.message = None
+    
+class PacketSend(TraceEvent):
+  def __init__(self):
+    self.dpid = None
+    self.pid_in = None
+    self.pid_out = None
+    
+    self.packet = None
+      
+class MessageHandle(TraceEvent):
+  def __init__(self):
+    self.dpid = None
+    self.pid_in = None
+    self.pid_out = None
+    self.mid_in = None
+    self.mid_out = None
+    self.msg_type = None
+    
+class MessageSend(TraceEvent):
+  def __init__(self):
+    self.mid_in = None
+    
+class HostHandle(TraceEvent):
+  def __init__(self):
+    self.pid_in = None
+    self.pid_out = None
+
+class HostSend(TraceEvent):
+  def __init__(self):
+    self.pid_in = None
+    self.pid_out = None
 
 class HappensBeforeLogger(EventMixin):
   '''
   Listens to and logs the following events:
-  - Dataplane:
+  - Data plane:
    * receive dataplane (switches)
    * receive dataplane (hosts)
    * send dataplane (hosts+switches)
@@ -27,18 +142,47 @@ class HappensBeforeLogger(EventMixin):
    * send Openflow msgs (switch to controller)
   - Switch:
    * internal processing
-   '''
   
-  _eventMixin_events = set([TraceDpPacketOutSwitch, TraceDpPacketOutHost])
+  Logs the following operations:
+   * Flow table read
+   * Flow table touch
+   * Flow table modify
+   '''
   
   def __init__(self, patch_panel, event_listener_priority=100):
     self.output = None
     self.output_path = ""
     self.patch_panel = patch_panel
     self.event_listener_priority = event_listener_priority
-    self.counter = 0
     self.log = logging.getLogger("hb_logger")
     self._subscribe_to_PatchPanel(patch_panel)
+    
+    # State
+    self._pid_it = itertools.count(0)
+    self._mid_it = itertools.count(0)
+    self.pids = dict() # packet obj -> pid
+    self.mids = dict() # message obj -> mid
+    self.curr_switch_event = dict() # dpid -> event
+    self.curr_host_event = dict() # hid -> event
+    self.pending_packet_update = dict() # dpid -> packet
+    
+  def _get_pid(self, packet):
+    """ Get the pid for a packet or assign a new pid.
+    """
+    if packet in self.pids:
+      return self.pids[packet]
+    else:
+      pid = self._pid_it.next()
+      self.pids[packet] = pid
+      return pid
+    
+  def _set_pid(self, packet):
+    """ Assign a new pid for the packet.
+    """
+    if packet in self.pids:
+      del self.pids[packet]
+    return self._get_pid(packet)
+  
     
   def open(self, results_dir=None, output_filename="hb_trace.json"):
     '''
@@ -69,112 +213,72 @@ class HappensBeforeLogger(EventMixin):
       self.output.write(str(msg) + '\n')
       self.output.flush() # TODO JM remove eventually
   
-  def _get_connected_port(self, node, port):
-    '''
-    (Description copied from sts.topology.LinkTracker)
-    Given a node and a port, return a tuple (node, port) that is directly
-    connected to the port.
- 
-    This can be used in 2 ways
-    - node is a Host type and port is a HostInterface type
-    - node is a Switch type and port is a ofp_phy_port type.
-    '''
-    assert((isinstance(node, Host) and isinstance(port, HostInterface)) or
-           (isinstance(node, SoftwareSwitch) and isinstance(port, ofp_phy_port)))
-    try:
-      (connected_node, connected_port) = self.patch_panel.get_connected_port(node, port)
-    except ValueError:
-      # this packet is going nowhere
-      is_connected = False
-      connected_node = None
-      connected_port = None
-      connected_is_switch = None
-    else:
-      is_connected = True
-      connected_is_switch = isinstance(connected_node, SoftwareSwitch)
-      if connected_is_switch:
-        connected_node = connected_node.dpid
-        if type(connected_port) != int:
-          connected_port = connected_port.port_no
-      else:
-        connected_node = connected_node.hid
-        connected_port = connected_port.port_no
-    return (is_connected, connected_is_switch, connected_node, connected_port)
-   
-  
   def subscribe_to_DeferredOFConnection(self, connection):
-    # TODO JM: store association connection -> (eventType,eid) for later removal
-    connection.addListener(TraceOfMessageToController, self._handle_trace_event)
+    connection.addListener(SwitchMessageSend, self.handle_switch_ms)
       
   def _subscribe_to_PatchPanel(self, patch_panel):
-    
-    def inject_register_packet(packet):
-      reg_event = TracePacketRegister(packet)
-      self._handle_trace_event(reg_event)
-      return reg_event.id
-     
-    def inject_deregister_packet(reg_event_id, packet=None):
-      self._handle_trace_event(TracePacketDeregister(reg_event_id,packet))
-    
-    def handle_TraceDpPacket(event):
-      # topology information is missing, so we add it as a backup
-      (is_connected, connected_is_switch, connected_node, connected_port) = self._get_connected_port(event._node, event._port)
-      event.is_connected = is_connected
-      event.connected_is_switch = connected_is_switch
-      event.connected_node = connected_node
-      event.connected_port = connected_port
-      self._handle_trace_event(event)
-    
-    def handle_DpPacketOut_host(event):
-      # packet registry information is missing, so we add it
-      reg_event_id = inject_register_packet(event.packet)
-      new_event = TraceDpPacketOutHost(event.node, event.port, event.packet, reg_event_id)
-      handle_TraceDpPacket(new_event)
-     
-    def handle_DpPacketOut_switch(event):
-      # packet registry information is missing, so we add it
-      reg_event_id = inject_register_packet(event.packet)
-      new_event = TraceDpPacketOutSwitch(event.node, event.port, event.packet, reg_event_id)
-      handle_TraceDpPacket(new_event)
-      
-    def handle_DpPacketIn(event):
-      # packet registry information is missing, so we add it
-      packet = event.packet
-      handle_TraceDpPacket(event)
-      inject_deregister_packet(None, packet)
-     
     for host in patch_panel.hosts:
-      host.addListener(TracePacketRegister, self._handle_trace_event)
-      host.addListener(TracePacketDeregister, self._handle_trace_event)
-      host.addListener(DpPacketOut, handle_DpPacketOut_host, priority=self.event_listener_priority)
-      host.addListener(TraceDpPacketInHost, handle_DpPacketIn)
+        host.addListener(HostPacketHandleBegin, self.handle_host_ph_begin)
+        host.addListener(HostPacketHandleEnd, self.handle_host_ph_end)
+        host.addListener(HostPacketSend, self.handle_host_ps)
     
     for s in patch_panel.switches:
-      s.addListener(TracePacketRegister, self._handle_trace_event)
-      s.addListener(TracePacketDeregister, self._handle_trace_event)
-      s.addListener(DpPacketOut, handle_DpPacketOut_switch, priority=self.event_listener_priority)
-      s.addListener(TraceDpPacketInSwitch, handle_DpPacketIn)
-      s.addListener(TraceOfHandleFlowMod, self._handle_trace_event)
-      s.addListener(TraceOfHandleFlowModFromBuffer, self._handle_trace_event)
-      s.addListener(TraceOfHandlePacketOutFromRaw, self._handle_trace_event)
-      s.addListener(TraceOfHandlePacketOutFromBuffer, self._handle_trace_event)
-      s.addListener(OfHandleVendorHb, self._handle_trace_event)
-      s.addListener(TraceOfGeneratePacketIn, self._handle_trace_event)                    
-      s.addListener(TraceOfMessageFromController, self._handle_trace_event)                    
-      s.addListener(TracePacketActionOutput, self._handle_trace_event)
-      s.addListener(TracePacketActionResubmit, self._handle_trace_event)
-      s.addListener(TracePacketActionModificationBegin, self._handle_trace_event)
-      s.addListener(TracePacketBufferReadPacket, self._handle_trace_event)
-      s.addListener(TracePacketBufferError, self._handle_trace_event)
-      s.addListener(TracePacketBufferWritePacket, self._handle_trace_event)
-      s.addListener(TracePacketBufferFlushPacket, self._handle_trace_event)
-      s.addListener(TraceFlowTableMatch, self._handle_trace_event)
-      s.addListener(TraceFlowTableTouch, self._handle_trace_event)
-      s.addListener(TraceFlowTableModificationBefore, self._handle_trace_event)
-      s.addListener(TraceFlowTableModificationAfter, self._handle_trace_event)
-      s.addListener(TraceFlowTableModificationExpired, self._handle_trace_event)
+      s.addListener(SwitchPacketHandleBegin, self.handle_switch_ph_begin)
+      s.addListener(SwitchPacketHandleEnd, self.handle_switch_ph_end)
+      s.addListener(SwitchMessageHandleBegin, self.handle_switch_mh_begin)
+      s.addListener(SwitchMessageHandleEnd, self.handle_switch_mh_end)
+      s.addListener(SwitchPacketSend, self.handle_switch_ps)
+      s.addListener(SwitchFlowTableRead, self.handle_switch_read)
+      s.addListener(SwitchFlowTableWrite, self.handle_switch_write)
+      s.addListener(SwitchFlowTableRuleExpired, self.handle_switch_expiry)
+      s.addListener(SwitchBufferPut, self.handle_switch_put)
+      s.addListener(SwitchBufferGet, self.handle_switch_get)
+      s.addListener(SwitchPacketUpdateBegin, self.handle_switch_pu_begin)
+      s.addListener(SwitchPacketUpdateEnd, self.handle_switch_pu_end)
       
-  def _handle_trace_event(self, event):
+  def handle_switch_ph_begin(self, event):
+    pid_in = self._get_pid(event.packet)
+    self.curr_switch_event[event.dpid] = PacketHandle(event.dpid, pid_in)
+    # TODO
+  def handle_switch_ph_end(self, event):
+    pass
+  def handle_switch_mh_begin(self, event):
+    pass
+  def handle_switch_mh_end(self, event):
+    pass
+  def handle_switch_ms(self, event):
+    pass
+  def handle_switch_ps(self, event):
+    self._get_pid(event.packet)
+    pass
+  def handle_switch_read(self, event):
+    pass
+  def handle_switch_write(self, event):
+    pass
+  def handle_switch_expiry(self, event):
+    pass
+  def handle_switch_put(self, event):
+    pass
+  def handle_switch_get(self, event):
+    pass
+  
+  def handle_switch_pu_begin(self, event):
+    assert event.packet in self.pids
+    pid = self.pids[event.packet]
+    del self.pids[event.packet]
+    self.pending_packet_update[event.dpid] = pid
+    
+  def handle_switch_pu_end(self, event):
+    self.pids[event.packet] = self.pending_packet_update[event.dpid] 
+      
+  def handle_host_ph_begin(self, event):
+    pass
+  def handle_host_ph_end(self, event):
+    pass
+  def handle_host_ps(self, event):
+    pass
+  
+  def _output_trace_event(self, event):
     self.write(event.to_json())
 
 

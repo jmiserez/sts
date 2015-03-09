@@ -40,8 +40,7 @@ from sts.util.convenience import class_fullname
 from sts.util.convenience import load_class
 
 from sts.util.revent_mixins import CombiningEventMixinMetaclass, AbstractCombiningEventMixinMetaclass
-import sts.happensbefore.hb_events as hb_events
-from sts.happensbefore.hb_events import TracePacketRegister, TracePacketDeregister, TraceDpPacketInHost
+from sts.happensbefore.hb_events import HostPacketHandleBegin, HostPacketHandleEnd, HostPacketSend
 
 class HostInterfaceAbstractClass(object):
   """Represents a host's network interface (e.g. eth0)"""
@@ -361,18 +360,19 @@ class SimpleHost(HostAbstractClass, EventMixin):
 
 class TracingHost(SimpleHost, EventMixin):
   __metaclass__ = AbstractCombiningEventMixinMetaclass
-  _eventMixin_events = set([TracePacketRegister, TracePacketDeregister, TraceDpPacketInHost])
+  _eventMixin_events = set([HostPacketHandleBegin, HostPacketHandleEnd, HostPacketSend])
    
   def __init__(self, interfaces, name="", hid=None):
     super(TracingHost, self).__init__(interfaces, name, hid)
    
   def receive(self, interface, packet):
-    
-    reg_event_id = hb_events.raise_register_packet(self, packet)
-    
-    self.raiseEvent(TraceDpPacketInHost(self, interface, packet, reg_event_id))
+    self.raiseEvent(HostPacketHandleBegin(self.hid, packet))
     SimpleHost.receive(self, interface, packet)
-    hb_events.raise_deregister_packet(self, reg_event_id)
+    self.raiseEvent(HostPacketHandleEnd(self.hid, packet))
+
+  def send(self, interface, packet):
+    self.raiseEvent(HostPacketSend(self.hid, packet))
+    SimpleHost.send(self, interface, packet)
 
 class Host(TracingHost):
   pass

@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from sts.happensbefore import hb_events
+from pox.lib.revent.revent import Event
 
 """
 This module defines the basic simulated entities, such as openflow switches and
@@ -39,7 +40,21 @@ from sts.entities.base import DirectedLinkAbstractClass
 from sts.entities.base import BiDirectionalLinkAbstractClass
 from sts.entities.hosts import HostInterface
 from sts.util.revent_mixins import CombiningEventMixinMetaclass
+
 from sts.happensbefore.hb_events import *
+
+from pox.lib.util import assert_type
+from pox.lib.revent import Event, EventMixin
+from pox.openflow.libopenflow_01 import *
+from pox.openflow.util import make_type_to_class_table
+from pox.openflow.flow_table import SwitchFlowTable
+from pox.lib.packet import *
+
+from errno import EAGAIN
+from collections import namedtuple
+import inspect
+import itertools
+import logging
 
 import Queue
 import logging
@@ -49,13 +64,13 @@ import time
 
 class TracingOFConnection(OFConnection, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceOfMessageToController])
+  _eventMixin_events = set([SwitchMessageSend])
   
   def __init__(self, *args, **kw):
     OFConnection.__init__(self, *args, **kw)
     
   def send(self, ofp_message):
-    self.raiseEvent(TraceOfMessageToController(self.dpid, self.cid, ofp_message))
+    self.raiseEvent(SwitchMessageSend(self.dpid, ofp_message))
     super(TracingOFConnection, self).send(ofp_message)
 
 class DeferredOFConnection(TracingOFConnection):
@@ -130,9 +145,7 @@ class ConnectionlessOFConnection(object):
 
 class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceFlowTableModificationBefore,
-                            TraceFlowTableModificationAfter,
-                            TraceFlowTableModificationExpired])
+  _eventMixin_events = set([SwitchFlowTableRuleExpired, SwitchFlowTableWrite])
   
   def __init__(self, switch, *args, **kw):
     SwitchFlowTable.__init__(self, *args, **kw)
@@ -140,15 +153,14 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
   
   def remove_expired_entries(self, now=None):
     removed = super(TracingSwitchFlowTable, self).remove_expired_entries(now)
-    self.raiseEvent(TraceFlowTableModificationExpired(self.switch, self, removed))
+    self.raiseEvent(SwitchFlowTableRuleExpired(self.switch.dpid, self, removed))
   
   def process_flow_mod(self, flow_mod):
     """ Process a flow mod sent to the switch
     @return a tuple (added|modified|removed, [list of affected entries])
     """
-    self.raiseEvent(TraceFlowTableModificationBefore(self.switch, self, flow_mod))
+    self.raiseEvent(SwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
     super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
-    self.raiseEvent(TraceFlowTableModificationAfter(self.switch, self, flow_mod))
 
 class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   """
@@ -156,111 +168,94 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   """
   # use metaclass to add new events
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TracePacketRegister, TracePacketDeregister, 
-    TraceDpPacketInSwitch, OfHandleVendorHb,
-    TraceOfHandleFlowMod, TraceOfHandleFlowModFromBuffer,
-    TraceOfHandlePacketOutFromRaw, TraceOfHandlePacketOutFromBuffer,
-    TraceOfGeneratePacketIn, TraceOfMessageFromController, 
-    TraceFlowTableModificationBefore, TraceFlowTableModificationAfter,
-    TraceFlowTableModificationExpired, TraceFlowTableMatch, TraceFlowTableTouch,
-    TracePacketActionModificationBegin, TracePacketActionModificationEnd,
-    TracePacketActionOutput, TracePacketActionResubmit,
-    TracePacketBufferReadPacket, TracePacketBufferError,
-    TracePacketBufferWritePacket, TracePacketBufferFlushPacket])
+  _eventMixin_events = set([SwitchPacketHandleBegin, SwitchPacketHandleEnd,
+     SwitchMessageHandleBegin, SwitchMessageHandleEnd,
+     SwitchMessageSend, SwitchPacketSend,
+     SwitchFlowTableRead,
+     SwitchFlowTableWrite, SwitchFlowTableRuleExpired,
+     SwitchBufferPut, SwitchBufferGet, SwitchPacketUpdateBegin,
+     SwitchPacketUpdateEnd])
   
   def __init__(self, *args, **kw):
     NXSoftwareSwitch.__init__(self, *args, **kw)
     self.table = TracingSwitchFlowTable(self) # overwrite SwitchFlowTable
     def reraise_event(event):
       self.raiseEvent(event)
-    self.table.addListener(TraceFlowTableModificationBefore, reraise_event)
-    self.table.addListener(TraceFlowTableModificationAfter, reraise_event)
-    self.table.addListener(TraceFlowTableModificationExpired, reraise_event)
-
+    self.table.addListener(SwitchFlowTableWrite, reraise_event)
+    self.table.addListener(SwitchFlowTableRuleExpired, reraise_event)
 
   def on_message_received(self, connection, msg):
-    self.raiseEvent(TraceOfMessageFromController(self.dpid, connection.cid, msg))
+    self.raiseEvent(SwitchMessageHandleBegin(self.dpid, msg))
     super(TracingNXSoftwareSwitch, self).on_message_received(connection, msg)
+    self.raiseEvent(SwitchMessageHandleEnd(self.dpid))
   
-  def _receive_vendor(self, vendor, connection):
-    self.log.debug("Vendor %s %s", self.name, str(vendor))
-    if(vendor.vendor == 0x00FFFFFF): # non standard vendor id we've chosen in Floodlight module
-      self.raiseEvent(OfHandleVendorHb(self.dpid, connection.cid, vendor, vendor.data))
-    else:
-      return NXSoftwareSwitch._receive_vendor(self, vendor, connection)
-  
-  def _receive_flow_mod(self, ofp):
-    """Handle flow mod: just print it here
-    """
-    self.log.debug("Flow mod %s: %s", self.name, ofp.show())
-    self.table.process_flow_mod(ofp)
-    if(ofp.buffer_id > 0):
-      self.raiseEvent(TraceOfHandleFlowModFromBuffer(self,ofp.in_port, ofp, ofp.xid, ofp.buffer_id))
-      self._process_actions_for_packet_from_buffer(ofp.actions, ofp.buffer_id)
-  
-  def _receive_packet_out(self, packet_out):
-    """
-    Send the packet out the given port
-    """
-    self.log.debug("Packet out: %s", packet_out.show())
-    
-    if(packet_out.data):
-      reg_event_id = hb_events.raise_register_packet(self, packet_out.data)
-      self.raiseEvent(TraceOfHandlePacketOutFromRaw(self,packet_out.in_port, packet_out, packet_out.xid, packet_out.data, reg_event_id))
-      self._process_actions_for_packet(packet_out.actions, packet_out.data, packet_out.in_port)
-      hb_events.raise_deregister_packet(self, reg_event_id)
-    elif(packet_out.buffer_id > 0):
-      self.raiseEvent(TraceOfHandlePacketOutFromBuffer(self,packet_out.in_port, packet_out, packet_out.xid, packet_out.buffer_id))
-      self._process_actions_for_packet_from_buffer(packet_out.actions, packet_out.buffer_id)
-    else:
-      self.log.warn("packet_out: No data and no buffer_id -- don't know what to send")
-    
-  
-  def send_packet_in(self, in_port, buffer_id=None, packet="", xid=None, reason=None):
-    """Send PacketIn
-    Assume no match as reason, buffer_id = 0xFFFFFFFF,
-    and empty packet by default
-    """
-    assert_type("packet", packet, ethernet)
-    self.log.debug("Send PacketIn %s ", self.name)
-    if (reason == None):
-      reason = ofp_packet_in_reason_rev_map['OFPR_NO_MATCH']
-    if (buffer_id == None):
-      buffer_id = int("0xFFFFFFFF",16)
+  def _output_packet(self, packet, out_port, in_port):
+    """ send a packet out some port.
+        packet: instance of ethernet
+        out_port, in_port: the integer port number """
+    assert_type("packet", packet, ethernet, none_ok=False)
+    def real_send(port_no, allow_in_port=False):
+      if type(port_no) == ofp_phy_port:
+        port_no = port_no.port_no
+      # The OF spec states that packets should not be forwarded out their
+      # in_port unless OFPP_IN_PORT is explicitly used.
+      if port_no == in_port and not allow_in_port:
+        self.log.warn("out_port %d == in_port. Dropping" % (out_port,))
+        return
+      if port_no not in self.ports:
+        raise ValueError("Invalid physical output port: %x" % port_no)
+      if port_no in self.down_port_nos:
+        #raise RuntimeError("output port %x currently down!" % port_no)
+        self.log.warn("Port %d is currently down. Dropping packet", port_no)
+      self.raiseEvent(DpPacketOut(self, packet, self.ports[port_no]))
 
-    if xid == None:
-      xid = self.xid_count.next()
-      
-    reg_event_id = hb_events.raise_register_packet(self, packet)
-    msg = ofp_packet_in(xid=xid, in_port = in_port, buffer_id = buffer_id, reason = reason,
-                        data = packet.pack())
-    self.raiseEvent(TraceOfGeneratePacketIn(self,in_port,msg,xid,reason,buffer_id,packet,reg_event_id))
-    self.send(msg)
+    if out_port < OFPP_MAX:
+      real_send(out_port)
+    elif out_port == OFPP_IN_PORT:
+      real_send(in_port, allow_in_port=True)
+    elif out_port == OFPP_FLOOD or out_port == OFPP_ALL:
+      # no support for spanning tree yet -> flood=all
+      for (no,port) in self.ports.iteritems():
+        if no != in_port and port not in self.no_flood_ports:
+          real_send(port)
+    elif out_port == OFPP_CONTROLLER:
+      buffer_id = self._buffer_packet(packet, in_port)
+      self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_ACTION)
+    elif out_port == OFPP_TABLE:
+      # There better be a table entry there, else we get infinite recurision
+      # between switch<->controller
+      # Note that this isn't infinite recursion, since the table entry's
+      # out_port will not be OFPP_TABLE
+      self.process_packet_internal(packet, in_port)
+    else:
+      raise("Unsupported virtual output port: %x" % out_port)
+  
+  def process_packet_internally(self, packet, in_port):
+    assert_type("packet", packet, ethernet, none_ok=False)
+    assert_type("in_port", in_port, int, none_ok=False)
     
-    hb_events.raise_deregister_packet(self, reg_event_id)
+    entry = self.table.entry_for_packet(packet, in_port)
+    if(entry != None):
+      now = time.time()
+      plen = len(packet)
+      self.raiseEvent(SwitchFlowTableRead(self.dpid, in_port, packet, self.table, entry, plen, now))
+      entry.touch_packet(plen, now)
+      self._process_actions_for_packet(entry.actions, packet, in_port)
+    else:
+      # no matching entry
+      self.raiseEvent(SwitchFlowTableRead(self.dpid, in_port, packet, self.table, None, None, None))
+      buffer_id = self._buffer_packet(packet, in_port)
+      self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
   
   def process_packet(self, packet, in_port):
     # this completely overrides SoftwareSwitch's implementation and does not call super
     assert_type("packet", packet, ethernet, none_ok=False)
     assert_type("in_port", in_port, int, none_ok=False)
     
-    reg_event_id = hb_events.raise_register_packet(self, packet)
+    self.raiseEvent(SwitchPacketHandleBegin(self.dpid, packet, in_port))
+    self.process_packet_internally(packet, in_port)
+    self.raiseEvent(SwitchPacketHandleEnd(self.dpid))
     
-    self.raiseEvent(TraceDpPacketInSwitch(self, self.ports[in_port], packet, reg_event_id))
-    entry = self.table.entry_for_packet(packet, in_port)
-    if(entry != None):
-      self.raiseEvent(TraceFlowTableMatch(self, in_port, packet, reg_event_id, self.table, entry))
-      now = time.time()
-      plen = len(packet)
-      self.raiseEvent(TraceFlowTableTouch(self, in_port, packet, reg_event_id, self.table, entry, plen, now))
-      entry.touch_packet(plen, now)
-      self._process_actions_for_packet(entry.actions, packet, in_port)
-    else:
-      # no matching entry
-      buffer_id = self._buffer_packet(packet, in_port)
-      self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
-    
-    hb_events.raise_deregister_packet(self, reg_event_id)
 
   def _buffer_packet(self, packet, in_port=None):
     """ Find a free buffer slot to buffer the packet in. """
@@ -270,11 +265,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         return i + 1
     self.packet_buffer.append( (packet, in_port) )
     buffer_id = len(self.packet_buffer)
-    # TODO JM: Note that a buffer_id of -1 would mean that it was sent to the controller rather than being buffered
-    
-    reg_event_id = hb_events.raise_register_packet(self, packet)
-    self.raiseEvent(TracePacketBufferWritePacket(self, in_port, packet, reg_event_id, buffer_id))
-    hb_events.raise_deregister_packet(self, reg_event_id)
+    # Note that a buffer_id of -1 would mean that it was sent to the controller rather than being buffered
+    self.raiseEvent(SwitchBufferPut(self.dpid, packet))
     return buffer_id
   
   def _process_actions_for_packet_from_buffer(self, actions, buffer_id):
@@ -285,32 +277,25 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       return
     if(self.packet_buffer[buffer_id] is None):
       self.log.warn("Buffer %x has already been flushed", buffer_id)
-      self.raiseEvent(TracePacketBufferError(self, buffer_id+1))
       return
     (packet, in_port) = self.packet_buffer[buffer_id]
     
-    reg_event_id = hb_events.raise_register_packet(self, packet)
-    
-    begin_event = TracePacketBufferReadPacket(self, in_port, packet, reg_event_id, buffer_id+1) #buffer_ids start at 1
-    self.raiseEvent(begin_event)
+    self.raiseEvent(SwitchBufferGet(self.dpid, packet, in_port))
     self._process_actions_for_packet(actions, packet, in_port)
-    self.raiseEvent(TracePacketBufferFlushPacket(self, in_port, packet, reg_event_id, buffer_id+1)) #buffer_ids start at 1
     self.packet_buffer[buffer_id] = None
-    hb_events.raise_deregister_packet(self, reg_event_id)
-    
     
   def _process_actions_for_packet(self, actions, packet, in_port):
     """ process the output actions for a packet """
     assert_type("packet", packet, [ethernet, str], none_ok=False)
-    
-    reg_event_id = hb_events.raise_register_packet(self, packet)
 
     if not isinstance(packet, ethernet):
+      self.raiseEvent(SwitchPacketUpdateBegin(self.dpid, packet))
       packet = ethernet.unpack(packet)
-      
-      #replace packet
-      reg_event_id = hb_events.raise_replace_register_packet(self, reg_event_id, packet)
+      self.raiseEvent(SwitchPacketUpdateEnd(self.dpid, packet))
 
+    def output_packet(action, packet):
+      self._output_packet(packet, action.port, in_port)
+      return packet
     def set_vlan_id(action, packet):
       if not isinstance(packet.next, vlan):
         packet.next = vlan(prev = packet.next)
@@ -356,6 +341,9 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       if(isinstance(packet.next, udp) or isinstance(packet.next, tcp)):
         packet.next.dstport = action.tp_port
       return packet
+    def enqueue(action, packet):
+      self.log.warn("output_enqueue not supported yet. Performing regular output")
+      return output_packet(action.tp_port, packet)
     def push_mpls_tag(action, packet):
       bottom_of_stack = isinstance(packet.next, mpls)
       packet.next = mpls(prev = packet.pack())
@@ -398,6 +386,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       packet.next.ttl = packet.next.ttl - 1
       return packet
     handler_map = {
+        OFPAT_OUTPUT: output_packet,
         OFPAT_SET_VLAN_VID: set_vlan_id,
         OFPAT_SET_VLAN_PCP: set_vlan_pcp,
         OFPAT_STRIP_VLAN: strip_vlan,
@@ -408,6 +397,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         OFPAT_SET_NW_TOS: set_nw_tos,
         OFPAT_SET_TP_SRC: set_tp_src,
         OFPAT_SET_TP_DST: set_tp_dst,
+        OFPAT_ENQUEUE: enqueue,
         OFPAT_PUSH_MPLS: push_mpls_tag,
         OFPAT_POP_MPLS: pop_mpls_tag,
         OFPAT_SET_MPLS_LABEL: set_mpls_label,
@@ -415,43 +405,16 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         OFPAT_SET_MPLS_TTL: set_mpls_ttl,
         OFPAT_DEC_MPLS_TTL: dec_mpls_ttl,
     }
-    for action in actions: 
-      # TODO JM: this seems to have been a bug in STS, check with authors
-      if action.type is ofp_action_type_rev_map['OFPAT_RESUBMIT']:
-        self.raiseEvent(TracePacketActionResubmit(self, in_port, packet, reg_event_id))
+    for action in actions:
+      if action.type is ofp_action_resubmit:
         self.process_packet(packet, in_port)
-        hb_events.raise_deregister_packet(self, reg_event_id)
         return
-      elif action.type is ofp_action_type_rev_map['OFPAT_OUTPUT']:
-        self.raiseEvent(TracePacketActionOutput(self, in_port, packet, reg_event_id, action.port))
-        packet = self._output_packet(packet, action.port, in_port)
-        
-        #replace packet
-        reg_event_id = hb_events.raise_replace_register_packet(self, reg_event_id, packet)
-        
-      elif action.type is ofp_action_type_rev_map['OFPAT_ENQUEUE']:
-        self.log.warn("output_enqueue not supported yet. Performing regular output")
-        self.raiseEvent(TracePacketActionOutput(self, in_port, packet, reg_event_id, action.tp_port))
-        packet = self.output_packet(packet, action.tp_port, in_port)
-        
-        #replace packet
-        reg_event_id = hb_events.raise_replace_register_packet(self, reg_event_id, packet)
-        
-      else:
-        if(action.type not in handler_map):
-          raise NotImplementedError("Unknown action type: %x " % type)
-        # all other events modify packets without nested calls
-        begin_event = TracePacketActionModificationBegin(self, in_port, packet, reg_event_id)
-        self.raiseEvent(begin_event)
-        packet = handler_map[action.type](action, packet)
-        
-        #replace packet
-        reg_event_id = hb_events.raise_replace_register_packet(self, reg_event_id, packet)
+      if(action.type not in handler_map):
+        raise NotImplementedError("Unknown action type: %x " % type)
+      self.raiseEvent(SwitchPacketUpdateBegin(self.dpid, packet))
+      packet = handler_map[action.type](action, packet)
+      self.raiseEvent(SwitchPacketUpdateEnd(self.dpid, packet))
 
-        self.raiseEvent(TracePacketActionModificationEnd(self, in_port, packet, reg_event_id, begin_event.id))
-      
-    hb_events.raise_deregister_packet(self, reg_event_id)
-  
 
 # A note on FuzzSoftwareSwitch Command Buffering
 #   - When delaying flow_mods, we would like to buffer them and perturb the order in which they are processed.
