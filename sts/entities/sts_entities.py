@@ -207,6 +207,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       if port_no in self.down_port_nos:
         #raise RuntimeError("output port %x currently down!" % port_no)
         self.log.warn("Port %d is currently down. Dropping packet", port_no)
+      self.raiseEvent(SwitchPacketSend(self.dpid, packet, port_no))
       self.raiseEvent(DpPacketOut(self, packet, self.ports[port_no]))
 
     if out_port < OFPP_MAX:
