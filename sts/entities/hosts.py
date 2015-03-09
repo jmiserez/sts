@@ -39,8 +39,8 @@ from sts.util.convenience import object_fullname
 from sts.util.convenience import class_fullname
 from sts.util.convenience import load_class
 
-from sts.util.revent_mixins import CombiningEventMixinMetaclass, AbstractCombiningEventMixinMetaclass
-from sts.happensbefore.hb_events import HostPacketHandleBegin, HostPacketHandleEnd, HostPacketSend
+from sts.util.revent_mixins import AbstractCombiningEventMixinMetaclass
+from sts.happensbefore.hb_sts_events import *
 
 class HostInterfaceAbstractClass(object):
   """Represents a host's network interface (e.g. eth0)"""
@@ -250,7 +250,6 @@ class SimpleHost(HostAbstractClass, EventMixin):
   If multiple host VMs are too heavy-weight for a single machine, run the
   hosts on their own machines!
   """
-
   _eventMixin_events = set([DpPacketOut])
   _hids = count(1)
 

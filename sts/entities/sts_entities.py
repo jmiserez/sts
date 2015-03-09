@@ -14,17 +14,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from sts.happensbefore import hb_events
-from pox.lib.revent.revent import Event
-
 """
 This module defines the basic simulated entities, such as openflow switches and
 links.
 """
 
-from pox.openflow.software_switch import DpPacketOut, OFConnection, SwitchFlowTable
+from pox.openflow.software_switch import DpPacketOut, OFConnection
 from pox.openflow.nx_software_switch import NXSoftwareSwitch
-from pox.openflow.flow_table import TableEntry, FlowTableModification
+from pox.openflow.flow_table import FlowTableModification, SwitchFlowTable
 from pox.openflow.libopenflow_01 import *
 from pox.lib.revent import EventMixin
 import pox.lib.packet.ethernet as ethernet
@@ -39,28 +36,17 @@ from sts.util.tabular import Tabular
 from sts.entities.base import DirectedLinkAbstractClass
 from sts.entities.base import BiDirectionalLinkAbstractClass
 from sts.entities.hosts import HostInterface
+
 from sts.util.revent_mixins import CombiningEventMixinMetaclass
+from sts.happensbefore.hb_sts_events import *
 
-from sts.happensbefore.hb_events import *
-
-from pox.lib.util import assert_type
-from pox.lib.revent import Event, EventMixin
-from pox.openflow.libopenflow_01 import *
-from pox.openflow.util import make_type_to_class_table
-from pox.openflow.flow_table import SwitchFlowTable
-from pox.lib.packet import *
-
-from errno import EAGAIN
-from collections import namedtuple
-import inspect
-import itertools
-import logging
 
 import Queue
 import logging
 import pickle
 import random
 import time
+
 
 class TracingOFConnection(OFConnection, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
@@ -267,7 +253,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     self.packet_buffer.append( (packet, in_port) )
     buffer_id = len(self.packet_buffer)
     # Note that a buffer_id of -1 would mean that it was sent to the controller rather than being buffered
-    self.raiseEvent(SwitchBufferPut(self.dpid, packet))
+    self.raiseEvent(SwitchBufferPut(self.dpid, packet, in_port, buffer_id))
     return buffer_id
   
   def _process_actions_for_packet_from_buffer(self, actions, buffer_id):
@@ -281,7 +267,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       return
     (packet, in_port) = self.packet_buffer[buffer_id]
     
-    self.raiseEvent(SwitchBufferGet(self.dpid, packet, in_port))
+    self.raiseEvent(SwitchBufferGet(self.dpid, packet, in_port, buffer_id))
     self._process_actions_for_packet(actions, packet, in_port)
     self.packet_buffer[buffer_id] = None
     

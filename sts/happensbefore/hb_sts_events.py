@@ -66,14 +66,18 @@ class SwitchFlowTableRuleExpired(SwitchEvent):
     self.removed = removed
 
 class SwitchBufferPut(SwitchEvent):
-  def __init__(self, dpid, packet):
+  def __init__(self, dpid, packet, in_port, buffer_id):
     SwitchEvent.__init__(self)
     self.dpid = dpid
+    self.packet = packet
+    self.buffer_id = buffer_id
 
 class SwitchBufferGet(SwitchEvent):
-  def __init__(self, dpid, packet, in_port):
+  def __init__(self, dpid, packet, in_port, buffer_id):
     SwitchEvent.__init__(self)
     self.dpid = dpid
+    self.packet = packet
+    self.buffer_id = buffer_id
 
 class SwitchPacketUpdateBegin(SwitchEvent):
   def __init__(self, dpid, packet):
