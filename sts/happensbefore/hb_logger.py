@@ -91,21 +91,21 @@ class TraceEvent(object):
     return json.dumps(json_dict, sort_keys=False)
 
 class PacketHandle(TraceEvent):
-  def __init__(self, dpid, pid_in):
-    self.dpid = None
-    self.pid_in = None
+  def __init__(self, dpid, pid_in, pid_out, packet):
+    self.dpid = dpid
+    self.pid_in = pid_in
+    self.pid_out = pid_out
     self.mid_out = None
     
-    self.packet = None
-    self.message = None
+    self.packet = packet
     
 class PacketSend(TraceEvent):
-  def __init__(self):
-    self.dpid = None
-    self.pid_in = None
-    self.pid_out = None
+  def __init__(self, dpid, pid_in, pid_out, packet):
+    self.dpid = dpid
+    self.pid_in = pid_in
+    self.pid_out = pid_out
     
-    self.packet = None
+    self.packet = packet
       
 class MessageHandle(TraceEvent):
   def __init__(self):
@@ -164,6 +164,8 @@ class HappensBeforeLogger(EventMixin):
     self.mids = dict() # message obj -> mid
     self.curr_switch_event = dict() # dpid -> event
     self.curr_host_event = dict() # hid -> event
+    self.queued_switch_events = defaultdict(list)
+    self.queued_host_events = defaultdict(list)
     self.pending_packet_update = dict() # dpid -> packet
     
   def _get_pid(self, packet):
@@ -176,7 +178,7 @@ class HappensBeforeLogger(EventMixin):
       self.pids[packet] = pid
       return pid
     
-  def _set_pid(self, packet):
+  def _new_pid(self, packet):
     """ Assign a new pid for the packet.
     """
     if packet in self.pids:
@@ -235,31 +237,58 @@ class HappensBeforeLogger(EventMixin):
       s.addListener(SwitchBufferGet, self.handle_switch_get)
       s.addListener(SwitchPacketUpdateBegin, self.handle_switch_pu_begin)
       s.addListener(SwitchPacketUpdateEnd, self.handle_switch_pu_end)
-      
-  def handle_switch_ph_begin(self, event):
-    pid_in = self._get_pid(event.packet)
-    self.curr_switch_event[event.dpid] = PacketHandle(event.dpid, pid_in)
-    # TODO
-  def handle_switch_ph_end(self, event):
+  
+  
+  
+  def write_event_to_trace(self, event):
+    #self.write(event.to_json())
     pass
+    
+  def end_switch_event(self,event):
+    self.write_event_to_trace(self.curr_switch_event[event.dpid])
+    self.curr_switch_event[event.dpid] = None
+    for i in self.queued_switch_events[event.dpid]:
+      self.write_event_to_trace(i)
+    self.write_event_to_trace(event)
+  def end_host_event(self, event):
+    self.write_event_to_trace(self.curr_host_event[event.hid])
+    self.curr_host_event[event.hid] = None
+    for i in self.queued_host_events[event.hid]:
+      self.write_event_to_trace(i)
+    self.write_event_to_trace(event)
+  
+  def handle_switch_ph_begin(self, event):
+    assert len(self.queued_switch_events[event.dpid]) == 0
+    pid_in = self._get_pid(event.packet)
+    pid_out = self._new_pid(event.packet)
+    self.curr_switch_event[event.dpid] = PacketHandle(event.dpid, pid_in, pid_out, event.packet)
+  def handle_switch_ph_end(self, event):
+    self.end_host_event(event)
   def handle_switch_mh_begin(self, event):
     pass
   def handle_switch_mh_end(self, event):
-    pass
+    self.end_host_event(event)
   def handle_switch_ms(self, event):
     pass
   def handle_switch_ps(self, event):
-    self._get_pid(event.packet)
-    pass
+    pid_in = self._get_pid(event.packet)
+    pid_out = self._new_pid(event.packet)
+    self.queued_switch_events[event.dpid].append(PacketSend(event.dpid, pid_in, pid_out, event.packet))
   def handle_switch_read(self, event):
+    # TODO add to operations list
     pass
   def handle_switch_write(self, event):
+    # TODO add to operations list
     pass
   def handle_switch_expiry(self, event):
     pass
   def handle_switch_put(self, event):
-    pass
+    pid_in = self._get_pid(event.packet)
+    pid_out = self._new_pid(event.packet)
+    
   def handle_switch_get(self, event):
+    pid_in = self._get_pid(event.packet)
+    pid_out = self._new_pid(event.packet)
     pass
   
   def handle_switch_pu_begin(self, event):
@@ -278,7 +307,5 @@ class HappensBeforeLogger(EventMixin):
   def handle_host_ps(self, event):
     pass
   
-  def _output_trace_event(self, event):
-    self.write(event.to_json())
 
 
