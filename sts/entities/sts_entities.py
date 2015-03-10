@@ -146,7 +146,42 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     @return a tuple (added|modified|removed, [list of affected entries])
     """
     self.raiseEvent(SwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
-    super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
+    #super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
+    # FIXME (AH): a quick hack to solve the empty flow table problem
+    from pox.openflow.libopenflow_01 import *
+    from pox.openflow.software_switch import *
+    from pox.openflow.flow_table import *
+    if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
+      raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
+    if(flow_mod.out_port != OFPP_NONE and
+            flow_mod.command == ofp_flow_mod_command_rev_map['OFPFC_DELETE']):
+      raise NotImplementedError("flow_mod outport checking not implemented")
+
+    if flow_mod.command == OFPFC_ADD:
+      # exactly matching entries have to be removed
+      self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True)
+      return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
+    elif flow_mod.command == OFPFC_MODIFY or flow_mod.command == OFPFC_MODIFY_STRICT:
+      is_strict = (flow_mod.command == OFPFC_MODIFY_STRICT)
+      modified = []
+      for entry in self.table:
+        # update the actions field in the matching flows
+        if(entry.is_matched_by(flow_mod.match, priority=flow_mod.priority, strict=is_strict)):
+          entry.actions = flow_mod.actions
+          modified.append(entry)
+      if(len(modified) == 0):
+        # if no matching entry is found, modify acts as add
+        return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
+      else:
+        return ("modified", modified)
+
+    elif flow_mod.command == OFPFC_DELETE or flow_mod.command == OFPFC_DELETE_STRICT:
+      is_strict = (flow_mod.command == OFPFC_DELETE_STRICT)
+      return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict))
+    else:
+      raise AttributeError("Command not yet implemented: %s" % flow_mod.command)
+
+
 
 class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   """
