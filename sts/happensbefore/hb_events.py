@@ -66,10 +66,11 @@ class HbMessageHandle(HbEvent):
     self.msg = msg
     
 class HbMessageSend(HbEvent):
-  def __init__(self, mid_in, mid_out, dpid=None, controller_id=None, msg=None):
+  def __init__(self, mid_in, mid_out, msg_type, dpid=None, controller_id=None, msg=None):
     HbEvent.__init__(self)
     self.mid_in = mid_in
     self.mid_out = mid_out # filled in, but never matches a mid_in. This link will be filled in by controller instrumentation.
+    self.msg_type = msg_type
 
     self.dpid = dpid
     self.controller_id = controller_id

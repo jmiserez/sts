@@ -7,11 +7,10 @@ from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 
-# Use POX as our controller
-start_cmd = ('''java -ea -Dlogback.configurationFile=/home/jeremie/mscthesis/floodlight/src/main/resources/logback-test-trace.xml -jar '''
-             '''/home/jeremie/mscthesis/floodlight/target/floodlight-flawedfirewall.jar '''
-             '''-cf /home/jeremie/mscthesis/floodlight/src/main/resources/flawedfirewall.properties''')
-controllers = [ControllerConfig(start_cmd, cwd="/home/jeremie/mscthesis/floodlight", address="127.0.0.1", port=6633)]
+start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
+             '''./target/floodlight.jar '''
+             '''-cf ./src/main/resources/hb.properties''')
+controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
 topology_class = StarTopology
 topology_params = "num_hosts=2"

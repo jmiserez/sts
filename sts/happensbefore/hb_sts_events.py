@@ -8,7 +8,6 @@ from pox.lib.util import assert_type
 from sts.happensbefore.hb_json_event import JsonEvent, AttributeCombiningMetaclass
 from sts.util.convenience import base64_encode, get_port_no, base64_encode_flow_table, base64_encode_flow_list, base64_encode_flow
 
-
 class TraceSwitchEvent(JsonEvent):
   __metaclass__ = AttributeCombiningMetaclass
   _attr_combining_metaclass_args = ["_to_json_attrs"]

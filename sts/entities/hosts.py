@@ -29,6 +29,7 @@ from pox.openflow.software_switch import DpPacketOut
 from pox.lib.revent import EventMixin
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.ipv4 import ipv4
+from pox.lib.packet.icmp import icmp, TYPE_ECHO_REPLY
 from pox.lib.packet.tcp import tcp
 from pox.lib.packet.arp import arp
 from pox.lib.addresses import EthAddr
@@ -357,7 +358,47 @@ class SimpleHost(HostAbstractClass, EventMixin):
   def __repr__(self):
     return "Host(%d)" % self.hid
 
-class TracingHost(SimpleHost, EventMixin):
+class RespondingHost(SimpleHost):
+  def __init__(self, *args, **kw):
+    super(RespondingHost, self).__init__(*args, **kw)
+    
+  def receive(self, interface, packet):
+    super(RespondingHost, self).receive(interface, packet)
+    
+    if(packet.type == ethernet.IP_TYPE and 
+       packet.next.protocol == ipv4.ICMP_PROTOCOL
+       ):
+      
+      self.log.info("Generating ping echo reply.")
+      
+      # 1. Get the payload from the echo request (ping)
+      # 2. Create an echo reply packet, insert the old payload
+      # 3. Create an ICMP packet, insert the echo reply
+      # 4. Create an IPv4 packet, insert the ICMP
+      # 5. Create an Ethernet packet, insert the IPv4
+      
+      p_eth = packet
+      p_ip = packet.next
+      p_icmp = packet.next.next
+      
+      payload = p_icmp.payload
+      
+      r_icmp = icmp(type = TYPE_ECHO_REPLY, 
+                    payload = payload,
+                    )
+      r_ip = ipv4(protocol = ipv4.TCP_PROTOCOL,
+                  srcip = interface.ips[0],
+                  dstip = p_ip.srcip,
+                  payload = r_icmp,
+                  )
+      r_eth = ethernet(src=interface.hw_addr,
+                       dst=p_eth.src,
+                       type=ethernet.IP_TYPE,
+                       payload = r_ip)
+      
+      self.send(interface, r_eth)
+
+class TracingHost(RespondingHost, EventMixin):
   __metaclass__ = AbstractCombiningEventMixinMetaclass
   _eventMixin_events = set([TraceHostPacketHandleBegin, TraceHostPacketHandleEnd, TraceHostPacketSend])
    
@@ -366,7 +407,7 @@ class TracingHost(SimpleHost, EventMixin):
    
   def receive(self, interface, packet):
     self.raiseEvent(TraceHostPacketHandleBegin(self.hid, packet, interface))
-    SimpleHost.receive(self, interface, packet)
+    super(TracingHost, self).receive(interface, packet)
     self.raiseEvent(TraceHostPacketHandleEnd(self.hid))
 
   def send(self, interface, packet):

@@ -49,12 +49,15 @@ import time
 
 
 class TracingOFConnection(OFConnection, EventMixin):
+  """
+  This version of OFConnection raises events when a message is sent
+  """
   __metaclass__ = CombiningEventMixinMetaclass
   _eventMixin_events = set([TraceSwitchMessageSend])
   
   def __init__(self, *args, **kw):
     OFConnection.__init__(self, *args, **kw)
-    
+  
   def send(self, ofp_message):
     self.raiseEvent(TraceSwitchMessageSend(self.dpid, self.controller_id, ofp_message))
     super(TracingOFConnection, self).send(ofp_message)
