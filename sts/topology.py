@@ -1139,4 +1139,114 @@ class FatTree (Topology):
     def __init__(self, port2access_link, interface2access_link, port2internal_link, dpid2switch):
       LinkTracker.__init__(self, dpid2switch, port2access_link,
                            interface2access_link, port2internal_link)
-      
+
+
+
+class GridTopology(Topology):
+  def __init__(self, num_rows=3, num_columns=3, create_io_worker=None, netns_hosts=False,
+               gui=False, ip_format_str="123.123.%d.%d"):
+    '''
+    Populate the topology as a grid of switches, connect the switches
+    to the controllers
+    '''
+    Topology.__init__(self, create_io_worker=create_io_worker, gui=gui)
+
+
+    ports_per_switch = 8
+    num_switches = num_columns * num_rows
+
+    # Initialize switches
+    switches = [ create_switch(switch_id, ports_per_switch)
+                  for switch_id in range(1, num_switches+1) ]
+    self._populate_dpid2switch(switches)
+    switches_grid = []
+    i = 0
+    for row in range(num_rows):
+      for column in range(num_columns):
+        if column == 0:
+          switches_grid.append([])
+        switches_grid[row].append(switches[i])
+        i += 1
+
+    edge_switches = [switch for switch in [s[0] for s in switches_grid]]
+    edge_switches += [switch for switch in [s[-1] for s in switches_grid]]
+    edge_switches += [switch for switch in switches_grid[0][1:-1]]
+    edge_switches += [switch for switch in switches_grid[-1][1:-1]]
+
+    print "Grid"
+    for x in switches_grid:
+      print x
+    print ""
+    print ""
+    if netns_hosts:
+      host_access_link_pairs = [ create_netns_host(create_io_worker, switch)
+                                 for switch in edge_switches ]
+    else:
+      host_access_link_pairs = [ create_host(switch, ip_format_str=ip_format_str) for switch in edge_switches]
+
+
+    #print host_access_link_pairs
+    access_link_list_list = []
+    for host, access_link_list in host_access_link_pairs:
+      self.hid2host[host.hid] = host
+      access_link_list_list.append(access_link_list)
+
+    # this is python's .flatten:
+    access_links = list(itertools.chain.from_iterable(access_link_list_list))
+
+    # grab a grid patch panel to wire up these guys
+    self.link_tracker = GridTopology.GridLinks(self.dpid2switch, switches_grid, access_links)
+    self.get_connected_port = self.link_tracker
+
+    if self.gui is not None:
+      self.gui.launch()
+
+  class GridLinks(LinkTracker):
+    def __init__(self, dpid2switch, switches_grid, access_links=[]):
+      port2access_link = { access_link.switch_port: access_link
+                           for access_link in access_links }
+      interface2access_link = { access_link.interface: access_link
+                                for access_link in access_links }
+
+      switches = dpid2switch.values()
+      # Access links to hosts are already claimed, all other internal links
+      # are not yet claimed
+      switch2unclaimed_ports = { switch : filter(lambda p: p not in port2access_link,
+                                                 switch.ports.values())
+                                 for switch in switches }
+      port2internal_link = {}
+
+      for row in range(len(switches_grid)):
+        for column in range(len(switches_grid[row])):
+          right = bottom = None
+          switch = switches_grid[row][column]
+          if row != len(switches_grid) - 1:
+            bottom = switches_grid[row + 1][column]
+          if column != len(switches_grid[row]) -1:
+            right = switches_grid[row][column + 1]
+          if bottom is not None:
+            switch_port_bottom = switch2unclaimed_ports[switch].pop()
+            bottom_port_top = switch2unclaimed_ports[bottom].pop()
+            link_s_bottom = Link(switch, switch_port_bottom, bottom, bottom_port_top)
+            port2internal_link[switch_port_bottom] = link_s_bottom
+            # In the opposite direction
+            switch_port_bottom = switch2unclaimed_ports[switch].pop()
+            bottom_port_top = switch2unclaimed_ports[bottom].pop()
+            link_bottom_s = Link(bottom, bottom_port_top, switch, switch_port_bottom)
+            port2internal_link[bottom_port_top] = link_bottom_s
+
+          if right is not None:
+            switch_port_right = switch2unclaimed_ports[switch].pop()
+            right_port_left = switch2unclaimed_ports[right].pop()
+            link_s_right = Link(switch, switch_port_right, right, right_port_left)
+            port2internal_link[switch_port_right] = link_s_right
+            # In the opposite direction
+            switch_port_right = switch2unclaimed_ports[switch].pop()
+            right_port_left = switch2unclaimed_ports[right].pop()
+            link_right_s = Link(right, right_port_left, switch, switch_port_right)
+            port2internal_link[right_port_left] = link_right_s
+
+      self.port2internal_link = port2internal_link
+
+      LinkTracker.__init__(self, dpid2switch, port2access_link,
+                           interface2access_link, port2internal_link)
