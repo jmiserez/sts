@@ -27,13 +27,15 @@ class HappensBeforeLogger(EventMixin):
    '''
   
   def __init__(self, patch_panel, event_listener_priority=100):
+    self.ignore_uninteresting_events = False
+    
     self.output = None
     self.output_path = ""
     self.patch_panel = patch_panel
     self.event_listener_priority = event_listener_priority
     self.log = logging.getLogger("hb_logger")
     
-    # State
+    # State for linking of events
     self.pids = ObjectRegistry() # packet obj -> pid
     self.mids = ObjectRegistry() # message obj -> mid
     self.started_switch_event = dict() # dpid -> event
@@ -65,9 +67,6 @@ class HappensBeforeLogger(EventMixin):
     self.output = None
     # TODO JM: remove listeners for all connection objects.
   
-  def debug(self,msg):
-    print "HappensBeforeLogger debug {1}".format(str(msg))
-    
   def write(self,msg):
     self.log.info(msg)
     if not self.output:
@@ -76,45 +75,39 @@ class HappensBeforeLogger(EventMixin):
       self.output.write(str(msg) + '\n')
       self.output.flush() # TODO JM remove eventually
   
-  def _is_error(self, event):
-    if hasattr(event, 'msg') and event.msg.header_type == ofp_type_rev_map['OFPT_ERROR']:
-      self.debug("Something is wrong.")
-  
   def is_ignore_event(self, event):
-    return False
-  #
-  # TODO JM: Remove. The following works, but it is not needed if the controller does not
-  #          spam the switch with ECHO requests and other messages.
-  #
-#     if hasattr(event, 'dpid'):
-#       interesting_msg_types = [ofp_type_rev_map['OFPT_PACKET_IN'],
-#                                ofp_type_rev_map['OFPT_FLOW_REMOVED'],
-#                                ofp_type_rev_map['OFPT_PORT_STATUS'],
-#                                ofp_type_rev_map['OFPT_PACKET_OUT'],
-#                                ofp_type_rev_map['OFPT_FLOW_MOD'],
-#                                ofp_type_rev_map['OFPT_PORT_MOD'],
-#                                ofp_type_rev_map['OFPT_BARRIER_REQUEST'],
-#                                ofp_type_rev_map['OFPT_BARRIER_REPLY'],
-#                                ofp_type_rev_map['OFPT_HELLO'],
-#                                ofp_type_rev_map['OFPT_VENDOR'],
-#                                ]
-#       
-#       if isinstance(event, TraceSwitchMessageHandleBegin):
-#         if event.msg.header_type not in interesting_msg_types:
-#           self.ignoring_switch_event[event.dpid] = True
-#           return True
-#   
-#       if self.ignoring_switch_event[event.dpid]:
-#         if isinstance(event, TraceSwitchMessageHandleEnd):
-#           self.ignoring_switch_event[event.dpid] = False
-#           return True
-#           
-#       if isinstance(event, TraceSwitchMessageSend):
-#         if event.msg.header_type not in interesting_msg_types:
-#           return True
-#       return self.ignoring_switch_event[event.dpid]
-#     else:
-#       return False # never ignore Host events
+    if self.ignore_uninteresting_events:
+      if hasattr(event, 'dpid'):
+        interesting_msg_types = [ofp_type_rev_map['OFPT_PACKET_IN'],
+                                 ofp_type_rev_map['OFPT_FLOW_REMOVED'],
+                                 ofp_type_rev_map['OFPT_PORT_STATUS'],
+                                 ofp_type_rev_map['OFPT_PACKET_OUT'],
+                                 ofp_type_rev_map['OFPT_FLOW_MOD'],
+                                 ofp_type_rev_map['OFPT_PORT_MOD'],
+                                 ofp_type_rev_map['OFPT_BARRIER_REQUEST'],
+                                 ofp_type_rev_map['OFPT_BARRIER_REPLY'],
+                                 ofp_type_rev_map['OFPT_HELLO'],
+                                 ofp_type_rev_map['OFPT_VENDOR'],
+                                 ]
+         
+        if isinstance(event, TraceSwitchMessageHandleBegin):
+          if event.msg.header_type not in interesting_msg_types:
+            self.ignoring_switch_event[event.dpid] = True
+            return True
+     
+        if self.ignoring_switch_event[event.dpid]:
+          if isinstance(event, TraceSwitchMessageHandleEnd):
+            self.ignoring_switch_event[event.dpid] = False
+            return True
+             
+        if isinstance(event, TraceSwitchMessageSend):
+          if event.msg.header_type not in interesting_msg_types:
+            return True
+        return self.ignoring_switch_event[event.dpid]
+      else:
+        return False # never ignore Host events
+    else:
+      return False
     
   
   def handle_no_exceptions(self, event):
