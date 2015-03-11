@@ -49,3 +49,7 @@ class ObjectRegistry(object):
       obj = self.objs[tag]
       return self.remove_tag(obj)
     return False
+  
+  def replace_obj(self, tag, obj):
+    """ Replace the obj for a given tag, keeping the tag the same
+    """

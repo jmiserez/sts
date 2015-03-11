@@ -4,44 +4,8 @@ import logging
 from pox.lib.revent.revent import EventMixin
 from sts.happensbefore.hb_sts_events import *
 from sts.happensbefore.hb_tags import ObjectRegistry
-from sts.happensbefore.hb_trace_events import *
-
-# from pox.openflow.software_switch import DpPacketOut, SoftwareSwitch
-# from pox.openflow.flow_table import FlowTableModification
-# from sts.openflow_buffer import PendingMessage, PendingReceive, PendingSend
-# from sts.topology import BufferedPatchPanel
-# from sts.util.convenience import base64_encode, base64_decode, base64_decode_openflow
-# from sts import openflow_buffer
-# 
-# from pox.lib.revent import Event, EventMixin
-# from pox.openflow.libopenflow_01 import ofp_phy_port
-# from sts.happensbefore.hb_trace_events import *
-# 
-# from sts.entities.hosts import Host, HostInterface
-# 
-# from pox.lib.util import assert_type, dpidToStr
-# from pox.lib.revent import Event, EventMixin
-# from pox.lib.packet import *
-# from pox.openflow.software_switch import DpPacketOut
-# from pox.openflow.libopenflow_01 import *
-# from pox.lib.addresses import IPAddr
-# 
-# from sts.util.convenience import object_fullname
-# from sts.util.convenience import class_fullname
-# from sts.util.convenience import load_class
-# from sts.util.convenience import get_json_attr
-# 
-# import sys
-# import time
-# import logging
-# import json
-# import base64
-# import collections
-# import itertools
-# from functools import partial
-# from __builtin__ import list
-# from collections import OrderedDict, defaultdict
-
+from sts.happensbefore.hb_events import *
+from wx._core_ import new_EventLoop
 
 class HappensBeforeLogger(EventMixin):
   '''
@@ -72,10 +36,10 @@ class HappensBeforeLogger(EventMixin):
     # State
     self.pids = ObjectRegistry() # packet obj -> pid
     self.mids = ObjectRegistry() # message obj -> mid
-    self.curr_switch_event = dict() # dpid -> event
-    self.curr_host_event = dict() # hid -> event
-    self.queued_switch_events = defaultdict(list)
-    self.queued_host_events = defaultdict(list)
+    self.started_switch_event = dict() # dpid -> event
+    self.started_host_event = dict() # hid -> event
+    self.new_switch_events = defaultdict(list)
+    self.new_host_events = defaultdict(list)
     self.pending_packet_update = dict() # dpid -> packet
     
     self._subscribe_to_PatchPanel(patch_panel)
@@ -97,6 +61,7 @@ class HappensBeforeLogger(EventMixin):
     '''
     # Flush the log
     self.output.close()
+    self.output = None
     # TODO JM: remove listeners for all connection objects.
   
   def debug(self,msg):
@@ -113,128 +78,204 @@ class HappensBeforeLogger(EventMixin):
   def _handle_no_exceptions(self, event):
     """ Handle event, catch exceptions before they go back to STS/POX
     """
-    event_handlers = {
-        HostPacketHandleBegin: self.handle_host_ph_begin,
-        HostPacketHandleEnd: self.handle_host_ph_end,
-        HostPacketSend: self.handle_host_ps,
-        SwitchPacketHandleBegin: self.handle_switch_ph_begin,
-        SwitchPacketHandleEnd: self.handle_switch_ph_end,
-        SwitchMessageHandleBegin: self.handle_switch_mh_begin,
-        SwitchMessageHandleEnd: self.handle_switch_mh_end,
-        SwitchMessageSend: self.handle_switch_ms,
-        SwitchPacketSend: self.handle_switch_ps,
-        SwitchFlowTableRead: self.handle_switch_read,
-        SwitchFlowTableWrite: self.handle_switch_write,
-        SwitchFlowTableRuleExpired: self.handle_switch_expiry,
-        SwitchBufferPut: self.handle_switch_put,
-        SwitchBufferGet: self.handle_switch_get,
-        SwitchPacketUpdateBegin: self.handle_switch_pu_begin,
-        SwitchPacketUpdateEnd: self.handle_switch_pu_end
-    }
-
-    handler = None
-    if type(event) in event_handlers:
-      handler = event_handlers[type(event)]
-    try:
-#       handler(event) # TODO JM: enable when fixed
-        pass
-    except Exception as e:
-      self.log.error(e)
+    if self.output is not None:
+      event_handlers = {
+          TraceHostPacketHandleBegin: self.handle_host_ph_begin,
+          TraceHostPacketHandleEnd: self.handle_host_ph_end,
+          TraceHostPacketSend: self.handle_host_ps,
+          TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
+          TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
+          TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
+          TraceSwitchMessageHandleEnd: self.handle_switch_mh_end,
+          TraceSwitchMessageSend: self.handle_switch_ms,
+          TraceSwitchPacketSend: self.handle_switch_ps,
+          TraceSwitchFlowTableRead: self.handle_switch_table_read,
+          TraceSwitchFlowTableWrite: self.handle_switch_table_write,
+          TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
+          TraceSwitchBufferPut: self.handle_switch_buf_put,
+          TraceSwitchBufferGet: self.handle_switch_buf_get,
+          TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
+          TraceSwitchPacketUpdateEnd: self.handle_switch_pu_end
+      }
+  
+      handler = None
+      if type(event) in event_handlers:
+        handler = event_handlers[type(event)]
+      try:
+        handler(event)
+      except Exception as e:
+        self.log.error(e)
   
   def subscribe_to_DeferredOFConnection(self, connection):
-    connection.addListener(SwitchMessageSend, self._handle_no_exceptions)
+    connection.addListener(TraceSwitchMessageSend, self._handle_no_exceptions)
       
   def _subscribe_to_PatchPanel(self, patch_panel):
     for host in patch_panel.hosts:
-      host.addListener(HostPacketHandleBegin, self._handle_no_exceptions)
-      host.addListener(HostPacketHandleEnd, self._handle_no_exceptions)
-      host.addListener(HostPacketSend, self._handle_no_exceptions)
+      host.addListener(TraceHostPacketHandleBegin, self._handle_no_exceptions)
+      host.addListener(TraceHostPacketHandleEnd, self._handle_no_exceptions)
+      host.addListener(TraceHostPacketSend, self._handle_no_exceptions)
     
     for s in patch_panel.switches:
-      s.addListener(SwitchPacketHandleBegin, self._handle_no_exceptions)
-      s.addListener(SwitchPacketHandleEnd, self._handle_no_exceptions)
-      s.addListener(SwitchMessageHandleBegin, self._handle_no_exceptions)
-      s.addListener(SwitchMessageHandleEnd, self._handle_no_exceptions)
-      s.addListener(SwitchPacketSend, self._handle_no_exceptions)
-      s.addListener(SwitchFlowTableRead, self._handle_no_exceptions)
-      s.addListener(SwitchFlowTableWrite, self._handle_no_exceptions)
-      s.addListener(SwitchFlowTableRuleExpired, self._handle_no_exceptions)
-      s.addListener(SwitchBufferPut, self._handle_no_exceptions)
-      s.addListener(SwitchBufferGet, self._handle_no_exceptions)
-      s.addListener(SwitchPacketUpdateBegin, self._handle_no_exceptions)
-      s.addListener(SwitchPacketUpdateEnd, self._handle_no_exceptions)
+      s.addListener(TraceSwitchPacketHandleBegin, self._handle_no_exceptions)
+      s.addListener(TraceSwitchPacketHandleEnd, self._handle_no_exceptions)
+      s.addListener(TraceSwitchMessageHandleBegin, self._handle_no_exceptions)
+      s.addListener(TraceSwitchMessageHandleEnd, self._handle_no_exceptions)
+      s.addListener(TraceSwitchPacketSend, self._handle_no_exceptions)
+      s.addListener(TraceSwitchFlowTableRead, self._handle_no_exceptions)
+      s.addListener(TraceSwitchFlowTableWrite, self._handle_no_exceptions)
+      s.addListener(TraceSwitchFlowTableEntryExpiry, self._handle_no_exceptions)
+      s.addListener(TraceSwitchBufferPut, self._handle_no_exceptions)
+      s.addListener(TraceSwitchBufferGet, self._handle_no_exceptions)
+      s.addListener(TraceSwitchPacketUpdateBegin, self._handle_no_exceptions)
+      s.addListener(TraceSwitchPacketUpdateEnd, self._handle_no_exceptions)
   
   
   def write_event_to_trace(self, event):
-    #self.write(event.to_json())
-    pass
+    self.write(event.to_json())
     
-  def end_switch_event(self,event):
-    self.write_event_to_trace(self.curr_switch_event[event.dpid])
-    self.curr_switch_event[event.dpid] = None
-    for i in self.queued_switch_events[event.dpid]:
+  def start_switch_event(self,dpid,event):
+    assert len(self.new_switch_events[event.dpid]) == 0
+    assert event.dpid not in self.started_switch_event 
+    
+    self.started_switch_event[event.dpid] = event
+  
+  def finish_switch_event(self, dpid):
+    assert dpid in self.started_switch_event
+    
+    self.write_event_to_trace(self.started_switch_event[dpid])
+    del self.started_switch_event[dpid]
+    for i in self.new_switch_events[dpid]:
       self.write_event_to_trace(i)
-    self.write_event_to_trace(event)
-  def end_host_event(self, event):
-    self.write_event_to_trace(self.curr_host_event[event.hid])
-    self.curr_host_event[event.hid] = None
-    for i in self.queued_host_events[event.hid]:
+    del self.new_switch_events[dpid]
+    
+  def is_switch_event_started(self, dpid):
+    return dpid in self.started_switch_event
+  
+  def add_operation_to_switch_event(self, event):
+    if self.is_switch_event_started(event.dpid):
+      self.started_switch_event[event.dpid].operations.append(event)
+    else:
+      # Ignore this operation, as there is no started switch event yet.
+      self.log.info("Ignoring switch operation as there is no associated begin event.")
+
+  def add_successor_to_switch_event(self, event, mid_in=None, pid_in=None):
+    if self.is_switch_event_started(event.dpid):
+      if mid_in is not None:
+        self.started_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
+      if pid_in is not None:
+        self.started_switch_event[event.dpid].pid_out.append(pid_in) # link with latest event
+      self.new_switch_events[event.dpid].append(event) # enqueue event to be output as soon as the end event is reached
+    else:
+      # Output this operation directly as we missed the preceding event.
+      self.log.info("Writing switch event even though there was no associated begin event.")
+      self.write_event_to_trace(event)
+
+  def start_host_event(self,event):
+    assert len(self.new_host_events[event.dpid]) == 0
+    assert event.dpid not in self.started_host_event 
+    
+    self.started_host_event[event.dpid] = event
+  def finish_host_event(self, dpid):
+    assert dpid in self.started_host_event
+    
+    self.write_event_to_trace(self.started_host_event[dpid])
+    del self.started_host_event[dpid]
+    for i in self.new_host_events[dpid]:
       self.write_event_to_trace(i)
-    self.write_event_to_trace(event)
+    del self.new_host_events[dpid]
+    
+  def is_host_event_started(self, dpid):
+    return dpid in self.started_host_event
+  
+  def add_successor_to_host_event(self, event, pid_in=None):
+    if self.is_host_event_started(event.dpid):
+      if pid_in is not None:
+        self.started_host_event[event.hid].pid_out.append(pid_in) # link with latest event
+      self.new_host_events[event.hid].append(event)
+    else:
+      # Output this operation directly as we missed the preceding event.
+      self.log.info("Writing host event even though there was no associated begin event.")
+      self.write_event_to_trace(event)
+  
   
   def handle_switch_ph_begin(self, event):
-    assert len(self.queued_switch_events[event.dpid]) == 0
-    pid_in = self.pids.get_tag(event.packet)
-    pid_out = self.pids.new_tag(event.packet)
-#     mid
-#     self.curr_switch_event[event.dpid] = PacketHandle(event.dpid, pid_in, pid_out, event.packet)
+    pid_in = self.pids.get_tag(event.packet) # matches a pid_out as the Python object ids will be the same
+    
+    begin_event = HbPacketHandle(pid_in, dpid=event.dpid, packet=event.packet, in_port=event.in_port)
+    self.start_switch_event(event.dpid, begin_event)
+  
   def handle_switch_ph_end(self, event):
-#     self.end_switch_event(event)
-    pass
+    self.finish_switch_event(event.dpid)
+  
   def handle_switch_mh_begin(self, event):
-    assert len(self.queued_switch_events[event.dpid]) == 0
-#     mid_in = None
-#     mid_out = None
-#     msg_type = event.
+    mid_in = self.mids.get_tag(event.msg) # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation.
+    msg_type = event.msg.header_type
     
-#     pid_in = self.pids.get_tag(event.packet)
-#     pid_out = self.pids.new_tag(event.packet)
-#     self.curr_switch_event[event.dpid] = MessageHandle(event.dpid, pid_in, pid_out, event.packet)
-    pass
+    begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)
+    self.start_switch_event(event.dpid, begin_event)
+  
   def handle_switch_mh_end(self, event):
-#     self.end_switch_event(event)
-    pass
+    self.finish_switch_event(event.dpid)
+  
   def handle_switch_ms(self, event):
-    pass
-  def handle_switch_ps(self, event):
-    pid_in = self.curr_switch_event[event.dpid].pid_out
-    pid_out = self.pids.new_tag(event.packet)
-    self.queued_switch_events[event.dpid].append(PacketSend(event.dpid, pid_in, pid_out, event.packet))
-  def handle_switch_read(self, event):
-    # TODO add to operations list
-    pass
-  def handle_switch_write(self, event):
-    # TODO add to operations list
-    pass
-  def handle_switch_expiry(self, event):
-    pass
-  def handle_switch_put(self, event):
-    pid_in = self.pids.get_tag(event.packet)
-    pid_out = self.pids.new_tag(event.packet)
+    mid_in = self.mids.new_tag(event.msg) # tag changes here
+    mid_out = self.mids.new_tag(event.msg) # filled in, but never matches a mid_in. This link will be filled in by controller instrumentation. 
     
-  def handle_switch_get(self, event):
-    pid_in = self.pids.get_tag(event.packet)
-    pid_out = self.pids.new_tag(event.packet)
-    pass
+    # event.msg goes to the controller, and we cannot match it there. So we remove it from the ObjectRegistry.
+    self.mids.remove_obj(event.msg)
+    
+    new_event = HbMessageSend(mid_in, mid_out, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)   
+    self.add_successor_to_switch_event(new_event, mid_in=mid_in)
+  
+  def handle_switch_ps(self, event):
+    pid_in = self.pids.new_tag(event.packet) # tag changes here
+    pid_out = self.pids.new_tag(event.packet) # tag changes here
+    
+    new_event = HbPacketSend(pid_in, pid_out, dpid=event.dpid, packet=event.packet, out_port=event.out_port)
+    self.add_successor_to_switch_event(new_event, pid_in=pid_in)
+    
+  def handle_switch_table_read(self, event):
+    self.add_operation_to_switch_event(event)
+    
+  def handle_switch_table_write(self, event):
+    self.add_operation_to_switch_event(event)
+    
+  def handle_switch_table_entry_expiry(self, event):
+    self.add_operation_to_switch_event(event)
+    
+  def handle_switch_buf_put(self, event):
+    if self.is_switch_event_started(event.dpid):
+        assert isinstance(self.started_switch_event[event.dpid], HbPacketHandle)
+        # the tag should still be the same, as no successor events should have been added yet
+        assert self.pids.get_tag(event.packet) == self.started_switch_event[event.dpid].pid_in
+        # generate pid_out for buffer write
+        pid_out = self.pids.new_tag(event.packet) # tag changes here
+        self.started_switch_event[event.dpid].pid_out.append(pid_out)
+    self.add_operation_to_switch_event(event)
+    
+  def handle_switch_buf_get(self, event):
+    if self.is_switch_event_started(event.dpid):
+      assert isinstance(self.started_switch_event[event.dpid], HbMessageHandle)
+      # update the pid_in of the current event using the packet from the buffer
+      pid_in = self.pids.get_tag(event.packet)
+      self.started_switch_event[event.dpid].pid_in = pid_in
+    self.add_operation_to_switch_event(event)
   
   def handle_switch_pu_begin(self, event):
-    assert event.packet in self.pids
-    pid = self.pids[event.packet]
-    del self.pids[event.packet]
-    self.pending_packet_update[event.dpid] = pid
+    """
+    Mark an object in the ObjectRegistry for an update. This will keep the tags even if the Python object id (memory address) changes.
+    """
+    tag = self.pids.get_tag(event.packet)
+    self.pending_packet_update[event.dpid] = tag
     
   def handle_switch_pu_end(self, event):
-    self.pids[event.packet] = self.pending_packet_update[event.dpid] 
+    """
+    Swap out the marked object in the ObjectRegistry with the new one, while keeping the tags the same.
+    """
+    assert event.dpid in self.pending_packet_update 
+    tag = self.pending_packet_update[event.dpid]
+    obj = event.packet
+    self.pids.replace_obj(tag, obj)
       
   def handle_host_ph_begin(self, event):
     pass

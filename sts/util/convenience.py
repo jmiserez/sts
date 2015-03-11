@@ -239,3 +239,31 @@ def get_json_attr(obj):
     return getattr(obj, "to_json")()
   else:
     return obj
+
+def base64_encode_flow(flow):
+  return base64_encode(flow.to_flow_mod())
+
+def base64_encode_flow_list(flows):
+  return [base64_encode_flow(entry) for entry in flows]
+
+def base64_encode_flow_table(flow_table):
+  return base64_encode_flow_list(flow_table.table)
+
+def get_port_no(obj):
+  """
+  Try obj, obj.port_no, obj.port_no()
+  """
+  if isinstance(obj, (basestring, int, long)):
+    return obj
+  if hasattr(obj, "port_no"):
+    port_no = getattr(obj, "port_no")
+    if isinstance(port_no, (basestring, int, long)):
+      return port_no
+    try:
+      port_no = port_no()
+      if isinstance(port_no, (basestring, int, long)):
+        return port_no
+      return str(port_no)
+    except:
+      return str(port_no)
+  return str(obj)

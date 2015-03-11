@@ -359,18 +359,18 @@ class SimpleHost(HostAbstractClass, EventMixin):
 
 class TracingHost(SimpleHost, EventMixin):
   __metaclass__ = AbstractCombiningEventMixinMetaclass
-  _eventMixin_events = set([HostPacketHandleBegin, HostPacketHandleEnd, HostPacketSend])
+  _eventMixin_events = set([TraceHostPacketHandleBegin, TraceHostPacketHandleEnd, TraceHostPacketSend])
    
   def __init__(self, interfaces, name="", hid=None):
     super(TracingHost, self).__init__(interfaces, name, hid)
    
   def receive(self, interface, packet):
-    self.raiseEvent(HostPacketHandleBegin(self.hid, packet))
+    self.raiseEvent(TraceHostPacketHandleBegin(self.hid, packet, interface))
     SimpleHost.receive(self, interface, packet)
-    self.raiseEvent(HostPacketHandleEnd(self.hid, packet))
+    self.raiseEvent(TraceHostPacketHandleEnd(self.hid))
 
   def send(self, interface, packet):
-    self.raiseEvent(HostPacketSend(self.hid, packet))
+    self.raiseEvent(TraceHostPacketSend(self.hid, packet, interface))
     SimpleHost.send(self, interface, packet)
 
 class Host(TracingHost):
