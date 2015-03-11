@@ -28,13 +28,13 @@ class HbEvent(JsonEvent):
                     ]
                      
 class HbPacketHandle(HbEvent):
-  def __init__(self, pid_in, pid_out=[], mid_out=[], operations=[], dpid=None, packet=None, in_port=None, buffer_out=None):
+  def __init__(self, pid_in, pid_out=None, mid_out=None, operations=None, dpid=None, packet=None, in_port=None, buffer_out=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = pid_out
-    self.mid_out = mid_out
+    self.pid_out = [] if pid_out is None else pid_out
+    self.mid_out = [] if mid_out is None else mid_out
     
-    self.operations = operations
+    self.operations = [] if operations is None else operations
     
     self.dpid = dpid
     self.packet = packet
@@ -51,15 +51,15 @@ class HbPacketSend(HbEvent):
     self.out_port = out_port
     
 class HbMessageHandle(HbEvent):
-  def __init__(self, mid_in, msg_type, operations=[], pid_in=None, pid_out=[], mid_out=[], dpid=None, controller_id=None, msg=None, buffer_in=None):
+  def __init__(self, mid_in, msg_type, operations=None, pid_in=None, pid_out=None, mid_out=None, dpid=None, controller_id=None, msg=None, buffer_in=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in # to be filled in when a read from buffer occurs
     self.mid_in = mid_in # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation. 
     self.msg_type = msg_type
-    self.pid_out = pid_out
-    self.mid_out = mid_out
+    self.pid_out = [] if pid_out is None else pid_out
+    self.mid_out = [] if mid_out is None else mid_out
 
-    self.operations = operations
+    self.operations = [] if operations is None else operations
 
     self.dpid = dpid # possibly needed to match with controller instrumentation
     self.controller_id = controller_id # possibly needed to match with controller instrumentation
@@ -77,12 +77,12 @@ class HbMessageSend(HbEvent):
     self.msg = msg
     
 class HbHostHandle(HbEvent):
-  def __init__(self, pid_in, pid_out=[], operations=[], hid=None, packet=None, in_port=None):
+  def __init__(self, pid_in, pid_out=None, operations=None, hid=None, packet=None, in_port=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = pid_out
+    self.pid_out = [] if pid_out is None else pid_out
     
-    self.operations = operations
+    self.operations = [] if operations is None else operations
     
     self.hid = hid
     self.packet = packet
