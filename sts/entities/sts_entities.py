@@ -147,6 +147,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     """
     self.raiseEvent(TraceSwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
     #super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
+    # TODO JM: I *think* this is fixed now. Remove once we are sure.
     # FIXME (AH): a quick hack to solve the empty flow table problem
     from pox.openflow.libopenflow_01 import *
     from pox.openflow.software_switch import *
@@ -156,7 +157,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     if(flow_mod.out_port != OFPP_NONE and
             flow_mod.command == ofp_flow_mod_command_rev_map['OFPFC_DELETE']):
       raise NotImplementedError("flow_mod outport checking not implemented")
- 
+
     if flow_mod.command == OFPFC_ADD:
       # exactly matching entries have to be removed
       self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True)
@@ -174,7 +175,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
         return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
       else:
         return ("modified", modified)
- 
+
     elif flow_mod.command == OFPFC_DELETE or flow_mod.command == OFPFC_DELETE_STRICT:
       is_strict = (flow_mod.command == OFPFC_DELETE_STRICT)
       return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict))
