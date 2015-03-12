@@ -107,7 +107,7 @@ class TrafficGenerator (object):
       (dst_host, dst_interface) = self._choose_host(dst_host,
                                       [h for h in self.topology.hosts if h != src_host])
 
-    packet = sicmp_ping_ip(src_interface, dst_interface,
+    packet = self._packet_generators[packet_type](src_interface, dst_interface,
                                                   payload_content=payload_content)
     def send():
       src_host.send(src_interface, packet)
