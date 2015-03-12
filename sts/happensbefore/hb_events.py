@@ -25,16 +25,17 @@ class HbEvent(JsonEvent):
                     ('in_port', get_port_no),
                     ('out_port', get_port_no),
                     ('msg', base64_encode),
+                    ('msg_flowmod', base64_encode),
                     ]
                      
 class HbPacketHandle(HbEvent):
   def __init__(self, pid_in, pid_out=None, mid_out=None, operations=None, dpid=None, packet=None, in_port=None, buffer_out=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = [] if pid_out is None else pid_out
-    self.mid_out = [] if mid_out is None else mid_out
+    self.pid_out = [] if pid_out is None else [pid_out]
+    self.mid_out = [] if mid_out is None else [mid_out]
     
-    self.operations = [] if operations is None else operations
+    self.operations = [] if operations is None else [operations]
     
     self.dpid = dpid
     self.packet = packet
@@ -44,32 +45,34 @@ class HbPacketSend(HbEvent):
   def __init__(self, pid_in, pid_out, dpid=None, packet=None, out_port=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = pid_out
+    self.pid_out = [pid_out]
     
     self.dpid = dpid
     self.packet = packet
     self.out_port = out_port
     
 class HbMessageHandle(HbEvent):
-  def __init__(self, mid_in, msg_type, operations=None, pid_in=None, pid_out=None, mid_out=None, dpid=None, controller_id=None, msg=None, buffer_in=None):
+  def __init__(self, mid_in, msg_type, operations=None, pid_in=None, pid_out=None, mid_out=None, dpid=None, controller_id=None, msg=None, buffer_in=None, msg_flowmod=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in # to be filled in when a read from buffer occurs
     self.mid_in = mid_in # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation. 
     self.msg_type = msg_type
-    self.pid_out = [] if pid_out is None else pid_out
-    self.mid_out = [] if mid_out is None else mid_out
+    self.pid_out = [] if pid_out is None else [pid_out]
+    self.mid_out = [] if mid_out is None else [mid_out]
 
-    self.operations = [] if operations is None else operations
+    self.operations = [] if operations is None else [operations]
 
     self.dpid = dpid # possibly needed to match with controller instrumentation
     self.controller_id = controller_id # possibly needed to match with controller instrumentation
     self.msg = msg
+    if msg_flowmod is not None:
+      self.msg_flowmod = msg_flowmod # needed for rule 3
     
 class HbMessageSend(HbEvent):
   def __init__(self, mid_in, mid_out, msg_type, dpid=None, controller_id=None, msg=None):
     HbEvent.__init__(self)
     self.mid_in = mid_in
-    self.mid_out = mid_out # filled in, but never matches a mid_in. This link will be filled in by controller instrumentation.
+    self.mid_out = [mid_out] # filled in, but never matches a mid_in. This link will be filled in by controller instrumentation.
     self.msg_type = msg_type
 
     self.dpid = dpid
@@ -80,9 +83,9 @@ class HbHostHandle(HbEvent):
   def __init__(self, pid_in, pid_out=None, operations=None, hid=None, packet=None, in_port=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = [] if pid_out is None else pid_out
+    self.pid_out = [] if pid_out is None else [pid_out]
     
-    self.operations = [] if operations is None else operations
+    self.operations = [] if operations is None else [operations]
     
     self.hid = hid
     self.packet = packet
@@ -92,7 +95,7 @@ class HbHostSend(HbEvent):
   def __init__(self, pid_in, pid_out, hid=None, packet=None, out_port=None):
     HbEvent.__init__(self)
     self.pid_in = pid_in
-    self.pid_out = pid_out
+    self.pid_out = [pid_out]
     
     self.hid = hid
     self.packet = packet
@@ -109,6 +112,4 @@ class HbControllerSend(HbEvent):
     HbEvent.__init__(self)
     self.mid_in = mid_in # Generated
     self.mid_out = [mid_out] # Link with HbMessageHandle
-    
-    
     

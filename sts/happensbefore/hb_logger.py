@@ -8,6 +8,7 @@ from sts.happensbefore.hb_events import *
 from pox.openflow.libopenflow_01 import *
 from sts.util.convenience import base64_encode
 from sts.util.procutils import prefixThreadOutputMatcher, PrefixThreadLineMatch
+from sts.happensbefore.hb_graph import HappensBeforeGraph
 
 class HappensBeforeLogger(EventMixin):
   '''
@@ -31,14 +32,14 @@ class HappensBeforeLogger(EventMixin):
   controller_hb_msg_in = "HappensBefore-MessageIn"
   controller_hb_msg_out = "HappensBefore-MessageOut"
   
-  def __init__(self, patch_panel, event_listener_priority=100):
-    self.ignore_uninteresting_events = True
-    
+  def __init__(self, patch_panel):
+    self.log = logging.getLogger("hb_logger")
+
+    self.hb_graph = None
+
     self.output = None
     self.output_path = ""
     self.patch_panel = patch_panel
-    self.event_listener_priority = event_listener_priority
-    self.log = logging.getLogger("hb_logger")
     
     # State for linking of events
     self.pids = ObjectRegistry() # packet obj -> pid
@@ -48,7 +49,6 @@ class HappensBeforeLogger(EventMixin):
     self.new_switch_events = defaultdict(list)
     self.new_host_events = defaultdict(list)
     self.pending_packet_update = dict() # dpid -> packet
-    self.ignoring_switch_event = defaultdict(bool) # are we currently ignoring switch events
     
     # State for linking of controller events
     self.unmatched_HbMessageSend = defaultdict(list) # dpid -> []
@@ -67,7 +67,7 @@ class HappensBeforeLogger(EventMixin):
     self._subscribe_to_PatchPanel(patch_panel)
 
     
-  def open(self, results_dir=None, output_filename="hb_trace.json"):
+  def open(self, results_dir=None, output_filename="hb.json"):
     '''
     Start a trace
     '''
@@ -75,6 +75,7 @@ class HappensBeforeLogger(EventMixin):
       self.output_path = results_dir + "/" + output_filename
     else:
       raise ValueError("Default results_dir currently not supported")
+    self.hb_graph = HappensBeforeGraph(results_dir)
     self.output = open(self.output_path, 'w')
     
   def close(self):
@@ -92,70 +93,36 @@ class HappensBeforeLogger(EventMixin):
     if not self.output.closed:
       self.output.write(str(msg) + '\n')
       self.output.flush()
-  
-  def is_ignore_event(self, event):
-    if self.ignore_uninteresting_events:
-      if hasattr(event, 'dpid'):
-        interesting_msg_types = [ofp_type_rev_map['OFPT_PACKET_IN'],
-                                 ofp_type_rev_map['OFPT_FLOW_REMOVED'],
-                                 ofp_type_rev_map['OFPT_PORT_STATUS'],
-                                 ofp_type_rev_map['OFPT_PACKET_OUT'],
-                                 ofp_type_rev_map['OFPT_FLOW_MOD'],
-                                 ofp_type_rev_map['OFPT_PORT_MOD'],
-                                 ofp_type_rev_map['OFPT_BARRIER_REQUEST'],
-                                 ofp_type_rev_map['OFPT_BARRIER_REPLY'],
-                                 ofp_type_rev_map['OFPT_HELLO'],
-                                 ofp_type_rev_map['OFPT_VENDOR'],
-                                 ]
-         
-        if isinstance(event, TraceSwitchMessageHandleBegin):
-          if event.msg.header_type not in interesting_msg_types:
-            self.ignoring_switch_event[event.dpid] = True
-            return True
-     
-        if self.ignoring_switch_event[event.dpid]:
-          if isinstance(event, TraceSwitchMessageHandleEnd):
-            self.ignoring_switch_event[event.dpid] = False
-            return True
-             
-        if isinstance(event, TraceSwitchMessageSend):
-          if event.msg.header_type not in interesting_msg_types:
-            return True
-        return self.ignoring_switch_event[event.dpid]
-      else:
-        return False # never ignore Host events
-    else:
-      return False
-    
+    if self.hb_graph is not None:
+      self.hb_graph.add_line(str(msg))
   
   def handle_no_exceptions(self, event):
     """ Handle event, catch exceptions before they go back to STS/POX
     """
     try:
       if self.output is not None:
-        if not self.is_ignore_event(event):
-          event_handlers = {
-              TraceHostPacketHandleBegin: self.handle_host_ph_begin,
-              TraceHostPacketHandleEnd: self.handle_host_ph_end,
-              TraceHostPacketSend: self.handle_host_ps,
-              TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
-              TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
-              TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
-              TraceSwitchMessageHandleEnd: self.handle_switch_mh_end,
-              TraceSwitchMessageSend: self.handle_switch_ms,
-              TraceSwitchPacketSend: self.handle_switch_ps,
-              TraceSwitchFlowTableRead: self.handle_switch_table_read,
-              TraceSwitchFlowTableWrite: self.handle_switch_table_write,
-              TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
-              TraceSwitchBufferPut: self.handle_switch_buf_put,
-              TraceSwitchBufferGet: self.handle_switch_buf_get,
-              TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
-              TraceSwitchPacketUpdateEnd: self.handle_switch_pu_end
-          }
-          handler = None
-          if type(event) in event_handlers:
-            handler = event_handlers[type(event)]
-            handler(event)
+        event_handlers = {
+            TraceHostPacketHandleBegin: self.handle_host_ph_begin,
+            TraceHostPacketHandleEnd: self.handle_host_ph_end,
+            TraceHostPacketSend: self.handle_host_ps,
+            TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
+            TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
+            TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
+            TraceSwitchMessageHandleEnd: self.handle_switch_mh_end,
+            TraceSwitchMessageSend: self.handle_switch_ms,
+            TraceSwitchPacketSend: self.handle_switch_ps,
+            TraceSwitchFlowTableRead: self.handle_switch_table_read,
+            TraceSwitchFlowTableWrite: self.handle_switch_table_write,
+            TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
+            TraceSwitchBufferPut: self.handle_switch_buf_put,
+            TraceSwitchBufferGet: self.handle_switch_buf_get,
+            TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
+            TraceSwitchPacketUpdateEnd: self.handle_switch_pu_end
+        }
+        handler = None
+        if type(event) in event_handlers:
+          handler = event_handlers[type(event)]
+          handler(event)
     except Exception as e:
       # NOTE JM: do not remove, otherwise exceptions get swallowed by STS
       import traceback
@@ -281,7 +248,9 @@ class HappensBeforeLogger(EventMixin):
       mid_in = self.mids.get_tag(event.msg) # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation.
       msg_type = event.msg.header_type
       
-      begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)
+      msg_flowmod = None if not hasattr(event, 'flow_mod') else event.flow_mod
+      
+      begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg, msg_flowmod=msg_flowmod)
       self.start_switch_event(event.dpid, begin_event)
       
       # match with controller instrumentation
