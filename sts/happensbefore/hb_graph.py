@@ -237,6 +237,17 @@ class HappensBeforeGraph(object):
         event_json['msg_type_str'] = msg_type_str
         event_json['msg_type'] = ofp_type_rev_map[msg_type_str]
         
+      if 'operations' in event_json:
+        ops = []
+        for i in event_json['operations']:
+          op_json = json.loads(i, object_hook=lists_to_tuples)
+          op_typestr = op_json['type']
+          assert op_typestr in OpType.values()
+          op_json['typestr'] = op_typestr
+          op_json['type'] = OpType.values()[op_typestr]
+          op = namedtuple('Op', op_json)(**op_json)
+          ops.append(op)
+        event_json['operations'] = tuple(ops)
       event = namedtuple('Event', event_json)(**event_json)
       self.add_event(event)
   
@@ -294,18 +305,29 @@ class HappensBeforeGraph(object):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
     
+    interesting_msg_types = ['OFPT_PACKET_IN',
+                            'OFPT_FLOW_REMOVED',
+                            'OFPT_PACKET_OUT',
+                            'OFPT_FLOW_MOD',
+                            'OFPT_BARRIER_REQUEST',
+                            'OFPT_BARRIER_REPLY',
+                            'OFPT_HELLO',
+                            ]
+    
     dot_lines = []
     edges = 0
     dot_lines.append("digraph G {\n");
     for i in self.events:
+      if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
         try:
           dot_lines.append('{0} [label="{0}\\n{1}\\n{2}"];\n'.format(i.id,EventType.keys()[i.type],i.msg_type_str))
         except:
           dot_lines.append('{0} [label="{0}\\n{1}"];\n'.format(i.id,EventType.keys()[i.type]))
     for (k,v) in self.predecessors.iteritems():
       for i in v:
-        dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
-        edges += 1
+        if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
+          dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
+          edges += 1
     dot_lines.append("}\n");
 #     pprint.pprint(dot_lines)
     with open(filename, 'w') as f:
