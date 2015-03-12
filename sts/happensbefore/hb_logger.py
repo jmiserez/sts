@@ -6,7 +6,8 @@ from sts.happensbefore.hb_sts_events import *
 from sts.happensbefore.hb_tags import ObjectRegistry
 from sts.happensbefore.hb_events import *
 from pox.openflow.libopenflow_01 import *
-from sts.util.procutils import prefixThreadOutputMatcher, PrefixThreadLineMatchEvent
+from sts.util.convenience import base64_encode
+from sts.util.procutils import prefixThreadOutputMatcher, PrefixThreadLineMatch
 
 class HappensBeforeLogger(EventMixin):
   '''
@@ -30,11 +31,8 @@ class HappensBeforeLogger(EventMixin):
   controller_hb_msg_in = "HappensBefore-MessageIn"
   controller_hb_msg_out = "HappensBefore-MessageOut"
   
-  def _handle_line_match(self, event):
-      print "Matched "+event.match+" for line: "+event.line
-  
   def __init__(self, patch_panel, event_listener_priority=100):
-    self.ignore_uninteresting_events = False
+    self.ignore_uninteresting_events = True
     
     self.output = None
     self.output_path = ""
@@ -52,13 +50,23 @@ class HappensBeforeLogger(EventMixin):
     self.pending_packet_update = dict() # dpid -> packet
     self.ignoring_switch_event = defaultdict(bool) # are we currently ignoring switch events
     
+    # State for linking of controller events
+    self.unmatched_HbMessageSend = defaultdict(list) # dpid -> []
+    self.unmatched_HbMessageHandle = defaultdict(list) # dpid -> []
+    
+    self.controller_msgin_to_mid_out = dict() # (swid, b64msg) -> mid_out
+    self.unmatched_lines_controller_msgout = [] # (in_swid, in_b64msg, out_swid, out_b64msg)
+    
+    self.swid_to_dpid = dict()
+    self.dpid_to_swid = dict()
+    
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
-    prefixThreadOutputMatcher.addListener(PrefixThreadLineMatchEvent, self._handle_line_match)
+    prefixThreadOutputMatcher.addListener(PrefixThreadLineMatch, self._handle_line_match)
 
     self._subscribe_to_PatchPanel(patch_panel)
 
-
+    
   def open(self, results_dir=None, output_filename="hb_trace.json"):
     '''
     Start a trace
@@ -76,7 +84,6 @@ class HappensBeforeLogger(EventMixin):
     # Flush the log
     self.output.close()
     self.output = None
-    # TODO JM: remove listeners for all connection objects.
   
   def write(self,msg):
     self.log.info(msg)
@@ -84,7 +91,7 @@ class HappensBeforeLogger(EventMixin):
       raise Exception("Not opened -- call HappensBeforeLogger.open()")
     if not self.output.closed:
       self.output.write(str(msg) + '\n')
-      self.output.flush() # TODO JM remove eventually
+      self.output.flush()
   
   def is_ignore_event(self, event):
     if self.ignore_uninteresting_events:
@@ -276,6 +283,11 @@ class HappensBeforeLogger(EventMixin):
       
       begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)
       self.start_switch_event(event.dpid, begin_event)
+      
+      # match with controller instrumentation
+      is_matched = self.match_unmatched_controller_msgout(mid_in, event.dpid, base64_encode(event.msg))
+      if not is_matched:
+        self.unmatched_HbMessageHandle[event.dpid].append((mid_in, base64_encode(event.msg)))
   
   def handle_switch_mh_end(self, event):
     self.finish_switch_event(event.dpid)
@@ -290,6 +302,11 @@ class HappensBeforeLogger(EventMixin):
     
     new_event = HbMessageSend(mid_in, mid_out, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)   
     self.add_successor_to_switch_event(new_event, mid_in=mid_in)
+    
+    # add base64 encoded message to list for controller instrumentation
+    # this will always come before the switch has had a chance to write out something, 
+    # so no need to check anything here
+    self.unmatched_HbMessageSend[event.dpid].append((mid_out, base64_encode(event.msg)))
   
   def handle_switch_ps(self, event):
     pid_in = self.pids.new_tag(event.packet) # tag changes here
@@ -369,5 +386,202 @@ class HappensBeforeLogger(EventMixin):
     new_event = HbHostSend(pid_in, pid_out, hid=event.hid, packet=event.packet, out_port=event.out_port)
     self.add_successor_to_host_event(new_event, pid_in=pid_in)
   
+  #
+  # Controller instrumentation information
+  #
+  
+  def _handle_line_match(self, event):
+    line = event.line
+    match = event.match
+    
+    # Format: match-[data1:data2:....]
+    # find end of match
+    match_end = line.find(match) + len(match)
+    rest_of_line = line[match_end:]
+    
+    # find start of data
+    data_start = rest_of_line.find('[') + 1
+    data_end = rest_of_line.find(']')
+    
+    data_str = rest_of_line[data_start:data_end]
+    data = data_str.split(':')
+    
+    self.log.info("Read data from controller: "+line)
 
+    
+    # parse data
+    if match == self.controller_hb_msg_in:
+      swid = int(data[0])
+      b64msg = data[1]
+      self.controller_ack_in(swid, b64msg)
+      
+    if match == self.controller_hb_msg_out:
+      in_swid = int(data[0])
+      in_b64msg = data[1]
+      out_swid = int(data[2])
+      out_b64msg = data[3]
+      self.controller_ack_out(in_swid, in_b64msg, out_swid, out_b64msg)
+  
+  def add_controller_hb_edge(self, mid_out, mid_in):
+    """
+    Add an edge derived from controller instrumentation
+    """
+    temporary_tag = self.mids.generate_unused_tag()
+    event = HbControllerHandle(mid_out, temporary_tag)
+    self.write_event_to_trace(event)
+    event = HbControllerSend(temporary_tag, mid_in)
+    self.write_event_to_trace(event)
+    self.log.info("Adding controller edge: mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
 
+  
+  def find_controller_packet_in(self, swid, b64msg):
+    """
+    Return an mid_out for the PACKET_IN event
+    Return None if the message hasn't been sent yet (This should never happen!)
+    """
+    if (swid,b64msg) in self.controller_msgin_to_mid_out:
+      mid_out = self.controller_msgin_to_mid_out[(swid,b64msg)]
+      return mid_out
+    
+    dpid = None
+    if swid in self.swid_to_dpid:
+      dpid = self.swid_to_dpid[swid]
+      assert self.dpid_to_swid[dpid] == swid
+    
+    if dpid is None:
+      # this is the first time we've seen swid, need to guess which dpid it is
+      # Assumption: We will have at least registered the TraceSwitchMessageSend event
+      #             before the controller can print out something.
+      # We just go through all dpids with no swids and check if the message is there
+      
+      for dpid_key in self.unmatched_HbMessageSend.keys():
+        if dpid_key not in self.dpid_to_swid:
+          # no swid for this dpid yet
+          for t in self.unmatched_HbMessageSend[dpid_key]:
+            if b64msg == t[1]:
+              # this is it, assign mappings
+              mid_out = t[0]
+              
+              self.swid_to_dpid[swid] = dpid_key
+              self.dpid_to_swid[dpid_key] = swid
+              dpid = dpid_key
+              self.unmatched_HbMessageSend[dpid_key].remove(t) # only doing this once, so it's okay
+                            
+              return mid_out
+    else:
+      for t in self.unmatched_HbMessageSend[dpid]:
+        if b64msg == t[1]:
+          mid_out = t[0]
+          self.unmatched_HbMessageSend[dpid].remove(t) # only doing this once, so it's okay
+          return mid_out
+    return None
+  
+  def find_controller_packet_out(self, swid, b64msg):
+    """
+    Return an mid_in for the PACKET_OUT/FLOW_MOD/etc. event.
+    Return None if the message hasn't been received yet.
+    """
+    dpid = None
+    if swid in self.swid_to_dpid:
+      dpid = self.swid_to_dpid[swid]
+      assert self.dpid_to_swid[dpid] == swid
+    
+    if dpid is None:
+      # this is the first time we've seen swid, need to guess which dpid it is
+      # We just go through all dpids with no swids and check if the message is there
+      
+      # Note: it might be possible that we cannot find the message as we haven't received it yet.
+      
+      for dpid_key in self.unmatched_HbMessageHandle.keys():
+        if dpid_key not in self.dpid_to_swid:
+          # no swid for this dpid yet
+          for t in self.unmatched_HbMessageHandle[dpid_key]:
+            if b64msg == t[1]:
+              # this is it, assign mappings
+              mid_in = t[0]
+              
+              self.swid_to_dpid[swid] = dpid_key
+              self.dpid_to_swid[dpid_key] = swid
+              dpid = dpid_key
+              self.unmatched_HbMessageHandle[dpid_key].remove(t) # only doing this once, so it's okay
+                            
+              return mid_in
+    else:
+      for t in self.unmatched_HbMessageHandle[dpid]:
+        if b64msg == t[1]:
+          mid_in = t[0]
+          self.unmatched_HbMessageHandle[dpid].remove(t) # only doing this once, so it's okay
+          return mid_in
+    return None
+    
+  def controller_ack_in(self, swid, b64msg):
+    """
+    swid: Controller assigned switch id. Not necessarily == dpid
+    b64msg: Message string in base64
+    """
+    mid_out = self.find_controller_packet_in(swid, b64msg)
+    if mid_out is None:
+      # this should never happen, we should have already logged the event (we sent it!)
+      assert False
+    else:
+      # possibly overwrite, we only care about the newest
+      self.controller_msgin_to_mid_out[(swid,b64msg)] = mid_out
+
+  def controller_ack_out(self, in_swid, in_b64msg, out_swid, out_b64msg):
+    mid_out = self.find_controller_packet_in(in_swid, in_b64msg)
+    if mid_out is None:
+      # this should never happen, we should have already logged the event (we sent it!)
+      assert False
+    mid_in = self.find_controller_packet_out(out_swid, out_b64msg)
+    if mid_in is None:
+      # this can happen if we haven't received the packet yet. We'll add the edge later, when the HbMessageHandle event happens.
+      self.unmatched_lines_controller_msgout.append((in_swid, in_b64msg, out_swid, out_b64msg))
+    else:
+      # add a new HB edge to the trace
+      self.add_controller_hb_edge(mid_out, mid_in)
+      
+  def match_unmatched_controller_msgout(self, mid_in, dpid, out_b64msg):
+    """
+    Match the HbMessageHandle event to any lines that we have already read.
+    """
+    # need to find the message for the given mid_in
+    # so that:  mid_in == self.find_controller_packet_out(self, out_swid, out_b64msg)
+    
+    swid = None
+    if dpid in self.dpid_to_swid:
+      swid = self.dpid_to_swid[dpid]
+      assert self.swid_to_dpid[swid] == dpid
+    
+    matched_line = None
+    if swid is None:
+      # We have never seen a swid with this dpid.
+      # We just go through all the unmatched lines and use the first one that matches out_b64msg
+      for line in self.unmatched_lines_controller_msgout:
+        lin_swid, lin_b64msg, lout_swid, lout_b64msg = line
+        if out_b64msg == lout_b64msg:
+          # assign swid mapping
+          matched_line = line
+          swid = lout_swid
+          self.dpid_to_swid[dpid] = swid
+          self.swid_to_dpid[swid] = dpid
+    if swid is not None:
+      if matched_line is None:
+        for line in self.unmatched_lines_controller_msgout:
+          lin_swid, lin_b64msg, lout_swid, lout_b64msg = line
+          if out_b64msg == lout_b64msg:
+            # assign swid mapping
+            matched_line = line
+    if matched_line is not None:
+      self.unmatched_lines_controller_msgout.remove(matched_line)
+      lin_swid, lin_b64msg, lout_swid, lout_b64msg = matched_line
+      # now we can link these events
+      mid_out = self.find_controller_packet_in(self, lin_swid, lin_b64msg)
+      if mid_out is None:
+        # this should never happen, we should have already logged the event (we sent it!)
+        assert False
+      else:
+        # add a new HB edge to the trace
+        self.add_controller_hb_edge(mid_out, mid_in)
+        return True
+    return False
+  

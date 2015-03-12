@@ -107,14 +107,14 @@ def kill_procs(child_processes, kill=None, verbose=True, timeout=5,
   if len(child_processes) == 0:
     msg(' OK\n')
 
-class PrefixThreadLineMatchEvent(Event):
+class PrefixThreadLineMatch(Event):
   def __init__ (self, line=None, match=None):
     Event.__init__(self)
     self.line = line
     self.match = match
 
 class PrefixThreadLineMatcher(EventMixin):
-  _eventMixin_events = set([PrefixThreadLineMatchEvent])
+  _eventMixin_events = set([PrefixThreadLineMatch])
   
   def __init__(self):
     self.string_matches = []
@@ -125,7 +125,7 @@ class PrefixThreadLineMatcher(EventMixin):
   def match_line(self, line):
     for m in self.string_matches:
       if m in line:
-        self.raiseEvent(PrefixThreadLineMatchEvent, line=line, match=m)
+        self.raiseEvent(PrefixThreadLineMatch, line=line, match=m)
     
     
 prefixThreadOutputMatcher = PrefixThreadLineMatcher()

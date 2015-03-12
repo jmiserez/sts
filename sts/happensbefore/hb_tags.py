@@ -53,3 +53,6 @@ class ObjectRegistry(object):
   def replace_obj(self, tag, obj):
     """ Replace the obj for a given tag, keeping the tag the same
     """
+  
+  def generate_unused_tag(self):
+    return self._it.next()

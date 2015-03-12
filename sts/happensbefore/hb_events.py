@@ -97,3 +97,18 @@ class HbHostSend(HbEvent):
     self.hid = hid
     self.packet = packet
     self.out_port = out_port
+    
+class HbControllerHandle(HbEvent):
+  def __init__(self, mid_in, mid_out):
+    HbEvent.__init__(self)
+    self.mid_in = mid_in # Link with HbMessageSend
+    self.mid_out = [mid_out] # Generated
+    
+class HbControllerSend(HbEvent):
+  def __init__(self, mid_in, mid_out):
+    HbEvent.__init__(self)
+    self.mid_in = mid_in # Generated
+    self.mid_out = [mid_out] # Link with HbMessageHandle
+    
+    
+    
