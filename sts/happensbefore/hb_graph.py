@@ -4,11 +4,14 @@ import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__) + "/../../"), "pox"))
 
 from pox.openflow.libopenflow_01 import *
+from pox.openflow.flow_table import FlowTable, TableEntry, SwitchFlowTable
+from pox.openflow.software_switch import OFConnection
 
 import json
 from collections import namedtuple, defaultdict, deque, OrderedDict
 import itertools
 import pprint
+import base64
 
 #
 # Do not import any STS types! We would like to be able to run this offline
@@ -94,6 +97,11 @@ class HappensBeforeGraph(object):
     
     # for barrier post rule
     self.most_recent_barrier = defaultdict()
+    
+    # for races
+    self.races_candidate_reads = []
+    self.races_candidate_writes = []
+    self.races = []
   
   def _add_to_lookup_tables(self, event):
     if hasattr(event, 'pid_out'):
@@ -245,6 +253,7 @@ class HappensBeforeGraph(object):
           assert op_typestr in OpType.values()
           op_json['typestr'] = op_typestr
           op_json['type'] = OpType.values()[op_typestr]
+          
           op = namedtuple('Op', op_json)(**op_json)
           ops.append(op)
           print str(event_json['id']) + ': ' + event_typestr + ' -> ' + op_typestr
@@ -290,9 +299,131 @@ class HappensBeforeGraph(object):
     handlers.get(event.type, _handle_default)(event)
     
     self.store_graph()
-    
+
   def detect_races(self):
-    pass
+    
+    def decode_flow_mod(data):
+      bits = base64.b64decode(data)
+      fm = ofp_flow_mod()
+      fm.unpack(bits)
+      return fm
+    
+    def decode_packet(data):
+      bits = base64.b64decode(data)
+      p = ethernet()
+      p.unpack(bits)
+      return p
+    
+    def decode_flow_table(data):
+      table = SwitchFlowTable()
+      for row in data:
+        flow_mod = decode_flow_mod(row)
+        entry = TableEntry.from_flow_mod(flow_mod)
+        table.add_entry(entry)
+      return table
+    
+    def compare_flow_table(table, other):
+      fm1 = []
+      for i in table.table:
+        fm1.append(i.to_flow_mod())
+      fm2 = []
+      for i in other.table:
+        fm2.append(i.to_flow_mod())
+        
+      for i in fm1:
+        if i not in fm2:
+          return False
+      for i in fm2:
+        if i not in fm1:
+          return False
+      return True
+    
+    def read_flow_table(table, packet, in_port):
+      p = decode_packet(packet)
+      return table.entry_for_packet(p, in_port)
+    
+    def write_flow_table(table, flow_mod):
+      fm = decode_flow_mod(flow_mod)
+      return table.process_flow_mod(fm)
+
+    def is_reachable(source, target):
+      parents = self.predecessors[source]
+      if target in parents:
+        return True
+      for p in parents:
+        return is_reachable(p, target)
+      return False
+
+    def is_ordered(event, other):
+      older = event if event.id < other.id else other
+      newer = event if event.id > other.id else other
+      if is_reachable(newer, older):
+        return True
+      if is_reachable(older, newer): # need to check due to async controller instrumentation
+        return True
+      return False
+    
+    self.races_candidate_reads = []
+    self.races_candidate_writes = []
+    self.races = []
+    self.races_commute = []
+    for i in self.events:
+      if hasattr(i, 'operations'):
+        for k in i.operations:
+          if k.type == OpType.TraceSwitchFlowTableWrite:
+            assert hasattr(k, 'flow_table')
+            assert hasattr(k, 'flow_mod')
+            self.races_candidate_writes.append((i, k.flow_table, k.flow_mod))
+          elif k.type == OpType.TraceSwitchFlowTableRead:
+            assert hasattr(k, 'flow_table')
+            assert hasattr(i, 'packet')
+            assert hasattr(i, 'in_port')
+            self.races_candidate_reads.append((i, k.flow_table, i.packet, i.in_port))
+
+    # write <-> write
+    for i,k in itertools.combinations(self.races_candidate_writes,2):
+      i_event, i_flow_table, i_flow_mod = i
+      k_event, k_flow_table, k_flow_mod = k
+      if not is_ordered(i_event, k_event):
+        ik_table = decode_flow_table(i_flow_table)
+        write_flow_table(ik_table, i_flow_mod)
+        write_flow_table(ik_table, k_flow_mod)
+        
+        ki_table = decode_flow_table(k_flow_table)
+        write_flow_table(ki_table, k_flow_mod)
+        write_flow_table(ki_table, i_flow_mod)
+        
+        if compare_flow_table(ik_table, ki_table):
+          print "Commute (w/w): "+str(i_event.id) + " <---> "+str(k_event.id)
+          self.races.append(('ww',i_event,k_event))
+        else:
+          print "Race    (w/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
+          self.races.append(('ww',i_event,k_event))
+    
+    # read <-> write
+    for i in self.races_candidate_reads:
+      for k in self.races_candidate_writes:
+        i_event, i_flow_table, i_packet, i_in_port = i
+        k_event, k_flow_table, k_flow_mod = k
+        
+        if not is_ordered(i_event, k_event):
+          ik_table = decode_flow_table(i_flow_table)
+          ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
+          write_flow_table(ik_table, k_flow_mod)
+          
+          ki_table = decode_flow_table(k_flow_table)
+          write_flow_table(ki_table, k_flow_mod)
+          ki_retval = read_flow_table(ki_table, i_packet, i_in_port)
+          
+          ik_fm = None if ik_retval is None else ik_retval.to_flow_mod()
+          ki_fm = None if ki_retval is None else ki_retval.to_flow_mod()
+          
+          if (ik_fm == ki_fm and compare_flow_table(ik_table, ki_table)):
+            print "Commute (r/w): "+str(i_event.id) + " <---> "+str(k_event.id)
+            self.races_commute.append(('rw',i_event,k_event))
+          else:
+            print "Race    (r/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
+            self.races.append(('rw',i_event,k_event))
   
   def load_trace(self, filename):
     self.events = []
@@ -358,6 +489,7 @@ class Main(object):
   def run(self):
     self.graph = HappensBeforeGraph(results_dir=self.results_dir)
     self.graph.load_trace(self.filename)
+    self.graph.detect_races()
     self.graph.store_graph(self.output_filename)
     
 if __name__ == '__main__':
