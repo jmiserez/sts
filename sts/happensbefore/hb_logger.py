@@ -93,8 +93,8 @@ class HappensBeforeLogger(EventMixin):
     if not self.output.closed:
       self.output.write(str(msg) + '\n')
       self.output.flush()
-    if self.hb_graph is not None:
-      self.hb_graph.add_line(str(msg))
+#     if self.hb_graph is not None:
+#       self.hb_graph.add_line(str(msg))
   
   def handle_no_exceptions(self, event):
     """ Handle event, catch exceptions before they go back to STS/POX
