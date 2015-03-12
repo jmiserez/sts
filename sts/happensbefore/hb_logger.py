@@ -6,6 +6,7 @@ from sts.happensbefore.hb_sts_events import *
 from sts.happensbefore.hb_tags import ObjectRegistry
 from sts.happensbefore.hb_events import *
 from pox.openflow.libopenflow_01 import *
+from sts.util.procutils import prefixThreadOutputMatcher, PrefixThreadLineMatchEvent
 
 class HappensBeforeLogger(EventMixin):
   '''
@@ -26,8 +27,11 @@ class HappensBeforeLogger(EventMixin):
    * Flow table modify
    '''
   
-  def _handle_dummy_ctl(self, event):
-      print "XXXXX Dummy EVNET HANDLED: "
+  controller_hb_msg_in = "HappensBefore-MessageIn"
+  controller_hb_msg_out = "HappensBefore-MessageOut"
+  
+  def _handle_line_match(self, event):
+      print "Matched "+event.match+" for line: "+event.line
   
   def __init__(self, patch_panel, event_listener_priority=100):
     self.ignore_uninteresting_events = False
@@ -48,13 +52,11 @@ class HappensBeforeLogger(EventMixin):
     self.pending_packet_update = dict() # dpid -> packet
     self.ignoring_switch_event = defaultdict(bool) # are we currently ignoring switch events
     
+    prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
+    prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
+    prefixThreadOutputMatcher.addListener(PrefixThreadLineMatchEvent, self._handle_line_match)
+
     self._subscribe_to_PatchPanel(patch_panel)
-    
-    
-    
-    from sts.util.procutils import DummyCtrlEvent
-    from sts.util.procutils import prefixThreadEvents
-    prefixThreadEvents.addListener(DummyCtrlEvent, self._handle_dummy_ctl)
 
 
   def open(self, results_dir=None, output_filename="hb_trace.json"):

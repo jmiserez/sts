@@ -107,24 +107,35 @@ def kill_procs(child_processes, kill=None, verbose=True, timeout=5,
   if len(child_processes) == 0:
     msg(' OK\n')
 
-class DummyCtrlEvent(Event):
-  def __init__ (self, line=None):
+class PrefixThreadLineMatchEvent(Event):
+  def __init__ (self, line=None, match=None):
     Event.__init__(self)
     self.line = line
+    self.match = match
 
-class PrefixThreadEvents(EventMixin):
-  _eventMixin_events = set([DummyCtrlEvent])
+class PrefixThreadLineMatcher(EventMixin):
+  _eventMixin_events = set([PrefixThreadLineMatchEvent])
   
-prefixThreadEvents = PrefixThreadEvents()
+  def __init__(self):
+    self.string_matches = []
+    
+  def add_string_to_match(self, match):
+    self.string_matches.append(match)
+    
+  def match_line(self, line):
+    for m in self.string_matches:
+      if m in line:
+        self.raiseEvent(PrefixThreadLineMatchEvent, line=line, match=m)
+    
+    
+prefixThreadOutputMatcher = PrefixThreadLineMatcher()
 
 printlock = threading.Lock()
 def _prefix_thread(f, func):
   def run():
     while not f.closed:
       line = f.readline()
-      # What string to filter for from the controller
-#       if "Installing flow for" in line:
-      prefixThreadEvents.raiseEvent(DummyCtrlEvent, line=line)
+      prefixThreadOutputMatcher.match_line(line)
       if not line:
         break
       with printlock:
