@@ -247,7 +247,9 @@ class HappensBeforeGraph(object):
           op_json['type'] = OpType.values()[op_typestr]
           op = namedtuple('Op', op_json)(**op_json)
           ops.append(op)
+          print str(event_json['id']) + ': ' + event_typestr + ' -> ' + op_typestr
         event_json['operations'] = tuple(ops)
+        
       event = namedtuple('Event', event_json)(**event_json)
       self.add_event(event)
   
@@ -318,11 +320,23 @@ class HappensBeforeGraph(object):
     edges = 0
     dot_lines.append("digraph G {\n");
     for i in self.events:
+      optype = ""
+      shape = ""
+      if hasattr(i, 'operations'):
+        for x in i.operations:
+          if x.type == OpType.TraceSwitchFlowTableWrite:
+            optype = "FlowTableWrite"
+            shape = "[shape=box]"
+            break
+          if x.type == OpType.TraceSwitchFlowTableRead:
+            optype = "FlowTableRead"
+            shape = "[shape=box]"
+            break
       if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
         try:
-          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}"];\n'.format(i.id,EventType.keys()[i.type],i.msg_type_str))
+          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"] {4};\n'.format(i.id,EventType.keys()[i.type],i.msg_type_str,optype,shape))
         except:
-          dot_lines.append('{0} [label="{0}\\n{1}"];\n'.format(i.id,EventType.keys()[i.type]))
+          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}"]{3};\n'.format(i.id,EventType.keys()[i.type],optype,shape))
     for (k,v) in self.predecessors.iteritems():
       for i in v:
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
