@@ -305,6 +305,7 @@ class Interactive(ControlFlow):
       c.cmd_group("Dataplane")
       c.cmd(self.dataplane_trace_feed,  "dp_inject",        alias="dpi",    help_msg="Inject the next dataplane event from the trace")
       c.cmd(self.dataplane_ping,        "dp_ping",          alias="dpp",    help_msg="Generate and inject a new ping packet")
+      c.cmd(self.dataplane_ping2,        "dp_ping2",          alias="dpp2",    help_msg="Generate and inject a new ping packet")
       c.cmd(self.dataplane_forward,     "dp_forward",       alias="dpf",    help_msg="Forward a pending dataplane event")
       c.cmd(self.dataplane_drop,        "dp_drop",          alias="dpd",    help_msg="Drop a pending dataplane event")
       c.cmd(self.dataplane_delay,       "dp_delay",         alias="dpe",    help_msg="Delay a pending dataplane event")
@@ -549,6 +550,17 @@ class Interactive(ControlFlow):
       print "Unknown host %s" % to_hid
       return
     (dp_event, send) = self.traffic_generator.generate("icmp_ping", from_hid, to_hid,
+                                    payload_content=raw_input("Enter payload content:\n"))
+    self._log_input_event(TrafficInjection(dp_event=dp_event))
+    send()
+
+  def dataplane_ping2(self, from_hid=None, to_ip=None):
+    if (from_hid is not None) and \
+       (from_hid not in self.simulation.topology.hid2host.keys()):
+      print "Unknown host %s" % from_hid
+      return
+
+    (dp_event, send) = self.traffic_generator.generate_ip("icmp_ping", from_hid, IPAddr(to_ip),
                                     payload_content=raw_input("Enter payload content:\n"))
     self._log_input_event(TrafficInjection(dp_event=dp_event))
     send()

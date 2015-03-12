@@ -71,6 +71,27 @@ class TrafficGenerator (object):
     e.payload = i
     return e
 
+  def icmp_ping_ip(self, src_interface, dst_IP, payload_content=None):
+    ''' Return an ICMP ping packet; if an interface is none, random addresses are used '''
+    e = ethernet()
+    e.src = self._choose_eth_addr(src_interface)
+    e.dst = EthAddr("00:00:00:00:00:11")
+    #e.dst = self._choose_eth_addr(dst_interface)
+    e.type = ethernet.IP_TYPE
+    i = ipv4()
+    i.protocol = ipv4.ICMP_PROTOCOL
+    i.srcip = self._choose_ip_addr(src_interface)
+    i.dstip = dst_IP
+    ping = icmp()
+    ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
+    if payload_content == "" or payload_content is None:
+      payload_content = "Ping" * 12
+    ping.payload = payload_content
+    i.payload = ping
+    e.payload = i
+    return e
+
+
   def generate(self, packet_type, src_host=None, dst_host=None,
                send_to_self=False, payload_content=None):
     ''' Generate a packet, return a function to have source host send it, and return the corresponding event '''
@@ -86,7 +107,26 @@ class TrafficGenerator (object):
       (dst_host, dst_interface) = self._choose_host(dst_host,
                                       [h for h in self.topology.hosts if h != src_host])
 
-    packet = self._packet_generators[packet_type](src_interface, dst_interface,
+    packet = sicmp_ping_ip(src_interface, dst_interface,
+                                                  payload_content=payload_content)
+    def send():
+      src_host.send(src_interface, packet)
+    return (DataplaneEvent(src_interface, packet), send)
+
+
+  def generate_ip(self, packet_type, src_host=None, dst_IP=None,
+               send_to_self=False, payload_content=None):
+    ''' Generate a packet, return a function to have source host send it, and return the corresponding event '''
+    if packet_type not in self._packet_generators:
+      raise AttributeError("Unknown event type %s" % str(packet_type))
+    if self.topology is None:
+      raise RuntimeError("TrafficGenerator needs access to topology")
+
+    (src_host, src_interface) = self._choose_host(src_host, self.topology.hosts)
+    if send_to_self:
+      (dst_host, dst_interface) = (src_host, src_interface)
+
+    packet = self.icmp_ping_ip(src_interface, dst_IP,
                                                   payload_content=payload_content)
     def send():
       src_host.send(src_interface, packet)
