@@ -254,9 +254,8 @@ class HappensBeforeLogger(EventMixin):
       self.start_switch_event(event.dpid, begin_event)
       
       # match with controller instrumentation
-      is_matched = self.match_unmatched_controller_msgout(mid_in, event.dpid, base64_encode(event.msg))
-      if not is_matched:
-        self.unmatched_HbMessageHandle[event.dpid].append((mid_in, base64_encode(event.msg)))
+      self.unmatched_HbMessageHandle[event.dpid].append((mid_in, base64_encode(event.msg)))
+      self.rematch_unmatched_lines()
   
   def handle_switch_mh_end(self, event):
     self.finish_switch_event(event.dpid)
@@ -435,13 +434,14 @@ class HappensBeforeLogger(EventMixin):
               self.dpid_to_swid[dpid_key] = swid
               dpid = dpid_key
               self.unmatched_HbMessageSend[dpid_key].remove(t) # only doing this once, so it's okay
-                            
+              self.controller_msgin_to_mid_out[(swid,b64msg)] = mid_out
               return mid_out
     else:
       for t in self.unmatched_HbMessageSend[dpid]:
         if b64msg == t[1]:
           mid_out = t[0]
           self.unmatched_HbMessageSend[dpid].remove(t) # only doing this once, so it's okay
+          self.controller_msgin_to_mid_out[(swid,b64msg)] = mid_out
           return mid_out
     return None
   
@@ -492,65 +492,34 @@ class HappensBeforeLogger(EventMixin):
     if mid_out is None:
       # this should never happen, we should have already logged the event (we sent it!)
       assert False
-    else:
-      # possibly overwrite, we only care about the newest
-      self.controller_msgin_to_mid_out[(swid,b64msg)] = mid_out
 
-  def controller_ack_out(self, in_swid, in_b64msg, out_swid, out_b64msg):
+  def controller_ack_out(self, in_swid, in_b64msg, out_swid, out_b64msg, append=True):
     mid_out = self.find_controller_packet_in(in_swid, in_b64msg)
     if mid_out is None:
       # this should never happen, we should have already logged the event (we sent it!)
       assert False
     mid_in = self.find_controller_packet_out(out_swid, out_b64msg)
     if mid_in is None:
-      # this can happen if we haven't received the packet yet. We'll add the edge later, when the HbMessageHandle event happens.
-      self.unmatched_lines_controller_msgout.append((in_swid, in_b64msg, out_swid, out_b64msg))
+      if append:
+        # this can happen if we haven't received the packet yet. We'll add the edge later, when the HbMessageHandle event happens.
+        self.unmatched_lines_controller_msgout.append((in_swid, in_b64msg, out_swid, out_b64msg))
     else:
       # add a new HB edge to the trace
       self.add_controller_hb_edge(mid_out, mid_in)
+      return True
+    return False
       
-  def match_unmatched_controller_msgout(self, mid_in, dpid, out_b64msg):
+  def rematch_unmatched_lines(self):
     """
     Match the HbMessageHandle event to any lines that we have already read.
     """
-    # need to find the message for the given mid_in
-    # so that:  mid_in == self.find_controller_packet_out(self, out_swid, out_b64msg)
     
-    swid = None
-    if dpid in self.dpid_to_swid:
-      swid = self.dpid_to_swid[dpid]
-      assert self.swid_to_dpid[swid] == dpid
+    # Just simulate each line being read again
     
-    matched_line = None
-    if swid is None:
-      # We have never seen a swid with this dpid.
-      # We just go through all the unmatched lines and use the first one that matches out_b64msg
-      for line in self.unmatched_lines_controller_msgout:
-        lin_swid, lin_b64msg, lout_swid, lout_b64msg = line
-        if out_b64msg == lout_b64msg:
-          # assign swid mapping
-          matched_line = line
-          swid = lout_swid
-          self.dpid_to_swid[dpid] = swid
-          self.swid_to_dpid[swid] = dpid
-    if swid is not None:
-      if matched_line is None:
-        for line in self.unmatched_lines_controller_msgout:
-          lin_swid, lin_b64msg, lout_swid, lout_b64msg = line
-          if out_b64msg == lout_b64msg:
-            # assign swid mapping
-            matched_line = line
-    if matched_line is not None:
-      self.unmatched_lines_controller_msgout.remove(matched_line)
-      lin_swid, lin_b64msg, lout_swid, lout_b64msg = matched_line
-      # now we can link these events
-      mid_out = self.find_controller_packet_in(self, lin_swid, lin_b64msg)
-      if mid_out is None:
-        # this should never happen, we should have already logged the event (we sent it!)
-        assert False
-      else:
-        # add a new HB edge to the trace
-        self.add_controller_hb_edge(mid_out, mid_in)
-        return True
-    return False
+    for line in self.unmatched_lines_controller_msgout:
+      in_swid, in_msg, out_swid, out_msg = line
+      is_matched = self.controller_ack_out(in_swid, in_msg, out_swid, out_msg, append=False)
+      if is_matched:
+        self.unmatched_lines_controller_msgout.remove(line)
+        break
   
