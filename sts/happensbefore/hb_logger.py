@@ -26,6 +26,9 @@ class HappensBeforeLogger(EventMixin):
    * Flow table modify
    '''
   
+  def _handle_dummy_ctl(self, event):
+      print "XXXXX Dummy EVNET HANDLED: "
+  
   def __init__(self, patch_panel, event_listener_priority=100):
     self.ignore_uninteresting_events = False
     
@@ -46,6 +49,12 @@ class HappensBeforeLogger(EventMixin):
     self.ignoring_switch_event = defaultdict(bool) # are we currently ignoring switch events
     
     self._subscribe_to_PatchPanel(patch_panel)
+    
+    
+    
+    from sts.util.procutils import DummyCtrlEvent
+    from sts.util.procutils import prefixThreadEvents
+    prefixThreadEvents.addListener(DummyCtrlEvent, self._handle_dummy_ctl)
 
 
   def open(self, results_dir=None, output_filename="hb_trace.json"):

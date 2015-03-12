@@ -1,4 +1,4 @@
-# Copyright 2011-2013 Colin Scott
+  # Copyright 2011-2013 Colin Scott
 # Copyright 2011-2013 Andreas Wundsam
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@ import sys
 import time
 import traceback
 from functools import partial
+from pox.lib.revent import Event, EventMixin
 
 from sts.util.console import color
 
@@ -106,11 +107,24 @@ def kill_procs(child_processes, kill=None, verbose=True, timeout=5,
   if len(child_processes) == 0:
     msg(' OK\n')
 
+class DummyCtrlEvent(Event):
+  def __init__ (self, line=None):
+    Event.__init__(self)
+    self.line = line
+
+class PrefixThreadEvents(EventMixin):
+  _eventMixin_events = set([DummyCtrlEvent])
+  
+prefixThreadEvents = PrefixThreadEvents()
+
 printlock = threading.Lock()
 def _prefix_thread(f, func):
   def run():
     while not f.closed:
       line = f.readline()
+      # What string to filter for from the controller
+#       if "Installing flow for" in line:
+      prefixThreadEvents.raiseEvent(DummyCtrlEvent, line=line)
       if not line:
         break
       with printlock:
@@ -125,6 +139,7 @@ def _prefix_thread(f, func):
   t.daemon = True
   t.start()
   return t
+
 
 
 def color_normal(out_str, label):
