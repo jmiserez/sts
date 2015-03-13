@@ -225,7 +225,7 @@ class HappensBeforeGraph(object):
     self._rule_05_flow_removed(event)
   
   def add_line(self, line):
-    if len(line) > 0 and not line.startswith('#'):
+    if len(line) > 1 and not line.startswith('#'):
       
       def lists_to_tuples(dct):
         '''

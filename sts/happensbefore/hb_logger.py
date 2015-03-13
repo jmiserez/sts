@@ -88,7 +88,7 @@ class HappensBeforeLogger(EventMixin):
     self.output = None
   
   def write(self,msg):
-#     self.log.info(msg)
+    self.log.info(msg)
     if not self.output:
       raise Exception("Not opened -- call HappensBeforeLogger.open()")
     if not self.output.closed:
