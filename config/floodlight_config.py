@@ -13,6 +13,8 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
              '''./target/floodlight.jar '''
              '''-cf ./src/main/resources/hb.properties''')
+# start_cmd = "sleep 1"
+
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
 topology_class = StarTopology
