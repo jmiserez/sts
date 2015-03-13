@@ -354,7 +354,8 @@ class HappensBeforeGraph(object):
       if target in parents:
         return True
       for p in parents:
-        return is_reachable(p, target)
+        if is_reachable(p, target):
+          return True 
       return False
 
     def is_ordered(event, other):
