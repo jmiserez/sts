@@ -265,7 +265,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         packet: instance of ethernet
         out_port, in_port: the integer port number """
     assert_type("packet", packet, ethernet, none_ok=False)
-    def real_send(port_no, allow_in_port=False):
+    def real_send(port_no, allow_in_port=True):
       if type(port_no) == ofp_phy_port:
         port_no = port_no.port_no
       # The OF spec states that packets should not be forwarded out their
