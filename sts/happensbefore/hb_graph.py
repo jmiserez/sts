@@ -401,7 +401,7 @@ class HappensBeforeGraph(object):
     for i,k in itertools.combinations(self.races_candidate_writes,2):
       i_event, i_flow_table, i_flow_mod = i
       k_event, k_flow_table, k_flow_mod = k
-      if not is_ordered(i_event, k_event):
+      if not is_ordered(i_event, k_event) and i_event.dpid == k_event.dpid:
         ik_table = decode_flow_table(i_flow_table)
         write_flow_table(ik_table, i_flow_mod)
         write_flow_table(ik_table, k_flow_mod)
@@ -426,7 +426,7 @@ class HappensBeforeGraph(object):
         i_event, i_flow_table, i_packet, i_in_port = i
         k_event, k_flow_table, k_flow_mod = k
         
-        if not is_ordered(i_event, k_event):
+        if not is_ordered(i_event, k_event) and i_event.dpid == k_event.dpid:
           ik_table = decode_flow_table(i_flow_table)
           ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
           write_flow_table(ik_table, k_flow_mod)
@@ -489,9 +489,9 @@ class HappensBeforeGraph(object):
             break
       if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
         try:
-          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"] {4};\n'.format(i.id,EventType.keys()[i.type],i.msg_type_str,optype,shape))
+          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}\\n{4}"] {5};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType.keys()[i.type],i.msg_type_str,optype,shape))
         except:
-          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}"]{3};\n'.format(i.id,EventType.keys()[i.type],optype,shape))
+          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"]{4};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType.keys()[i.type],optype,shape))
     for (k,v) in self.predecessors.iteritems():
       for i in v:
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
