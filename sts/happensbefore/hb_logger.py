@@ -438,7 +438,10 @@ class HappensBeforeLogger(EventMixin):
      HbMessageHandle(mid_in)
     """
     # Just simulate each line being read again
-    for line in self.unmatched_controller_lines[:]: # copy of list
+    
+    lines_to_remove = []
+    
+    for line in self.unmatched_controller_lines: # copy of list
       if len(line) == 2:
         in_swid, in_msg = line
         # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
@@ -468,14 +471,18 @@ class HappensBeforeLogger(EventMixin):
               if dpid == k:
                 # match
                 self.controller_packetin_to_mid_out[line] = v_mid_out
-                self.unmatched_controller_lines.remove(line)
+                lines_to_remove.append(line)
                 to_remove_vlist.append(v)
                 done = True
           # cleanup
           for i in to_remove_vlist:
             vlist.remove(i)
+    
+    for x in lines_to_remove:
+      self.unmatched_controller_lines.remove(x)
+    lines_to_remove = []
             
-    for line in self.unmatched_controller_lines[:]: # copy of list
+    for line in self.unmatched_controller_lines: # copy of list
       if len(line) == 4:
         in_swid, in_msg, out_swid, out_msg = line
         # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
@@ -512,9 +519,11 @@ class HappensBeforeLogger(EventMixin):
                 if dpid == k:
                   # match
                   self.add_controller_hb_edge(mid_out, v_mid_in)
-                  self.unmatched_controller_lines.remove(line)
+                  lines_to_remove.append(line)
                   to_remove_vlist.append(v)
                   done = True
             # cleanup
             for i in to_remove_vlist:
               vlist.remove(i)
+    for x in lines_to_remove:
+      self.unmatched_controller_lines.remove(x)
