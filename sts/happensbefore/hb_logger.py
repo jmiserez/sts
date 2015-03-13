@@ -282,6 +282,7 @@ class HappensBeforeLogger(EventMixin):
     # this will always come before the switch has had a chance to write out something, 
     # so no need to check anything here
     self.unmatched_HbMessageSend[event.dpid].append((mid_out, base64_encode(event.msg)))
+#     print base64_encode(event.msg)
     self.rematch_unmatched_lines()
   
   def handle_switch_ps(self, event):
@@ -400,14 +401,14 @@ class HappensBeforeLogger(EventMixin):
     
     # parse data
     if match == self.controller_hb_msg_in:
-      swid = int(data[0])
+      swid = data[0]
       b64msg = data[1]
       self.unmatched_controller_lines.append((swid, b64msg))
       
     if match == self.controller_hb_msg_out:
-      in_swid = int(data[0])
+      in_swid = data[0]
       in_b64msg = data[1]
-      out_swid = int(data[2])
+      out_swid = data[2]
       out_b64msg = data[3]
       self.unmatched_controller_lines.append((in_swid, in_b64msg, out_swid, out_b64msg))
     self.rematch_unmatched_lines()
