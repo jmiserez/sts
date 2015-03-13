@@ -40,7 +40,13 @@ class TraceSwitchPacketHandleEnd(TraceSwitchEvent):
   def __init__(self, dpid):
     TraceSwitchEvent.__init__(self)
     self.dpid = dpid
-  
+
+class TraceSwitchMessageRx(TraceSwitchEvent):
+  def __init__(self, msg, b64msg):
+    TraceSwitchEvent.__init__(self)
+    self.msg = msg
+    self.b64msg = b64msg
+
 class TraceSwitchMessageHandleBegin(TraceSwitchEvent):
   def __init__(self, dpid, controller_id, msg, msg_type):
     TraceSwitchEvent.__init__(self)

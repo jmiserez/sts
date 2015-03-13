@@ -14,6 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from base64 import b64encode
 """
 This module defines the basic simulated entities, such as openflow switches and
 links.
@@ -32,6 +33,7 @@ import pox.openflow.libopenflow_01 as of
 from sts.openflow_buffer import OpenFlowBuffer
 
 from sts.util.tabular import Tabular
+from sts.util.convenience import base64_encode
 
 from sts.entities.base import DirectedLinkAbstractClass
 from sts.entities.base import BiDirectionalLinkAbstractClass
@@ -53,14 +55,50 @@ class TracingOFConnection(OFConnection, EventMixin):
   This version of OFConnection raises events when a message is sent
   """
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceSwitchMessageSend])
+  _eventMixin_events = set([TraceSwitchMessageSend, TraceSwitchMessageRx])
   
   def __init__(self, *args, **kw):
     OFConnection.__init__(self, *args, **kw)
   
   def send(self, ofp_message):
+    ofp_message.pack()
     self.raiseEvent(TraceSwitchMessageSend(self.dpid, self.controller_id, ofp_message))
     super(TracingOFConnection, self).send(ofp_message)
+    
+  def read (self, io_worker):
+    while True:
+      message = io_worker.peek_receive_buf()
+      msg_obj = None
+      packet_length = 0
+      try:
+        (msg_obj, packet_length) = OFConnection.parse_of_packet(message)
+      except ValueError as e:
+        e = ValueError(e.__str__() + "on connection " + str(self))
+        if self.error_handler:
+          return self.error_handler(e)
+        else:
+          raise e
+
+      if msg_obj is None:
+        break
+      else:
+        self.raiseEvent(TraceSwitchMessageRx(msg_obj, base64_encode(message)))
+
+      io_worker.consume_receive_buf(packet_length)
+
+      # note: on_message_received is just a function, not a method
+      if self.on_message_received is None:
+        raise RuntimeError("on_message_receieved hasn't been set yet!")
+
+      try:
+        self.on_message_received(self, msg_obj)
+      except Exception as e:
+        if self.error_handler:
+          return self.error_handler(e)
+        else:
+          raise e
+
+    return True
 
 class DeferredOFConnection(TracingOFConnection):
   def __init__(self, io_worker, cid, dpid, openflow_buffer):
@@ -195,19 +233,27 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
   _eventMixin_events = set([TraceSwitchPacketHandleBegin, TraceSwitchPacketHandleEnd,
      TraceSwitchMessageHandleBegin, TraceSwitchMessageHandleEnd,
-     TraceSwitchMessageSend, TraceSwitchPacketSend,
+     TraceSwitchMessageSend, TraceSwitchPacketSend, TraceSwitchMessageRx,
      TraceSwitchFlowTableRead,
      TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry,
      TraceSwitchBufferPut, TraceSwitchBufferGet, TraceSwitchPacketUpdateBegin,
      TraceSwitchPacketUpdateEnd])
   
+  def reraise_event(self, event):
+      self.raiseEvent(event)
+  
   def __init__(self, *args, **kw):
     NXSoftwareSwitch.__init__(self, *args, **kw)
     self.table = TracingSwitchFlowTable(self) # overwrite SwitchFlowTable
-    def reraise_event(event):
-      self.raiseEvent(event)
-    self.table.addListener(TraceSwitchFlowTableWrite, reraise_event)
-    self.table.addListener(TraceSwitchFlowTableEntryExpiry, reraise_event)
+    
+    self.table.addListener(TraceSwitchFlowTableWrite, self.reraise_event)
+    self.table.addListener(TraceSwitchFlowTableEntryExpiry, self.reraise_event)
+        
+  def set_connection(self, connection):
+    NXSoftwareSwitch.set_connection(self,connection)
+    if isinstance(connection, TracingOFConnection):
+      connection.addListener(TraceSwitchMessageRx, self.reraise_event)
+    
 
   def on_message_received(self, connection, msg):
     self.raiseEvent(TraceSwitchMessageHandleBegin(self.dpid, connection.controller_id, msg, msg.header_type))

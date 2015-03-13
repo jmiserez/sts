@@ -71,6 +71,9 @@ predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
 def ofp_type_to_string(t):
   return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
 
+def enum_to_string(t):
+  return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
+
 class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None):
@@ -256,7 +259,7 @@ class HappensBeforeGraph(object):
           
           op = namedtuple('Op', op_json)(**op_json)
           ops.append(op)
-          print str(event_json['id']) + ': ' + event_typestr + ' -> ' + op_typestr
+#           print str(event_json['id']) + ': ' + event_typestr + ' -> ' + op_typestr
         event_json['operations'] = tuple(ops)
         
       event = namedtuple('Event', event_json)(**event_json)
@@ -299,7 +302,7 @@ class HappensBeforeGraph(object):
     handlers.get(event.type, _handle_default)(event)
     
     self.store_graph()
-
+  
   def detect_races(self):
     
     def decode_flow_mod(data):
@@ -363,6 +366,10 @@ class HappensBeforeGraph(object):
         return True
       return False
     
+    total_ops = 0
+    total_commute = 0
+    total_harmful = 0 
+    
     self.races_candidate_reads = []
     self.races_candidate_writes = []
     self.races = []
@@ -374,11 +381,20 @@ class HappensBeforeGraph(object):
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
             self.races_candidate_writes.append((i, k.flow_table, k.flow_mod))
-          elif k.type == OpType.TraceSwitchFlowTableRead:
+            total_ops += 1
+            print str(i.id) + ": " + EventType.keys()[i.type] + " (Flow table write)"
+                
+    for i in self.events:
+      if hasattr(i, 'operations'):
+        for k in i.operations:
+          if k.type == OpType.TraceSwitchFlowTableRead:
             assert hasattr(k, 'flow_table')
             assert hasattr(i, 'packet')
             assert hasattr(i, 'in_port')
             self.races_candidate_reads.append((i, k.flow_table, i.packet, i.in_port))
+            total_ops += 1
+            print str(i.id) + ": " + EventType.keys()[i.type] + " (Flow table read)"
+
 
     # write <-> write
     for i,k in itertools.combinations(self.races_candidate_writes,2):
@@ -396,9 +412,12 @@ class HappensBeforeGraph(object):
         if compare_flow_table(ik_table, ki_table):
           print "Commute (w/w): "+str(i_event.id) + " <---> "+str(k_event.id)
           self.races.append(('ww',i_event,k_event))
+          total_commute += 1
         else:
           print "Race    (w/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
           self.races.append(('ww',i_event,k_event))
+          total_harmful += 1
+          
     
     # read <-> write
     for i in self.races_candidate_reads:
@@ -421,9 +440,14 @@ class HappensBeforeGraph(object):
           if (ik_fm == ki_fm and compare_flow_table(ik_table, ki_table)):
             print "Commute (r/w): "+str(i_event.id) + " <---> "+str(k_event.id)
             self.races_commute.append(('rw',i_event,k_event))
+            total_commute += 1
           else:
             print "Race    (r/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
             self.races.append(('rw',i_event,k_event))
+            total_harmful += 1
+    print "Table operations:    "+str(total_ops)
+    print "Total races:         "+str(total_commute + total_harmful)
+    print "Total harmful races: "+str(total_harmful)
   
   def load_trace(self, filename):
     self.events = []
@@ -446,7 +470,6 @@ class HappensBeforeGraph(object):
                             'OFPT_BARRIER_REPLY',
                             'OFPT_HELLO',
                             ]
-    
     dot_lines = []
     edges = 0
     dot_lines.append("digraph G {\n");
