@@ -104,12 +104,12 @@ class HbHostSend(HbEvent):
 class HbControllerHandle(HbEvent):
   def __init__(self, mid_in, mid_out):
     HbEvent.__init__(self)
-    self.mid_in = mid_in # Link with HbMessageSend
-    self.mid_out = [mid_out] # Generated
+    self.mid_in = mid_in
+    self.mid_out = [mid_out] # Generated, link with HbMessageSend
     
 class HbControllerSend(HbEvent):
   def __init__(self, mid_in, mid_out):
     HbEvent.__init__(self)
-    self.mid_in = mid_in # Generated
-    self.mid_out = [mid_out] # Link with HbMessageHandle
+    self.mid_in = mid_in # Generated, link with HbMessageHandle
+    self.mid_out = [mid_out]
     

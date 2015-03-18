@@ -326,8 +326,8 @@ class HappensBeforeGraph(object):
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
       
-  def _add_edge(self, before, after):
-    if not before.type in predecessor_types[after.type]:
+  def _add_edge(self, before, after, sanity_check=True):
+    if sanity_check and before.type not in predecessor_types[after.type]:
       print "Not a valid HB edge: "+before.typestr+" < "+after.typestr
       assert False 
     self.predecessors[after].add(before)
@@ -399,49 +399,16 @@ class HappensBeforeGraph(object):
     self._rule_04_barrier_post(event)
     self._rule_05_flow_removed(event)
   
-  def _prune_controller_events(self, event):
+  def _add_transitive_edges(self, event):
     """
-    Special case for HbControllerSend: At this point we'd like to remove
-    both events added by the controller instrumentation, and replace them
-    with an edge going from the PACKET_IN event to the PACKET_OUT/FLOW_MOD/BARRIER
-    event directly.
-    E.g. A -> HbControllerHandle -> HbControllerSend -> B
-    to   A -> B
-    TODO(jm): this would not be needed if we wrote the trace differently in hb_logger.py
+    Add transitive edges: A->x->B will add edge A->B
     """
-    assert event.type == EventType.HbControllerSend
-    # "B" events
     out_events = set(self.successors[event])
-    controller_handle_events = set(self.predecessors[event])
-    # "A" events
-    in_events = set()
-    for evt in controller_handle_events:
-      in_events.update(self.predecessors[evt])
+    in_events = set(self.predecessors[event])
     
-    # Remove edge HbControllerSend -> B
-    for out_evt in out_events:
-      self.predecessors[out_evt].remove(event)
-      self.successors[event].remove(out_evt)
-      
-    # Remove edge HbControllerHandle -> HbControllerSend
-    for ctrhandle_evt in controller_handle_events:
-      self.predecessors[event].remove(ctrhandle_evt)
-      self.successors[ctrhandle_evt].remove(event)
-      
-    # Remove edge A -> HbControllerHandle
-    for in_evt in in_events:
-      for ctrhandle_evt in controller_handle_events:
-        self.predecessors[ctrhandle_evt].remove(in_evt)
-        self.successors[in_evt].remove(ctrhandle_evt)
-
-    self.pruned_events.update(controller_handle_events)
-    self.pruned_events.add(event)
-
-    # Add edges from "A" to "B" events
     for in_evt in in_events:
       for out_evt in out_events:
-        self._add_edge(in_evt, out_evt)
-        
+        self._add_edge(in_evt, out_evt, sanity_check=False)
         
   def add_line(self, line):
     if len(line) > 1 and not line.startswith('#'):
@@ -484,7 +451,7 @@ class HappensBeforeGraph(object):
       event = namedtuple('Event', event_json)(**event_json)
       self.add_event(event)
   
-  def add_event(self, event, store_graph=True, detect_races=True):
+  def add_event(self, event, prune_graph=True, store_graph=True, detect_races=True):
     self.events.append(event)
     assert event.id not in self.events_by_id
     self.events_by_id[event.id] = event
@@ -506,7 +473,6 @@ class HappensBeforeGraph(object):
       self._update_edges(event)
     def _handle_HbControllerSend(event):
       self._update_edges(event)
-      self._prune_controller_events(event)
     def _handle_default(event):
       pass
     
@@ -521,14 +487,14 @@ class HappensBeforeGraph(object):
                  }
     handlers.get(event.type, _handle_default)(event)
     
-    if store_graph:
-      self.store_graph()
-    
     if detect_races:
       self.race_detector.detect_races(event)
       if self.race_detector.total_races > 0:
         self.race_detector.detect_races()
         self.race_detector.print_races()
+    
+    if store_graph:
+      self.store_graph()
   
   def load_trace(self, filename):
     self.events = []
@@ -538,7 +504,7 @@ class HappensBeforeGraph(object):
         self.add_line(line)
     print "Read in " + str(len(self.events)) + " events." 
     self.events.sort(key=lambda i: i.id)
-    
+  
   def store_graph(self, filename="hb.dot"):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
@@ -551,10 +517,24 @@ class HappensBeforeGraph(object):
                             'OFPT_BARRIER_REPLY',
                             'OFPT_HELLO',
                             ]
+    
+    prunable_types = [
+                      EventType.HbPacketSend,
+                      EventType.HbHostHandle,
+                      EventType.HbHostSend,
+                      EventType.HbControllerHandle,
+                      EventType.HbControllerSend,
+                     ]
+    pruned_events = []
+    for i in self.events:
+      if i.type in prunable_types:
+        self._add_transitive_edges(i)
+        pruned_events.append(i)
+    
     dot_lines = []
     dot_lines.append("digraph G {\n");
     for i in self.events:
-      if i not in self.pruned_events:
+      if i not in pruned_events:
         optype = ""
         shape = ""
         if hasattr(i, 'operations'):
@@ -573,14 +553,15 @@ class HappensBeforeGraph(object):
           except:
             dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"]{4};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType._names()[i.type],optype,shape))
     for (k,v) in self.predecessors.iteritems():
-      for i in v:
-        if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-          dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
+      if k not in pruned_events:
+        for i in v:
+          if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
+            dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
     for race in self.race_detector.races_commute:
-      dot_lines.append('    {1} -> {2} [style="dotted" label="commutes ({0})"];\n'.format(race[0], race[1].id, race[2].id))
+      dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].id, race[2].id))
     for race in self.race_detector.races_harmful:
-      dot_lines.append('    {1} -> {2} [style="bold" label="race ({0})"];\n'.format(race[0], race[1].id, race[2].id))
+      dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].id, race[2].id))
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
