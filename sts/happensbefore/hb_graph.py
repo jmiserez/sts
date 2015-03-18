@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import sys
+from curses.ascii import ctrl
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__) + "/../../"), "pox"))
 
 from pox.openflow.libopenflow_01 import *
@@ -15,20 +16,21 @@ import base64
 
 #
 # Do not import any STS types! We would like to be able to run this offline
-# from a trace file as well.
+# from a trace file without having to depend on STS.
 #
 
 def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
     reverse = dict((value, key) for key, value in enums.iteritems())
     @classmethod
-    def keys(cls):
+    def _names(cls): # returns dict: ordinal -> string
       return reverse
-    enums['keys'] = keys
+    enums['_names'] = _names
     @classmethod
-    def values(cls):
-      return enums
-    enums['values'] = values
+    def _ordinals(cls): # returns dict: string -> ordinal
+      # filter _names, _ordinals
+      return {k: v for k, v in enums.items() if not k.startswith('_')}
+    enums['_ordinals'] = _ordinals
     return type('Enum', (), enums)
  
 EventType = enum('HbPacketHandle',
@@ -48,7 +50,7 @@ OpType = enum('TraceSwitchFlowTableRead',
               'TraceSwitchBufferGet', 
               )
 
-# sanity check:
+# Sanity check! This is a mapping of all predecessor types that make sense.
 predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
                                                     EventType.HbHostSend,
                                                    ],
@@ -58,6 +60,7 @@ predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
                      EventType.HbMessageHandle:    [EventType.HbMessageHandle,
                                                     EventType.HbControllerSend,
                                                     EventType.HbPacketHandle, # buffer put -> buffer get!
+                                                    EventType.HbMessageSend, # merged controller edges
                                                    ],
                      EventType.HbMessageSend:      [EventType.HbPacketHandle,
                                                     EventType.HbMessageHandle,
@@ -71,8 +74,181 @@ predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
 def ofp_type_to_string(t):
   return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
 
-def enum_to_string(t):
-  return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
+class RaceDetector(object):
+  
+  def __init__(self, graph):
+    self.graph = graph
+    
+    self.read_operations = []
+    self.write_operations = []
+    self.races_harmful = []
+    self.races_commute = []
+    self.total_operations = 0
+    self.total_harmful = 0
+    self.total_commute = 0
+    self.total_races = 0
+  
+  @classmethod
+  def decode_flow_mod(cls, data):
+    bits = base64.b64decode(data)
+    fm = ofp_flow_mod()
+    fm.unpack(bits)
+    return fm
+  
+  @classmethod
+  def decode_packet(cls, data):
+    bits = base64.b64decode(data)
+    p = ethernet()
+    p.unpack(bits)
+    return p
+  
+  @classmethod
+  def decode_flow_table(cls, data):
+    table = SwitchFlowTable()
+    for row in data:
+      flow_mod = RaceDetector.decode_flow_mod(row)
+      entry = TableEntry.from_flow_mod(flow_mod)
+      table.add_entry(entry)
+    return table
+  
+  @classmethod
+  def compare_flow_table(cls, table, other):
+    fm1 = []
+    for i in table.table:
+      fm1.append(i.to_flow_mod())
+    fm2 = []
+    for i in other.table:
+      fm2.append(i.to_flow_mod())
+      
+    for i in fm1:
+      if i not in fm2:
+        return False
+    for i in fm2:
+      if i not in fm1:
+        return False
+    return True
+  
+  @classmethod
+  def read_flow_table(cls, table, packet, in_port):
+    p = RaceDetector.decode_packet(packet)
+    return table.entry_for_packet(p, in_port)
+  
+  @classmethod
+  def write_flow_table(cls, table, flow_mod):
+    fm = RaceDetector.decode_flow_mod(flow_mod)
+    return table.process_flow_mod(fm)
+
+  def is_reachable(self, source, target):
+    parents = self.graph.predecessors[source]
+    if target in parents:
+      return True
+    for p in parents:
+      if self.is_reachable(p, target):
+        return True 
+    return False
+  
+  def is_ordered(self, event, other):
+    older = event if event.id < other.id else other
+    newer = event if event.id > other.id else other
+    if self.is_reachable(newer, older):
+      return True
+    if self.is_reachable(older, newer): # need to check due to async controller instrumentation
+      return True
+    return False
+  
+  def detect_races(self, event=None):
+    """
+    Detect all races that involve event.
+    Detect all races for all events if event is None.
+    """
+    self.read_operations = []
+    self.write_operations = []
+    
+    for i in self.graph.events:
+      if hasattr(i, 'operations'):
+        for k in i.operations:
+          if k.type == OpType.TraceSwitchFlowTableWrite:
+            assert hasattr(k, 'flow_table')
+            assert hasattr(k, 'flow_mod')
+            op = (i, k.flow_table, k.flow_mod)
+            self.write_operations.append(op)
+          elif k.type == OpType.TraceSwitchFlowTableRead:
+            assert hasattr(k, 'flow_table')
+            assert hasattr(i, 'packet')
+            assert hasattr(i, 'in_port')
+            op = (i, k.flow_table, i.packet, i.in_port)
+            self.read_operations.append(op)
+    
+    self.races_harmful = []
+    self.races_commute = []
+    
+    # write <-> write
+    for i, k in itertools.combinations(self.write_operations,2):
+      i_event, i_flow_table, i_flow_mod = i
+      k_event, k_flow_table, k_flow_mod = k
+      if (i_event != k_event and
+          (event is None or event == i_event or event == k_event) and
+          i_event.dpid == k_event.dpid and
+          not self.is_ordered(i_event, k_event)):
+        ik_table = self.decode_flow_table(i_flow_table)
+        self.write_flow_table(ik_table, i_flow_mod)
+        self.write_flow_table(ik_table, k_flow_mod)
+        
+        ki_table = self.decode_flow_table(k_flow_table)
+        self.write_flow_table(ki_table, k_flow_mod)
+        self.write_flow_table(ki_table, i_flow_mod)
+        
+        if self.compare_flow_table(ik_table, ki_table):
+          self.races_commute.append(('w/w',i_event,k_event))
+        else:
+          self.races_harmful.append(('w/w',i_event,k_event))
+    
+    # read <-> write
+    for i in self.read_operations:
+      for k in self.write_operations:
+        i_event, i_flow_table, i_packet, i_in_port = i
+        k_event, k_flow_table, k_flow_mod = k
+        if (i_event != k_event and
+            (event is None or event == i_event or event == k_event) and
+            i_event.dpid == k_event.dpid and
+            not self.is_ordered(i_event, k_event)):
+          ik_table = self.decode_flow_table(i_flow_table)
+          ik_retval = self.read_flow_table(ik_table, i_packet, i_in_port)
+          self.write_flow_table(ik_table, k_flow_mod)
+          
+          ki_table = self.decode_flow_table(k_flow_table)
+          self.write_flow_table(ki_table, k_flow_mod)
+          ki_retval = self.read_flow_table(ki_table, i_packet, i_in_port)
+          
+          ik_fm = None if ik_retval is None else ik_retval.to_flow_mod()
+          ki_fm = None if ki_retval is None else ki_retval.to_flow_mod()
+          
+          if (ik_fm == ki_fm and self.compare_flow_table(ik_table, ki_table)):
+            self.races_commute.append(('r/w',i_event,k_event))
+          else:
+            self.races_harmful.append(('r/w',i_event,k_event))
+    
+    self.total_operations = len(self.write_operations) + len(self.read_operations)
+    self.total_harmful = len(self.races_harmful)
+    self.total_commute = len(self.races_commute)
+    self.total_races = self.total_harmful + self.total_commute
+            
+  def print_races(self):
+    print "+-------------------------------------------+"
+    for ev in self.read_operations:
+      print "| {:>4}: {:28} (read) |".format(ev[0].id, EventType._names()[ev[0].type])
+    for ev in self.write_operations:
+      print "| {:>4}: {:27} (write) |".format(ev[0].id, EventType._names()[ev[0].type])
+    print "| Total operations:      {:<18} |".format(self.total_operations)
+    print "|-------------------------------------------|"
+    for race in self.races_commute:
+      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race[0], race[1].id, race[2].id)
+    for race in self.races_harmful:
+      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race[0], race[1].id, race[2].id)
+    print "|-------------------------------------------|"
+    print "| Total commuting races: {:<18} |".format(self.total_races)
+    print "| Total harmful races:   {:<18} |".format(self.total_harmful)
+    print "+-------------------------------------------+"
 
 class HappensBeforeGraph(object):
  
@@ -81,6 +257,7 @@ class HappensBeforeGraph(object):
     
     self.events = []
     self.events_by_id = dict()
+    self.pruned_events = set()
     
     self.predecessors = defaultdict(set)
     self.successors = defaultdict(set)
@@ -102,9 +279,7 @@ class HappensBeforeGraph(object):
     self.most_recent_barrier = defaultdict()
     
     # for races
-    self.races_candidate_reads = []
-    self.races_candidate_writes = []
-    self.races = []
+    self.race_detector = RaceDetector(self)
   
   def _add_to_lookup_tables(self, event):
     if hasattr(event, 'pid_out'):
@@ -150,14 +325,14 @@ class HappensBeforeGraph(object):
   def _update_event_has_no_further_successors_mid_out(self, event):
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
-
+      
   def _add_edge(self, before, after):
     if not before.type in predecessor_types[after.type]:
       print "Not a valid HB edge: "+before.typestr+" < "+after.typestr
       assert False 
     self.predecessors[after].add(before)
     self.successors[before].add(after)
-  
+    
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
     if hasattr(event, 'pid_in'):
@@ -207,8 +382,8 @@ class HappensBeforeGraph(object):
           self._add_edge(other, event)
         
   def _rule_05_flow_removed(self, event):
-    # TODO JM: This is not correct. Flow removed messages do not contain the exact same flowmod message as was installed.
-    # TODO JM: Rather, we should match on (ofp_match, cookie, priority)
+    # TODO(jm): This is not correct. Flow removed messages do not contain the exact same flowmod message as was installed.
+    # TODO(jm): Rather, we should match on (ofp_match, cookie, priority)
     #          and also only consider flow mods where the OFPFF_SEND_FLOW_REM flag was set
     if event.type == EventType.HbMessageHandle and event.msg_type_str == "OFPT_FLOW_REMOVED":
       search_key = (event.dpid, event.msg_flowmod)
@@ -224,6 +399,50 @@ class HappensBeforeGraph(object):
     self._rule_04_barrier_post(event)
     self._rule_05_flow_removed(event)
   
+  def _prune_controller_events(self, event):
+    """
+    Special case for HbControllerSend: At this point we'd like to remove
+    both events added by the controller instrumentation, and replace them
+    with an edge going from the PACKET_IN event to the PACKET_OUT/FLOW_MOD/BARRIER
+    event directly.
+    E.g. A -> HbControllerHandle -> HbControllerSend -> B
+    to   A -> B
+    TODO(jm): this would not be needed if we wrote the trace differently in hb_logger.py
+    """
+    assert event.type == EventType.HbControllerSend
+    # "B" events
+    out_events = set(self.successors[event])
+    controller_handle_events = set(self.predecessors[event])
+    # "A" events
+    in_events = set()
+    for evt in controller_handle_events:
+      in_events.update(self.predecessors[evt])
+    
+    # Remove edge HbControllerSend -> B
+    for out_evt in out_events:
+      self.predecessors[out_evt].remove(event)
+      self.successors[event].remove(out_evt)
+      
+    # Remove edge HbControllerHandle -> HbControllerSend
+    for ctrhandle_evt in controller_handle_events:
+      self.predecessors[event].remove(ctrhandle_evt)
+      self.successors[ctrhandle_evt].remove(event)
+      
+    # Remove edge A -> HbControllerHandle
+    for in_evt in in_events:
+      for ctrhandle_evt in controller_handle_events:
+        self.predecessors[ctrhandle_evt].remove(in_evt)
+        self.successors[in_evt].remove(ctrhandle_evt)
+
+    self.pruned_events.update(controller_handle_events)
+    self.pruned_events.add(event)
+
+    # Add edges from "A" to "B" events
+    for in_evt in in_events:
+      for out_evt in out_events:
+        self._add_edge(in_evt, out_evt)
+        
+        
   def add_line(self, line):
     if len(line) > 1 and not line.startswith('#'):
       
@@ -240,9 +459,9 @@ class HappensBeforeGraph(object):
       event_json = json.loads(line, object_hook=lists_to_tuples)
       event_typestr = event_json['type']
       
-      assert event_typestr in EventType.values()
+      assert event_typestr in EventType._ordinals()
       event_json['typestr'] = event_typestr
-      event_json['type'] = EventType.values()[event_typestr]
+      event_json['type'] = EventType._ordinals()[event_typestr]
       if 'msg_type' in event_json:
         msg_type_str = event_json['msg_type']
         event_json['msg_type_str'] = msg_type_str
@@ -253,9 +472,9 @@ class HappensBeforeGraph(object):
         for i in event_json['operations']:
           op_json = json.loads(i, object_hook=lists_to_tuples)
           op_typestr = op_json['type']
-          assert op_typestr in OpType.values()
+          assert op_typestr in OpType._ordinals()
           op_json['typestr'] = op_typestr
-          op_json['type'] = OpType.values()[op_typestr]
+          op_json['type'] = OpType._ordinals()[op_typestr]
           
           op = namedtuple('Op', op_json)(**op_json)
           ops.append(op)
@@ -265,7 +484,7 @@ class HappensBeforeGraph(object):
       event = namedtuple('Event', event_json)(**event_json)
       self.add_event(event)
   
-  def add_event(self, event):
+  def add_event(self, event, store_graph=True, detect_races=True):
     self.events.append(event)
     assert event.id not in self.events_by_id
     self.events_by_id[event.id] = event
@@ -287,6 +506,7 @@ class HappensBeforeGraph(object):
       self._update_edges(event)
     def _handle_HbControllerSend(event):
       self._update_edges(event)
+      self._prune_controller_events(event)
     def _handle_default(event):
       pass
     
@@ -301,154 +521,14 @@ class HappensBeforeGraph(object):
                  }
     handlers.get(event.type, _handle_default)(event)
     
-    self.store_graph()
-  
-  def detect_races(self):
+    if store_graph:
+      self.store_graph()
     
-    def decode_flow_mod(data):
-      bits = base64.b64decode(data)
-      fm = ofp_flow_mod()
-      fm.unpack(bits)
-      return fm
-    
-    def decode_packet(data):
-      bits = base64.b64decode(data)
-      p = ethernet()
-      p.unpack(bits)
-      return p
-    
-    def decode_flow_table(data):
-      table = SwitchFlowTable()
-      for row in data:
-        flow_mod = decode_flow_mod(row)
-        entry = TableEntry.from_flow_mod(flow_mod)
-        table.add_entry(entry)
-      return table
-    
-    def compare_flow_table(table, other):
-      fm1 = []
-      for i in table.table:
-        fm1.append(i.to_flow_mod())
-      fm2 = []
-      for i in other.table:
-        fm2.append(i.to_flow_mod())
-        
-      for i in fm1:
-        if i not in fm2:
-          return False
-      for i in fm2:
-        if i not in fm1:
-          return False
-      return True
-    
-    def read_flow_table(table, packet, in_port):
-      p = decode_packet(packet)
-      return table.entry_for_packet(p, in_port)
-    
-    def write_flow_table(table, flow_mod):
-      fm = decode_flow_mod(flow_mod)
-      return table.process_flow_mod(fm)
-
-    def is_reachable(source, target):
-      parents = self.predecessors[source]
-      if target in parents:
-        return True
-      for p in parents:
-        if is_reachable(p, target):
-          return True 
-      return False
-
-    def is_ordered(event, other):
-      older = event if event.id < other.id else other
-      newer = event if event.id > other.id else other
-      if is_reachable(newer, older):
-        return True
-      if is_reachable(older, newer): # need to check due to async controller instrumentation
-        return True
-      return False
-    
-    total_ops = 0
-    total_commute = 0
-    total_harmful = 0 
-    
-    self.races_candidate_reads = []
-    self.races_candidate_writes = []
-    self.races = []
-    self.races_commute = []
-    for i in self.events:
-      if hasattr(i, 'operations'):
-        for k in i.operations:
-          if k.type == OpType.TraceSwitchFlowTableWrite:
-            assert hasattr(k, 'flow_table')
-            assert hasattr(k, 'flow_mod')
-            self.races_candidate_writes.append((i, k.flow_table, k.flow_mod))
-            total_ops += 1
-            print str(i.id) + ": " + EventType.keys()[i.type] + " (Flow table write)"
-                
-    for i in self.events:
-      if hasattr(i, 'operations'):
-        for k in i.operations:
-          if k.type == OpType.TraceSwitchFlowTableRead:
-            assert hasattr(k, 'flow_table')
-            assert hasattr(i, 'packet')
-            assert hasattr(i, 'in_port')
-            self.races_candidate_reads.append((i, k.flow_table, i.packet, i.in_port))
-            total_ops += 1
-            print str(i.id) + ": " + EventType.keys()[i.type] + " (Flow table read)"
-
-
-    # write <-> write
-    for i,k in itertools.combinations(self.races_candidate_writes,2):
-      i_event, i_flow_table, i_flow_mod = i
-      k_event, k_flow_table, k_flow_mod = k
-      if not is_ordered(i_event, k_event) and i_event.dpid == k_event.dpid:
-        ik_table = decode_flow_table(i_flow_table)
-        write_flow_table(ik_table, i_flow_mod)
-        write_flow_table(ik_table, k_flow_mod)
-        
-        ki_table = decode_flow_table(k_flow_table)
-        write_flow_table(ki_table, k_flow_mod)
-        write_flow_table(ki_table, i_flow_mod)
-        
-        if compare_flow_table(ik_table, ki_table):
-          print "Commute (w/w): "+str(i_event.id) + " <---> "+str(k_event.id)
-          self.races.append(('ww',i_event,k_event))
-          total_commute += 1
-        else:
-          print "Race    (w/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
-          self.races.append(('ww',i_event,k_event))
-          total_harmful += 1
-          
-    
-    # read <-> write
-    for i in self.races_candidate_reads:
-      for k in self.races_candidate_writes:
-        i_event, i_flow_table, i_packet, i_in_port = i
-        k_event, k_flow_table, k_flow_mod = k
-        
-        if not is_ordered(i_event, k_event) and i_event.dpid == k_event.dpid:
-          ik_table = decode_flow_table(i_flow_table)
-          ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
-          write_flow_table(ik_table, k_flow_mod)
-          
-          ki_table = decode_flow_table(k_flow_table)
-          write_flow_table(ki_table, k_flow_mod)
-          ki_retval = read_flow_table(ki_table, i_packet, i_in_port)
-          
-          ik_fm = None if ik_retval is None else ik_retval.to_flow_mod()
-          ki_fm = None if ki_retval is None else ki_retval.to_flow_mod()
-          
-          if (ik_fm == ki_fm and compare_flow_table(ik_table, ki_table)):
-            print "Commute (r/w): "+str(i_event.id) + " <---> "+str(k_event.id)
-            self.races_commute.append(('rw',i_event,k_event))
-            total_commute += 1
-          else:
-            print "Race    (r/w): "+str(i_event.id) + " --!-- "+str(k_event.id)
-            self.races.append(('rw',i_event,k_event))
-            total_harmful += 1
-    print "Table operations:    "+str(total_ops)
-    print "Total races:         "+str(total_commute + total_harmful)
-    print "Total harmful races: "+str(total_harmful)
+    if detect_races:
+      self.race_detector.detect_races(event)
+      if self.race_detector.total_races > 0:
+        self.race_detector.detect_races()
+        self.race_detector.print_races()
   
   def load_trace(self, filename):
     self.events = []
@@ -472,36 +552,38 @@ class HappensBeforeGraph(object):
                             'OFPT_HELLO',
                             ]
     dot_lines = []
-    edges = 0
     dot_lines.append("digraph G {\n");
     for i in self.events:
-      optype = ""
-      shape = ""
-      if hasattr(i, 'operations'):
-        for x in i.operations:
-          if x.type == OpType.TraceSwitchFlowTableWrite:
-            optype = "FlowTableWrite"
-            shape = "[shape=box]"
-            break
-          if x.type == OpType.TraceSwitchFlowTableRead:
-            optype = "FlowTableRead"
-            shape = "[shape=box]"
-            break
-      if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-        try:
-          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}\\n{4}"] {5};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType.keys()[i.type],i.msg_type_str,optype,shape))
-        except:
-          dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"]{4};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType.keys()[i.type],optype,shape))
+      if i not in self.pruned_events:
+        optype = ""
+        shape = ""
+        if hasattr(i, 'operations'):
+          for x in i.operations:
+            if x.type == OpType.TraceSwitchFlowTableWrite:
+              optype = 'FlowTableWrite'
+              shape = '[shape=box style="bold"]'
+              break
+            if x.type == OpType.TraceSwitchFlowTableRead:
+              optype = 'FlowTableRead'
+              shape = '[shape="box"]'
+              break
+        if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
+          try:
+            dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}\\n{4}"] {5};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType._names()[i.type],i.msg_type_str,optype,shape))
+          except:
+            dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"]{4};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType._names()[i.type],optype,shape))
     for (k,v) in self.predecessors.iteritems():
       for i in v:
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
           dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
-          edges += 1
+    dot_lines.append('edge[constraint=false arrowhead="none"];\n')
+    for race in self.race_detector.races_commute:
+      dot_lines.append('    {1} -> {2} [style="dotted" label="commutes ({0})"];\n'.format(race[0], race[1].id, race[2].id))
+    for race in self.race_detector.races_harmful:
+      dot_lines.append('    {1} -> {2} [style="bold" label="race ({0})"];\n'.format(race[0], race[1].id, race[2].id))
     dot_lines.append("}\n");
-#     pprint.pprint(dot_lines)
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
-#     print "Wrote out " + str(edges) + " edges."
   
 class Main(object):
   
@@ -513,7 +595,8 @@ class Main(object):
   def run(self):
     self.graph = HappensBeforeGraph(results_dir=self.results_dir)
     self.graph.load_trace(self.filename)
-    self.graph.detect_races()
+    self.graph.race_detector.detect_races()
+    self.graph.race_detector.print_races()
     self.graph.store_graph(self.output_filename)
     
 if __name__ == '__main__':

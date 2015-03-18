@@ -188,7 +188,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     """
     self.raiseEvent(TraceSwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
     #super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
-    # TODO JM: I *think* this is fixed now. Remove once we are sure.
+    # TODO(jm): I *think* this is fixed now. Remove once we are sure.
     # FIXME (AH): a quick hack to solve the empty flow table problem
     from pox.openflow.libopenflow_01 import *
     from pox.openflow.software_switch import *

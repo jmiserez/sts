@@ -128,7 +128,7 @@ class HappensBeforeLogger(EventMixin):
     except Exception as e:
       # NOTE JM: do not remove, otherwise exceptions get swallowed by STS
       import traceback
-      traceback.print_exc(file=sys.stdout)
+      traceback.print_exc()
   
   def subscribe_to_DeferredOFConnection(self, connection):
     connection.addListener(TraceSwitchMessageSend, self.handle_no_exceptions)
@@ -455,12 +455,12 @@ class HappensBeforeLogger(EventMixin):
           if done:
             break
           to_remove_vlist = []
-          for v in reversed(vlist): # TODO JM: remove HACK
+          for v in reversed(vlist): # TODO(jm): remove HACK
             if done:
               break
             # k: dpid, v: (mid_out, base64_encode(event.msg))
             v_mid_out, v_msg = v
-            if v_msg[4] == in_msg[4]: # TODO JM: remove HACK
+            if v_msg[4] == in_msg[4]: # TODO(jm): remove HACK
               # messages match, check if dpid matches or assign it
               if k not in self.dpid_to_swid and dpid is None:
                 # assign mapping
@@ -503,12 +503,12 @@ class HappensBeforeLogger(EventMixin):
             if done:
               break
             to_remove_vlist = []
-            for v in reversed(vlist): # TODO JM: remove HACK
+            for v in reversed(vlist): # TODO(jm): remove HACK
               if done:
                 break
               # k: dpid, v: (mid_in, base64_encode(event.msg))
               v_mid_in, v_msg = v
-              if self._get_rxbase64(v_msg)[4] == out_msg[4]: # TODO JM: HACK, get rid of it
+              if self._get_rxbase64(v_msg)[4] == out_msg[4]: # TODO(jm): HACK, get rid of it
                 # messages match, check if dpid matches or assign it
                 if k not in self.dpid_to_swid and dpid is None:
                   # assign mapping
