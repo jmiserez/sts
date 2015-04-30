@@ -52,7 +52,7 @@ class TrafficGenerator (object):
     ether.payload = arp_req
     return ether
 
-  def icmp_ping(self, src_interface, dst_interface, payload_content=None):
+  def icmp_ping(self, src_interface, dst_interface, payload_content=None, force_request=False):
     ''' Return an ICMP ping packet; if an interface is none, random addresses are used '''
     e = ethernet()
     e.src = self._choose_eth_addr(src_interface)
@@ -63,7 +63,10 @@ class TrafficGenerator (object):
     i.srcip = self._choose_ip_addr(src_interface)
     i.dstip = self._choose_ip_addr(dst_interface)
     ping = icmp()
-    ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
+    if force_request:
+      ping.type = TYPE_ECHO_REQUEST
+    else:
+      ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
     if payload_content == "" or payload_content is None:
       payload_content = "Ping" * 12
     ping.payload = payload_content
@@ -71,7 +74,7 @@ class TrafficGenerator (object):
     e.payload = i
     return e
 
-  def icmp_ping_ip(self, src_interface, dst_IP, payload_content=None):
+  def icmp_ping_ip(self, src_interface, dst_IP, payload_content=None, force_request=False):
     ''' Return an ICMP ping packet; if an interface is none, random addresses are used '''
     e = ethernet()
     e.src = self._choose_eth_addr(src_interface)
@@ -83,7 +86,10 @@ class TrafficGenerator (object):
     i.srcip = self._choose_ip_addr(src_interface)
     i.dstip = dst_IP
     ping = icmp()
-    ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
+    if force_request:
+      ping.type = TYPE_ECHO_REQUEST
+    else:
+      ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
     if payload_content == "" or payload_content is None:
       payload_content = "Ping" * 12
     ping.payload = payload_content
@@ -93,7 +99,7 @@ class TrafficGenerator (object):
 
 
   def generate(self, packet_type, src_host=None, dst_host=None,
-               send_to_self=False, payload_content=None):
+               send_to_self=False, payload_content=None, force_request=None):
     ''' Generate a packet, return a function to have source host send it, and return the corresponding event '''
     if packet_type not in self._packet_generators:
       raise AttributeError("Unknown event type %s" % str(packet_type))
@@ -107,7 +113,12 @@ class TrafficGenerator (object):
       (dst_host, dst_interface) = self._choose_host(dst_host,
                                       [h for h in self.topology.hosts if h != src_host])
 
-    packet = self._packet_generators[packet_type](src_interface, dst_interface,
+    if force_request is not None:
+      packet = self._packet_generators[packet_type](src_interface, dst_interface,
+                                                  payload_content=payload_content, 
+                                                  force_request=force_request)
+    else:
+      packet = self._packet_generators[packet_type](src_interface, dst_interface,
                                                   payload_content=payload_content)
     def send():
       src_host.send(src_interface, packet)
@@ -115,7 +126,7 @@ class TrafficGenerator (object):
 
 
   def generate_ip(self, packet_type, src_host=None, dst_IP=None,
-               send_to_self=False, payload_content=None):
+               send_to_self=False, payload_content=None, force_request=None):
     ''' Generate a packet, return a function to have source host send it, and return the corresponding event '''
     if packet_type not in self._packet_generators:
       raise AttributeError("Unknown event type %s" % str(packet_type))
@@ -126,7 +137,12 @@ class TrafficGenerator (object):
     if send_to_self:
       (dst_host, dst_interface) = (src_host, src_interface)
 
-    packet = self.icmp_ping_ip(src_interface, dst_IP,
+    if force_request is not None:
+      packet = self.icmp_ping_ip(src_interface, dst_IP,
+                                                  payload_content=payload_content,
+                                                  force_request=force_request)
+    else:
+      packet = self.icmp_ping_ip(src_interface, dst_IP,
                                                   payload_content=payload_content)
     def send():
       src_host.send(src_interface, packet)

@@ -33,7 +33,7 @@ import pox.openflow.libopenflow_01 as of
 from sts.openflow_buffer import OpenFlowBuffer
 
 from sts.util.tabular import Tabular
-from sts.util.convenience import base64_encode
+from sts.util.convenience import base64_encode_raw
 
 from sts.entities.base import DirectedLinkAbstractClass
 from sts.entities.base import BiDirectionalLinkAbstractClass
@@ -48,6 +48,7 @@ import logging
 import pickle
 import random
 import time
+import copy
 
 
 class TracingOFConnection(OFConnection, EventMixin):
@@ -82,7 +83,8 @@ class TracingOFConnection(OFConnection, EventMixin):
       if msg_obj is None:
         break
       else:
-        self.raiseEvent(TraceSwitchMessageRx(msg_obj, base64_encode(message)))
+        message = message[0:packet_length]
+        self.raiseEvent(TraceSwitchMessageRx(msg_obj, base64_encode_raw(message)))
 
       io_worker.consume_receive_buf(packet_length)
 
@@ -186,6 +188,9 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     """ Process a flow mod sent to the switch
     @return a tuple (added|modified|removed, [list of affected entries])
     """
+#     selfcopy = TracingSwitchFlowTable() #TODO(jm): FIXME, this is most certaintly not needed anymore
+#     for entry in self.table:
+#       selfcopy.table.add_entry(entry)
     self.raiseEvent(TraceSwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
     #super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
     # TODO(jm): I *think* this is fixed now. Remove once we are sure.
@@ -265,7 +270,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         packet: instance of ethernet
         out_port, in_port: the integer port number """
     assert_type("packet", packet, ethernet, none_ok=False)
-    def real_send(port_no, allow_in_port=True):
+    def real_send(port_no, allow_in_port=False):
       if type(port_no) == ofp_phy_port:
         port_no = port_no.port_no
       # The OF spec states that packets should not be forwarded out their
@@ -352,7 +357,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       return
     (packet, in_port) = self.packet_buffer[buffer_id]
     
-    self.raiseEvent(TraceSwitchBufferGet(self.dpid, packet, in_port, buffer_id))
+    self.raiseEvent(TraceSwitchBufferGet(self.dpid, packet, in_port, buffer_id+1))
     self._process_actions_for_packet(actions, packet, in_port)
     self.packet_buffer[buffer_id] = None
     

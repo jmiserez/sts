@@ -136,6 +136,13 @@ class ExitCode(object):
   def __init__(self, exit_code):
     self.exit_code = exit_code
 
+def base64_encode_raw(packet):
+  '''
+  Calling pack() on a Openflow message might modify/add an XID.
+  '''
+  # base 64 occasionally adds extraneous newlines: bit.ly/aRTmNu
+  return base64.b64encode(packet).replace("\n", "")
+
 def base64_encode(packet):
   if hasattr(packet, "pack"):
     packet = packet.pack()
@@ -241,13 +248,13 @@ def get_json_attr(obj):
     return obj
 
 def base64_encode_flow(flow):
-  return base64_encode(flow.to_flow_mod())
+  return None if flow is None else base64_encode(flow.to_flow_mod())
 
 def base64_encode_flow_list(flows):
-  return [base64_encode_flow(entry) for entry in flows]
+  return None if flows is None else [base64_encode_flow(entry) for entry in flows]
 
 def base64_encode_flow_table(flow_table):
-  return base64_encode_flow_list(flow_table.table)
+  return None if flow_table is None else base64_encode_flow_list(flow_table.table)
 
 def get_port_no(obj):
   """

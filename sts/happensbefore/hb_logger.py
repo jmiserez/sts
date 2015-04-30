@@ -1,4 +1,5 @@
 from _collections import defaultdict
+from threading import RLock
 import logging
 
 from pox.lib.revent.revent import EventMixin
@@ -34,6 +35,7 @@ class HappensBeforeLogger(EventMixin):
   
   def __init__(self, patch_panel):
     self.log = logging.getLogger("hb_logger")
+    self.reentrantlock = RLock()
 
     self.hb_graph = None
 
@@ -44,6 +46,7 @@ class HappensBeforeLogger(EventMixin):
     # State for linking of events
     self.pids = ObjectRegistry() # packet obj -> pid
     self.mids = ObjectRegistry() # message obj -> mid
+    self.buffer_pids = defaultdict(dict) # dpid -> [buffer_id -> pid]
     self.started_switch_event = dict() # dpid -> event
     self.started_host_event = dict() # hid -> event
     self.new_switch_events = defaultdict(list)
@@ -57,6 +60,7 @@ class HappensBeforeLogger(EventMixin):
     self.unmatched_HbMessageHandle = defaultdict(list) # dpid -> []
     
     self.unmatched_controller_lines = [] # lines
+    self.unmatched_controller_lines_warned = False
     self.controller_packetin_to_mid_out = dict() # (swid, b64msg) -> mid_out
     
     self.swid_to_dpid = dict()
@@ -64,7 +68,7 @@ class HappensBeforeLogger(EventMixin):
     
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
-    prefixThreadOutputMatcher.addListener(PrefixThreadLineMatch, self._handle_line_match)
+    prefixThreadOutputMatcher.addListener(PrefixThreadLineMatch, self.handle_no_exceptions)
 
     self._subscribe_to_PatchPanel(patch_panel)
     
@@ -88,7 +92,7 @@ class HappensBeforeLogger(EventMixin):
     self.output = None
   
   def write(self,msg):
-#     self.log.info(msg)
+    self.log.info(msg)
     if not self.output:
       raise Exception("Not opened -- call HappensBeforeLogger.open()")
     if not self.output.closed:
@@ -100,35 +104,37 @@ class HappensBeforeLogger(EventMixin):
   def handle_no_exceptions(self, event):
     """ Handle event, catch exceptions before they go back to STS/POX
     """
-    try:
-      if self.output is not None:
-        event_handlers = {
-            TraceHostPacketHandleBegin: self.handle_host_ph_begin,
-            TraceHostPacketHandleEnd: self.handle_host_ph_end,
-            TraceHostPacketSend: self.handle_host_ps,
-            TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
-            TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
-            TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
-            TraceSwitchMessageHandleEnd: self.handle_switch_mh_end,
-            TraceSwitchMessageSend: self.handle_switch_ms,
-            TraceSwitchPacketSend: self.handle_switch_ps,
-            TraceSwitchMessageRx: self.handle_switch_rx_wire,
-            TraceSwitchFlowTableRead: self.handle_switch_table_read,
-            TraceSwitchFlowTableWrite: self.handle_switch_table_write,
-            TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
-            TraceSwitchBufferPut: self.handle_switch_buf_put,
-            TraceSwitchBufferGet: self.handle_switch_buf_get,
-            TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
-            TraceSwitchPacketUpdateEnd: self.handle_switch_pu_end
-        }
-        handler = None
-        if type(event) in event_handlers:
-          handler = event_handlers[type(event)]
-          handler(event)
-    except Exception as e:
-      # NOTE JM: do not remove, otherwise exceptions get swallowed by STS
-      import traceback
-      traceback.print_exc()
+    with self.reentrantlock: # this is possibly multithreaded
+      try:
+        if self.output is not None:
+          event_handlers = {
+              TraceHostPacketHandleBegin: self.handle_host_ph_begin,
+              TraceHostPacketHandleEnd: self.handle_host_ph_end,
+              TraceHostPacketSend: self.handle_host_ps,
+              TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
+              TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
+              TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
+              TraceSwitchMessageHandleEnd: self.handle_switch_mh_end,
+              TraceSwitchMessageSend: self.handle_switch_ms,
+              TraceSwitchPacketSend: self.handle_switch_ps,
+              TraceSwitchMessageRx: self.handle_switch_rx_wire,
+              TraceSwitchFlowTableRead: self.handle_switch_table_read,
+              TraceSwitchFlowTableWrite: self.handle_switch_table_write,
+              TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
+              TraceSwitchBufferPut: self.handle_switch_buf_put,
+              TraceSwitchBufferGet: self.handle_switch_buf_get,
+              TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
+              TraceSwitchPacketUpdateEnd: self.handle_switch_pu_end,
+              PrefixThreadLineMatch: self._handle_line_match
+          }
+          handler = None
+          if type(event) in event_handlers:
+            handler = event_handlers[type(event)]
+            handler(event)
+      except Exception as e:
+        # NOTE JM: do not remove, otherwise exceptions get swallowed by STS
+        import traceback
+        traceback.print_exc()
   
   def subscribe_to_DeferredOFConnection(self, connection):
     connection.addListener(TraceSwitchMessageSend, self.handle_no_exceptions)
@@ -163,11 +169,8 @@ class HappensBeforeLogger(EventMixin):
   #
   
   def start_switch_event(self,dpid,event):
-    for i in self.new_switch_events[dpid]:
-      self.write_event_to_trace(i)
-    del self.new_switch_events[dpid]
-    assert event.dpid not in self.started_switch_event 
-    
+    assert dpid not in self.started_switch_event
+    assert dpid not in self.new_switch_events[dpid]
     self.started_switch_event[event.dpid] = event
   
   def finish_switch_event(self, dpid):
@@ -185,6 +188,12 @@ class HappensBeforeLogger(EventMixin):
   def add_operation_to_switch_event(self, event):
     if self.is_switch_event_started(event.dpid):
       self.started_switch_event[event.dpid].operations.append(event)
+      if isinstance(self.started_switch_event[event.dpid], HbMessageHandle):
+        # (add extra fields for special case HbMessageHandle: through OFPP_TABLE)
+        if hasattr(event, 'packet'):
+          self.started_switch_event[event.dpid].packet = event.packet
+        if hasattr(event, 'in_port'):
+          self.started_switch_event[event.dpid].in_port = event.in_port
     else:
       # Ignore this operation, as there is no started switch event yet.
       self.log.info("Ignoring switch operation as there is no associated begin event.")
@@ -260,7 +269,7 @@ class HappensBeforeLogger(EventMixin):
       self.start_switch_event(event.dpid, begin_event)
       
       # match with controller instrumentation
-      self.unmatched_HbMessageHandle[event.dpid].append((mid_in, base64_encode(event.msg)))
+      self.unmatched_HbMessageHandle[event.dpid].insert(0, (mid_in, base64_encode(event.msg))) # prepend
 #       print self._get_rxbase64(base64_encode(event.msg))
       self.rematch_unmatched_lines()
   
@@ -281,7 +290,7 @@ class HappensBeforeLogger(EventMixin):
     # add base64 encoded message to list for controller instrumentation
     # this will always come before the switch has had a chance to write out something, 
     # so no need to check anything here
-    self.unmatched_HbMessageSend[event.dpid].append((mid_out, base64_encode(event.msg)))
+    self.unmatched_HbMessageSend[event.dpid].insert(0, (mid_out, base64_encode(event.msg))) #prepend
 #     print base64_encode(event.msg)
     self.rematch_unmatched_lines()
   
@@ -306,21 +315,37 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_buf_put(self, event):
-    if self.is_switch_event_started(event.dpid):
-        assert isinstance(self.started_switch_event[event.dpid], HbPacketHandle)
-        # the tag should still be the same, as no successor events should have been added yet
-        assert self.pids.get_tag(event.packet) == self.started_switch_event[event.dpid].pid_in
-        # generate pid_out for buffer write
-        pid_out = self.pids.new_tag(event.packet) # tag changes here
-        self.started_switch_event[event.dpid].pid_out.append(pid_out)
+    assert self.is_switch_event_started(event.dpid)
+    BufferTypes = (HbPacketHandle, HbMessageHandle) 
+    assert isinstance(self.started_switch_event[event.dpid], BufferTypes)
+    if isinstance(self.started_switch_event[event.dpid], HbMessageHandle):
+      print "Warning: Possible infinite recursion in switch, due to OFPP_TABLE PacketOut."
+      # (add extra fields for special case HbMessageHandle: through OFPP_TABLE)
+      if hasattr(event, 'packet'):
+        self.started_switch_event[event.dpid].packet = event.packet
+      if hasattr(event, 'in_port'):
+        self.started_switch_event[event.dpid].in_port = event.in_port
+    # the tag should still be the same, as no successor events should have been added yet
+    assert self.pids.get_tag(event.packet) == self.started_switch_event[event.dpid].pid_in
+    # generate pid_out for buffer write
+    pid_out = self.pids.new_tag(event.packet) # tag changes here
+    self.started_switch_event[event.dpid].pid_out.append(pid_out)
+    self.buffer_pids[event.dpid][event.buffer_id] = pid_out
     self.add_operation_to_switch_event(event)
     
   def handle_switch_buf_get(self, event):
     if self.is_switch_event_started(event.dpid):
       assert isinstance(self.started_switch_event[event.dpid], HbMessageHandle)
       # update the pid_in of the current event using the packet from the buffer
-      pid_in = self.pids.get_tag(event.packet)
-      self.started_switch_event[event.dpid].pid_in = pid_in
+#       pid_in = self.pids.get_tag(event.packet)
+      # NOTE: do NOT use the current tag of the packet, as it might have already been resent. Instead, read
+      #       the pid_out tag from the HbPacketHandle event.
+      # For this, we need to check the list of all tags currently stored in buffers.
+      assert event.buffer_id in self.buffer_pids[event.dpid]
+      self.started_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
+      
+      # NOTE: deleting buffer entries is not correct in all cases, so don't do it.
+      # del self.buffer_pids[event.dpid][event.buffer_id]
     self.add_operation_to_switch_event(event)
   
   #
@@ -375,43 +400,48 @@ class HappensBeforeLogger(EventMixin):
   def _get_rxbase64(self, msg):
     """
     Get the message as it was when it was received on the wire, without changes.
+    This is actually necessary, as the raw message is often modified as a side
+    effect of parsing the message.
+    This is especially the case where different Openflow libraries are used
+    (e.g. when using a Floodlight controller).
     """
     if msg in self.msg_to_rxbase64:
       return self.msg_to_rxbase64[msg]
     else:
-      return msg
+      assert False
+    return msg
       
   def _handle_line_match(self, event):
-    line = event.line
-    match = event.match
-    
-    self.log.info("Read data from controller: "+line)
-    
-    # Format: match-[data1:data2:....]
-    # find end of match
-    match_end = line.find(match) + len(match)
-    rest_of_line = line[match_end:]
-    
-    # find start of data
-    data_start = rest_of_line.find('[') + 1
-    data_end = rest_of_line.find(']')
-    
-    data_str = rest_of_line[data_start:data_end]
-    data = data_str.split(':')
-    
-    # parse data
-    if match == self.controller_hb_msg_in:
-      swid = data[0]
-      b64msg = data[1]
-      self.unmatched_controller_lines.append((swid, b64msg))
+      line = event.line
+      match = event.match
       
-    if match == self.controller_hb_msg_out:
-      in_swid = data[0]
-      in_b64msg = data[1]
-      out_swid = data[2]
-      out_b64msg = data[3]
-      self.unmatched_controller_lines.append((in_swid, in_b64msg, out_swid, out_b64msg))
-    self.rematch_unmatched_lines()
+      self.log.info("Controller instrumentation: "+line)
+      
+      # Format: match-[data1:data2:....]
+      # find end of match
+      match_end = line.find(match) + len(match)
+      rest_of_line = line[match_end:]
+      
+      # find start of data
+      data_start = rest_of_line.find('[') + 1
+      data_end = rest_of_line.find(']')
+      
+      data_str = rest_of_line[data_start:data_end]
+      data = data_str.split(':')
+      
+      # parse data
+      if match == self.controller_hb_msg_in:
+        swid = data[0]
+        b64msg = data[1]
+        self.unmatched_controller_lines.append((swid, b64msg))
+        
+      if match == self.controller_hb_msg_out:
+        in_swid = data[0]
+        in_b64msg = data[1]
+        out_swid = data[2]
+        out_b64msg = data[3]
+        self.unmatched_controller_lines.append((in_swid, in_b64msg, out_swid, out_b64msg))
+      self.rematch_unmatched_lines()
     
   def add_controller_hb_edge(self, mid_out, mid_in):
     """
@@ -438,10 +468,9 @@ class HappensBeforeLogger(EventMixin):
      HbMessageHandle(mid_in)
     """
     # Just simulate each line being read again
-    
     lines_to_remove = []
     
-    for line in self.unmatched_controller_lines: # copy of list
+    for line in self.unmatched_controller_lines:
       if len(line) == 2:
         in_swid, in_msg = line
         # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
@@ -450,23 +479,25 @@ class HappensBeforeLogger(EventMixin):
           dpid = self.swid_to_dpid[in_swid]
           assert self.dpid_to_swid[dpid] == in_swid
 
+        done = False
         for k,vlist in self.unmatched_HbMessageSend.iteritems():
-          done = False
           if done:
             break
           to_remove_vlist = []
-          for v in reversed(vlist): # TODO(jm): remove HACK
+          for v in vlist: # iterate from newest to oldest
             if done:
               break
             # k: dpid, v: (mid_out, base64_encode(event.msg))
             v_mid_out, v_msg = v
-            if v_msg[4] == in_msg[4]: # TODO(jm): remove HACK
+            if v_msg == in_msg:
+#               print "Matched a MessageIn log line."
               # messages match, check if dpid matches or assign it
               if k not in self.dpid_to_swid and dpid is None:
                 # assign mapping
                 dpid = k
                 self.swid_to_dpid[in_swid] = dpid
                 self.dpid_to_swid[dpid] = in_swid
+                print "First seen: Matched controller swid " + str(in_swid) + " <-> dpid " + str(dpid) + "."
                 
               if dpid == k:
                 # match
@@ -476,13 +507,16 @@ class HappensBeforeLogger(EventMixin):
                 done = True
           # cleanup
           for i in to_remove_vlist:
+            assert i in vlist
             vlist.remove(i)
-    
+          to_remove_vlist = []
+                    
     for x in lines_to_remove:
+      assert x in self.unmatched_controller_lines
       self.unmatched_controller_lines.remove(x)
     lines_to_remove = []
             
-    for line in self.unmatched_controller_lines: # copy of list
+    for line in self.unmatched_controller_lines:
       if len(line) == 4:
         in_swid, in_msg, out_swid, out_msg = line
         # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
@@ -497,33 +531,77 @@ class HappensBeforeLogger(EventMixin):
           if out_swid in self.swid_to_dpid:
             dpid = self.swid_to_dpid[out_swid]
             assert self.dpid_to_swid[dpid] == out_swid
-  
+          
+          done = False
           for k,vlist in self.unmatched_HbMessageHandle.items():
-            done = False
             if done:
               break
             to_remove_vlist = []
-            for v in reversed(vlist): # TODO(jm): remove HACK
+            for v in vlist: # iterate from newest to oldest
               if done:
                 break
               # k: dpid, v: (mid_in, base64_encode(event.msg))
               v_mid_in, v_msg = v
-              if self._get_rxbase64(v_msg)[4] == out_msg[4]: # TODO(jm): HACK, get rid of it
+              if self._get_rxbase64(v_msg) == out_msg:
+#                 print "Matched a MessageOut log line."
                 # messages match, check if dpid matches or assign it
                 if k not in self.dpid_to_swid and dpid is None:
                   # assign mapping
                   dpid = k
                   self.swid_to_dpid[out_swid] = dpid
                   self.dpid_to_swid[dpid] = out_swid
-                  
+                  print "First seen: Matched controller swid " + str(in_swid) + " <-> dpid " + str(dpid) + "."
+
                 if dpid == k:
                   # match
                   self.add_controller_hb_edge(mid_out, v_mid_in)
                   lines_to_remove.append(line)
                   to_remove_vlist.append(v)
                   done = True
+              #TODO(jm): remove debug code    
+#               else:
+#                 if self.unmatched_controller_lines_warned:
+#                   # print some debug output
+#                   print self._get_rxbase64(v_msg)
+#                   print  out_msg
+#                   self.diff_flow_mods(self._get_rxbase64(v_msg), out_msg)
             # cleanup
             for i in to_remove_vlist:
+              assert i in vlist
               vlist.remove(i)
+            to_remove_vlist = []
     for x in lines_to_remove:
+      assert x in self.unmatched_controller_lines
       self.unmatched_controller_lines.remove(x)
+    lines_to_remove = []
+    if len(self.unmatched_controller_lines) > 0:
+      print str(len(self.unmatched_controller_lines)) + ' unmatched log lines remain, waiting for events.'
+      self.unmatched_controller_lines_warned = True
+    else:
+      if self.unmatched_controller_lines_warned:
+        self.unmatched_controller_lines_warned = False
+        print '0 unmatched log lines remain. Matched all remaining log lines.'
+
+#       print 'If this message is seen often, this might indicate a problem with the controller'
+#       print '  instrumentation: The controller instrumentation might not be writing out the raw'
+#       print '  Openflow message bytes as they are received on the wire.'
+#       print '  This can happen e.g. in Floodlight if the message object is modified via'
+#       print '  references after the write is issued but before the queue is flushed.'
+
+  def diff_flow_mods(self, b1, b2):
+    """
+    For debugging. Print out both flow mods given in base64.
+    """
+    import base64
+    def decode_flow_mod(data):
+      if data is None:
+        return None
+      bits = base64.b64decode(data)
+      fm = ofp_flow_mod()
+      fm.unpack(bits) # NOTE: unpack IS in-situ for ofp_flow_mod() type
+      return fm
+    
+    fm1 = decode_flow_mod(b1)
+    fm2 = decode_flow_mod(b2)
+    print str(fm1)
+    print str(fm2)

@@ -222,7 +222,10 @@ class SimulationConfig(object):
     if self._hb_logger_class is not None:
       # connect it to switches, hosts, and (later) connections
       hb_logger = self._hb_logger_class(patch_panel)
-      hb_logger.open(results_dir)
+      if self._hb_logger_params is not None:
+        hb_logger.open(self._hb_logger_params)
+      else:
+        hb_logger.open(results_dir)
     dataplane_trace = None
     if self._dataplane_trace_path is not None:
       dataplane_trace = Trace(self._dataplane_trace_path, topology)

@@ -61,6 +61,8 @@ class HbMessageHandle(HbEvent):
     self.mid_out = [] if mid_out is None else [mid_out]
 
     self.operations = [] if operations is None else [operations]
+#     self.packet = None # possible to get through OFPP_TABLE/buffer put
+#     self.in_port = None # possible to get through OFPP_TABLE/buffer put
 
     self.dpid = dpid # possibly needed to match with controller instrumentation
     self.controller_id = controller_id # possibly needed to match with controller instrumentation

@@ -15,22 +15,36 @@
 
 import sys
 
-BEGIN = '\033[1;'
-END = '\033[1;m'
+# BEGIN = '\033[1;'
+# END = '\033[1;m'
+
+BEGIN = ''
+END = ''
+
+# class color(object):
+#   GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num : BEGIN + str(num) + "m", range(30, 39))
+#   B_GRAY, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_WHITE, B_CRIMSON =  map(lambda num: BEGIN + str(num) + "m", range(40, 49))
+#   NORMAL = END
 
 class color(object):
-  GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num : BEGIN + str(num) + "m", range(30, 39))
-  B_GRAY, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_WHITE, B_CRIMSON =  map(lambda num: BEGIN + str(num) + "m", range(40, 49))
+  GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num : "", range(30, 39))
+  B_GRAY, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_WHITE, B_CRIMSON =  map(lambda num: "", range(40, 49))
   NORMAL = END
 
 class msg():
   global_io_master = None
 
-  BEGIN = '\033[1;'
-  END = '\033[1;m'
+#   BEGIN = '\033[1;'
+#   END = '\033[1;m'
+  
+  BEGIN = ''
+  END = ''
 
-  GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num: str(num) + "m", range(30, 39))
-  B_BLACK, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_GRAY, B_CRIMSON =  map(lambda num: str(num) + "m", range(40, 49))
+#   GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num: str(num) + "m", range(30, 39))
+#   B_BLACK, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_GRAY, B_CRIMSON =  map(lambda num: str(num) + "m", range(40, 49))
+  
+  GRAY, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, CRIMSON = map(lambda num: "", range(30, 39))
+  B_BLACK, B_RED, B_GREEN, B_YELLOW, B_BLUE, B_MAGENTA, B_CYAN, B_GRAY, B_CRIMSON =  map(lambda num: "", range(40, 49))
 
   @staticmethod
   def interactive(message):

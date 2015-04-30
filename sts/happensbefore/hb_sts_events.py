@@ -12,6 +12,7 @@ class TraceSwitchEvent(JsonEvent):
   __metaclass__ = AttributeCombiningMetaclass
   _attr_combining_metaclass_args = ["_to_json_attrs"]
   
+  #TODO(jm): clean up/remove unused ones, check which ones are actually used in hb_graph and hb_events and remove the ones that are not used.
   _to_json_attrs = ['dpid',
                     'controller_id', # socket.getpeername(), NOT the STS cid
                     'hid',
@@ -20,8 +21,9 @@ class TraceSwitchEvent(JsonEvent):
                     ('out_port', get_port_no),
                     'buffer_id',
                     ('msg', base64_encode),
-                    ('flow_table', base64_encode_flow_table),
-                    ('flow_mod', base64_encode),
+                    'flow_table', #encoded immediately
+                    'flow_mod', #encoded immediately
+                    'removed', #encoded immediately # TODO(jm): add this to race detector
                     ('expired_flows', base64_encode_flow_list),
                     ('matched_flow', base64_encode_flow),
                     ('touched_flow', base64_encode_flow),
@@ -80,7 +82,8 @@ class TraceSwitchFlowTableRead(TraceSwitchEvent):
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
-    self.flow_table = flow_table
+    self.flow_table = base64_encode_flow_table(flow_table)
+    self.flow_mod = base64_encode_flow(entry)
     self.entry = entry
     self.touch_bytes = touch_bytes
     self.touch_now = touch_now
@@ -89,15 +92,16 @@ class TraceSwitchFlowTableWrite(TraceSwitchEvent):
   def __init__(self, dpid, flow_table, flow_mod):
     TraceSwitchEvent.__init__(self)
     self.dpid = dpid
-    self.flow_table = flow_table
-    self.flow_mod = flow_mod
+    self.flow_table = base64_encode_flow_table(flow_table)
+    self.flow_mod = base64_encode(flow_mod)
     
 class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
   def __init__(self, dpid, flow_table, removed):
     TraceSwitchEvent.__init__(self)
     self.dpid = dpid
-    self.flow_table = flow_table
-    self.removed = removed
+    self.flow_table = base64_encode_flow_table(flow_table)
+    self.flow_mod = base64_encode_flow(removed)
+    self.removed = base64_encode_flow(removed)
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, buffer_id):
