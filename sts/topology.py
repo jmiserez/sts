@@ -15,6 +15,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from docutils.nodes import row
 
 '''
 If the user does not specify a topology to test on, use by default a full mesh
@@ -1168,10 +1169,17 @@ class GridTopology(Topology):
         switches_grid[row].append(switches[i])
         i += 1
 
-    edge_switches = [switch for switch in [s[0] for s in switches_grid]]
-    edge_switches += [switch for switch in [s[-1] for s in switches_grid]]
-    edge_switches += [switch for switch in switches_grid[0][1:-1]]
-    edge_switches += [switch for switch in switches_grid[-1][1:-1]]
+    # all edge switches get hosts
+#     edge_switches = [switch for switch in [s[0] for s in switches_grid]]
+#     edge_switches += [switch for switch in [s[-1] for s in switches_grid]]
+#     edge_switches += [switch for switch in switches_grid[0][1:-1]]
+#     edge_switches += [switch for switch in switches_grid[-1][1:-1]]
+
+    # only top left and bottom right switch get a host
+    #edge_switches = [switches_grid[0][0], switches_grid[1][-1]]
+    
+    # all switches get a host
+    edge_switches = switches
 
     print "Grid"
     for x in switches_grid:
@@ -1211,40 +1219,171 @@ class GridTopology(Topology):
       switches = dpid2switch.values()
       # Access links to hosts are already claimed, all other internal links
       # are not yet claimed
-      switch2unclaimed_ports = { switch : filter(lambda p: p not in port2access_link,
-                                                 switch.ports.values())
+#       switch2unclaimed_ports = { switch : filter(lambda p: p not in port2access_link,
+#                                                  switch.ports.values())
+#                                  for switch in switches }
+      
+      # TODO(jm): arbitrary and hacky
+      switch2left_port = { switch : [sorted(switch.ports.keys())[0]]
                                  for switch in switches }
+      switch2right_port = { switch : [sorted(switch.ports.keys())[1]]
+                                 for switch in switches }
+      switch2top_port = { switch : [sorted(switch.ports.keys())[2]]
+                                 for switch in switches }
+      switch2bottom_port = { switch : [sorted(switch.ports.keys())[3]]
+                                 for switch in switches }
+      switch2diaglr_port = { switch : [sorted(switch.ports.keys())[4]]
+                                 for switch in switches }
+      switch2diaglrinv_port = { switch : [sorted(switch.ports.keys())[5]]
+                                 for switch in switches }
+      
       port2internal_link = {}
 
       for row in range(len(switches_grid)):
         for column in range(len(switches_grid[row])):
-          right = bottom = None
+          right = bottom = diaglr = None
           switch = switches_grid[row][column]
           if row != len(switches_grid) - 1:
             bottom = switches_grid[row + 1][column]
           if column != len(switches_grid[row]) -1:
             right = switches_grid[row][column + 1]
+          if right is not None and bottom is not None:
+            diaglr = switches_grid[row + 1][column + 1]
           if bottom is not None:
-            switch_port_bottom = switch2unclaimed_ports[switch].pop()
-            bottom_port_top = switch2unclaimed_ports[bottom].pop()
-            link_s_bottom = Link(switch, switch_port_bottom, bottom, bottom_port_top)
-            port2internal_link[switch_port_bottom] = link_s_bottom
-            # In the opposite direction
-            switch_port_bottom = switch2unclaimed_ports[switch].pop()
-            bottom_port_top = switch2unclaimed_ports[bottom].pop()
-            link_bottom_s = Link(bottom, bottom_port_top, switch, switch_port_bottom)
-            port2internal_link[bottom_port_top] = link_bottom_s
-
+            switch_i = switch
+            switch_j = bottom
+            switch_i_port = switch.ports[switch2bottom_port[switch].pop()]
+            switch_j_port = bottom.ports[switch2top_port[bottom].pop()]
+            link_i2j = Link(switch_i, switch_i_port, switch_j, switch_j_port)
+            link_j2i = link_i2j.reversed_link()
+            port2internal_link[switch_i_port] = link_i2j
+            port2internal_link[switch_j_port] = link_j2i
           if right is not None:
-            switch_port_right = switch2unclaimed_ports[switch].pop()
-            right_port_left = switch2unclaimed_ports[right].pop()
-            link_s_right = Link(switch, switch_port_right, right, right_port_left)
-            port2internal_link[switch_port_right] = link_s_right
-            # In the opposite direction
-            switch_port_right = switch2unclaimed_ports[switch].pop()
-            right_port_left = switch2unclaimed_ports[right].pop()
-            link_right_s = Link(right, right_port_left, switch, switch_port_right)
-            port2internal_link[right_port_left] = link_right_s
+            switch_i = switch
+            switch_j = right
+            switch_i_port = switch.ports[switch2right_port[switch].pop()]
+            switch_j_port = right.ports[switch2left_port[right].pop()]
+            link_i2j = Link(switch_i, switch_i_port, switch_j, switch_j_port)
+            link_j2i = link_i2j.reversed_link()
+            port2internal_link[switch_i_port] = link_i2j
+            port2internal_link[switch_j_port] = link_j2i
+          if diaglr is not None:
+            switch_i = switch
+            switch_j = diaglr
+            switch_i_port = switch.ports[switch2diaglr_port[switch].pop()]
+            switch_j_port = diaglr.ports[switch2diaglrinv_port[diaglr].pop()]
+            link_i2j = Link(switch_i, switch_i_port, switch_j, switch_j_port)
+            link_j2i = link_i2j.reversed_link()
+            port2internal_link[switch_i_port] = link_i2j
+            port2internal_link[switch_j_port] = link_j2i
+
+      self.port2internal_link = port2internal_link
+
+      LinkTracker.__init__(self, dpid2switch, port2access_link,
+                           interface2access_link, port2internal_link)
+      
+class BinaryTreeTopology(Topology):
+  def __init__(self, num_levels=1, create_io_worker=None, netns_hosts=False,
+               gui=False, ip_format_str="123.123.%d.%d"):
+    '''
+    Populate the topology as a grid of switches, connect the switches
+    to the controllers
+    '''
+    Topology.__init__(self, create_io_worker=create_io_worker, gui=gui)
+
+    num_switches = 2**(num_levels+1)-1 #2^(k+1)-1 (0 levels is 1 node)
+    
+    # Initialize switches
+    switches = []
+    switches.append(create_switch(1, 3))
+    i = 1
+    while i < num_switches//2:
+      switches.append(create_switch(i+1, 4))
+      i += 1
+    while i < num_switches:
+      switches.append(create_switch(i+1, 2))
+      i += 1
+          
+    self._populate_dpid2switch(switches)
+        
+#     switches_tree = []
+#     i = 0
+#     for row in range(num_levels+1):
+#       for column in range(2**row):
+#         if column == 0:
+#           switches_tree.append([])
+#         switches_tree[row].append(switches[i])
+#         i += 1
+
+    if netns_hosts:
+      host_access_link_pairs = [ create_netns_host(create_io_worker, switch)
+                                 for switch in switches ]
+    else:
+      host_access_link_pairs = [ create_host(switch, ip_format_str=ip_format_str) for switch in switches]
+
+
+    #print host_access_link_pairs
+    access_link_list_list = []
+    for host, access_link_list in host_access_link_pairs:
+      self.hid2host[host.hid] = host
+      access_link_list_list.append(access_link_list)
+
+    # this is python's .flatten:
+    access_links = list(itertools.chain.from_iterable(access_link_list_list))
+
+    # grab a grid patch panel to wire up these guys
+    self.link_tracker = BinaryTreeTopology.TreeLinks(self.dpid2switch, access_links)
+    self.get_connected_port = self.link_tracker
+
+    if self.gui is not None:
+      self.gui.launch()
+
+  class TreeLinks(LinkTracker):
+    def __init__(self, dpid2switch, access_links=[]):
+      port2access_link = { access_link.switch_port: access_link
+                           for access_link in access_links }
+      interface2access_link = { access_link.interface: access_link
+                                for access_link in access_links }
+
+      switches = dpid2switch.values()
+
+      switch2unclaimed_ports = { switch : filter(lambda p: p not in port2access_link,
+                                                 switch.ports.values())
+                                 for switch in switches }
+      
+      port2internal_link = {}
+
+#
+#                  0            level 0
+#            1          2       level 1
+#        3      4     5     6   level 2
+#      7   8  9  10 11 12 13 14 level 3
+
+      last_row_start = len(switches)//2
+      for s in range(len(switches)):
+        left = right = None
+        switch = switches[s]
+        if s < last_row_start:
+          left = switches[s*2 + 1]
+          right = switches[s*2 + 2]
+        if left is not None:
+          switch_i = switch
+          switch_j = left
+          switch_i_port = switch2unclaimed_ports[switch].pop()
+          switch_j_port = switch2unclaimed_ports[left].pop()
+          link_i2j = Link(switch_i, switch_i_port, switch_j, switch_j_port)
+          link_j2i = link_i2j.reversed_link()
+          port2internal_link[switch_i_port] = link_i2j
+          port2internal_link[switch_j_port] = link_j2i
+        if right is not None:
+          switch_i = switch
+          switch_j = right
+          switch_i_port = switch2unclaimed_ports[switch].pop()
+          switch_j_port = switch2unclaimed_ports[right].pop()
+          link_i2j = Link(switch_i, switch_i_port, switch_j, switch_j_port)
+          link_j2i = link_i2j.reversed_link()
+          port2internal_link[switch_i_port] = link_i2j
+          port2internal_link[switch_j_port] = link_j2i
 
       self.port2internal_link = port2internal_link
 

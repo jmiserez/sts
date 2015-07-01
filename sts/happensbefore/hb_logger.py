@@ -334,6 +334,11 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_buf_get(self, event):
+    #TODO(jm): In most (all?) specific cases this is correct. In fact, this can even help to capture
+    #           packets traversing a switch when the controller instrumentation fails or is not precise enough.
+    #           E.g. in a distributed controller if one thread processes the PACKET_IN and then another thread
+    #           creates a PACKET_OUT to send the packet out from the buffer. The current controller instrumentation
+    #           does not capture this, so adding this edge might help in that specific case.
     if self.is_switch_event_started(event.dpid):
       assert isinstance(self.started_switch_event[event.dpid], HbMessageHandle)
       # update the pid_in of the current event using the packet from the buffer
