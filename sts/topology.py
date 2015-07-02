@@ -1282,45 +1282,62 @@ class GridTopology(Topology):
       LinkTracker.__init__(self, dpid2switch, port2access_link,
                            interface2access_link, port2internal_link)
       
-class BinaryTreeTopology(Topology):
+class BinaryLeafTreeTopology(Topology):
   def __init__(self, num_levels=1, create_io_worker=None, netns_hosts=False,
                gui=False, ip_format_str="123.123.%d.%d"):
     '''
     Populate the topology as a grid of switches, connect the switches
     to the controllers
+    
+    For reference, mininet builds tree as follows (depth=2, fanout=2):
+    
+    *** Adding hosts:
+    h1 h2 h3 h4 
+    *** Adding switches:
+    s1 s2 s3 
+    *** Adding links:
+    (s1, s2) (s1, s3) (s2, h1) (s2, h2) (s3, h3) (s3, h4) 
+         
+         s1
+        /  \
+    h1-s2  s3-h3
+    h2-      -h4
+    
+    
     '''
     Topology.__init__(self, create_io_worker=create_io_worker, gui=gui)
 
     num_switches = 2**(num_levels+1)-1 #2^(k+1)-1 (0 levels is 1 node)
+    num_hosts = 0
     
     # Initialize switches
     switches = []
+    host_access_link_pairs = []
+    # root node
     switches.append(create_switch(1, 3))
     i = 1
     while i < num_switches//2:
+      # inner nodes
       switches.append(create_switch(i+1, 4))
       i += 1
     while i < num_switches:
-      switches.append(create_switch(i+1, 2))
+      # leaf nodes
+      leaf_switch = create_switch(i+1, 3)
+      switches.append(leaf_switch)
+      num_hosts += 2
+      def get_last_port(sw):
+        return sw.ports[sorted(sw.ports.keys())[-1]]
+      def get_second_last_port(sw):
+        return sw.ports[sorted(sw.ports.keys())[-2]]
+      if netns_hosts:
+        host_access_link_pairs.append(create_netns_host(create_io_worker, leaf_switch, get_switch_port=get_last_port))
+        host_access_link_pairs.append(create_netns_host(create_io_worker, leaf_switch, get_switch_port=get_second_last_port))
+      else:
+        host_access_link_pairs.append(create_host(leaf_switch, ip_format_str=ip_format_str, get_switch_port=get_last_port))
+        host_access_link_pairs.append(create_host(leaf_switch, ip_format_str=ip_format_str, get_switch_port=get_second_last_port))
       i += 1
           
     self._populate_dpid2switch(switches)
-        
-#     switches_tree = []
-#     i = 0
-#     for row in range(num_levels+1):
-#       for column in range(2**row):
-#         if column == 0:
-#           switches_tree.append([])
-#         switches_tree[row].append(switches[i])
-#         i += 1
-
-    if netns_hosts:
-      host_access_link_pairs = [ create_netns_host(create_io_worker, switch)
-                                 for switch in switches ]
-    else:
-      host_access_link_pairs = [ create_host(switch, ip_format_str=ip_format_str) for switch in switches]
-
 
     #print host_access_link_pairs
     access_link_list_list = []
@@ -1332,7 +1349,7 @@ class BinaryTreeTopology(Topology):
     access_links = list(itertools.chain.from_iterable(access_link_list_list))
 
     # grab a grid patch panel to wire up these guys
-    self.link_tracker = BinaryTreeTopology.TreeLinks(self.dpid2switch, access_links)
+    self.link_tracker = BinaryLeafTreeTopology.TreeLinks(self.dpid2switch, access_links)
     self.get_connected_port = self.link_tracker
 
     if self.gui is not None:

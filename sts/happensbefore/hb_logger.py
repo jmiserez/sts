@@ -92,7 +92,7 @@ class HappensBeforeLogger(EventMixin):
     self.output = None
   
   def write(self,msg):
-    self.log.info(msg)
+#     self.log.info(msg)
     if not self.output:
       raise Exception("Not opened -- call HappensBeforeLogger.open()")
     if not self.output.closed:
@@ -346,7 +346,9 @@ class HappensBeforeLogger(EventMixin):
       # NOTE: do NOT use the current tag of the packet, as it might have already been resent. Instead, read
       #       the pid_out tag from the HbPacketHandle event.
       # For this, we need to check the list of all tags currently stored in buffers.
-      assert event.buffer_id in self.buffer_pids[event.dpid]
+      if not event.buffer_id in self.buffer_pids[event.dpid]:
+        print event.buffer_id
+        assert False
       self.started_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
       
       # NOTE: deleting buffer entries is not correct in all cases, so don't do it.
@@ -475,6 +477,12 @@ class HappensBeforeLogger(EventMixin):
     # Just simulate each line being read again
     lines_to_remove = []
     
+    #TODO(jm): use handshake instead of lookup table
+    #TODO(jm): remove, quick hack for debugging
+    for i in range(1,100):
+      self.swid_to_dpid[str(i)] = i
+      self.dpid_to_swid[i] = str(i)
+    
     for line in self.unmatched_controller_lines:
       if len(line) == 2:
         in_swid, in_msg = line
@@ -502,7 +510,7 @@ class HappensBeforeLogger(EventMixin):
                 dpid = k
                 self.swid_to_dpid[in_swid] = dpid
                 self.dpid_to_swid[dpid] = in_swid
-                print "First seen: Matched controller swid " + str(in_swid) + " <-> dpid " + str(dpid) + "."
+                print "First seen: Matched controller swid " + repr(in_swid) + " <-> dpid " + repr(dpid) + "."
                 
               if dpid == k:
                 # match
