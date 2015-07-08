@@ -41,9 +41,9 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 #  - hb.properties must point to the corresponding file in the Floodlight source.
 #    -> Thus, cwd should be set to the Floodlight root path.
 #
-start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test.xml -jar '''
+start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
              '''./target/floodlight.jar '''
-              '''-cf ./src/main/resources/hb.properties''')
+              '''-cf ./src/main/resources/hb_minimal_flawedfw.properties''')
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
 # start_cmd = '''echo "no-op"'''
