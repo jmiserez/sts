@@ -47,8 +47,8 @@ controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
 
 topology_class = MeshTopology
-# topology_params = "num_switches=32"
-topology_params = "num_switches=3"
+topology_params = "num_switches=32"
+# topology_params = "num_switches=3"
 
 results_dir = "experiments/demo_l2_multi"
 # results_dir = "experiments/l2_multi"
@@ -78,8 +78,8 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
                       initialization_rounds=1,
-                      check_interval=100,
-                      delay=0.3,
+                      check_interval=1000,
+                      delay=0.1,
                       halt_on_violation=False,
 #                       invariant_check_name="check_everything")
                       invariant_check_name="InvariantChecker.check_liveness")
