@@ -482,15 +482,19 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         OFPAT_SET_MPLS_TTL: set_mpls_ttl,
         OFPAT_DEC_MPLS_TTL: dec_mpls_ttl,
     }
-    for action in actions:
-      if action.type is OFPAT_RESUBMIT:
-        self.process_packet_internally(packet, in_port)
-        return
-      if(action.type not in handler_map):
-        raise NotImplementedError("Unknown action type: %x " % type)
-      self.raiseEvent(TraceSwitchPacketUpdateBegin(self.dpid, packet))
-      packet = handler_map[action.type](action, packet)
-      self.raiseEvent(TraceSwitchPacketUpdateEnd(self.dpid, packet))
+    if len(actions) == 0:
+      #TODO(jm): This packet is being explicitly DROPPED. Maybe we should add an event for this!
+      pass
+    else:
+      for action in actions:
+        if action.type is OFPAT_RESUBMIT:
+          self.process_packet_internally(packet, in_port)
+          return
+        if(action.type not in handler_map):
+          raise NotImplementedError("Unknown action type: %x " % type)
+        self.raiseEvent(TraceSwitchPacketUpdateBegin(self.dpid, packet))
+        packet = handler_map[action.type](action, packet)
+        self.raiseEvent(TraceSwitchPacketUpdateEnd(self.dpid, packet))
 
 
 # A note on FuzzSoftwareSwitch Command Buffering
