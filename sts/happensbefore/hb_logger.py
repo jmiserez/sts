@@ -493,7 +493,11 @@ class HappensBeforeLogger(EventMixin):
       in_swid, in_msg = line
       # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
       in_dpid = self.swid_to_dpid(in_swid)
-      if in_dpid is not None:
+      if in_dpid is None:
+        # the controller did not supply the dpid, no way for us to ever match it
+        print 'Error: Discarding controller line: ' + line
+        return True
+      else:
         # we know this switch
         for unmatched_entry in self.unmatched_HbMessageSend[in_dpid]:
           if self.match_controller_line_packet_in(in_dpid, in_msg, unmatched_entry):
@@ -505,7 +509,11 @@ class HappensBeforeLogger(EventMixin):
       in_swid, in_msg, out_swid, out_msg = line
       # PACKET_IN
       in_dpid = self.swid_to_dpid(in_swid)
-      if in_dpid is not None:
+      if in_dpid is None:
+        # the controller did not supply the dpid, no way for us to ever match it
+        print 'Error: Discarding controller line: ' + line
+        return True
+      else:
         # we know the in switch
         if (in_dpid,in_msg) in self.controller_packetin_to_mid_out:
           mid_out = self.controller_packetin_to_mid_out[(in_dpid,in_msg)]
@@ -513,7 +521,11 @@ class HappensBeforeLogger(EventMixin):
           
           # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
           out_dpid = self.swid_to_dpid(out_swid)
-          if out_dpid is not None:
+          if out_dpid is None:
+            # the controller did not supply the dpid, no way for us to ever match it
+            print 'Error: Discarding controller line: ' + line
+            return True
+          else:
             # we know the out switch
             for unmatched_entry in self.unmatched_HbMessageHandle[out_dpid]:
               if self.match_controller_line_packet_out(mid_out, out_dpid, out_msg, unmatched_entry):
