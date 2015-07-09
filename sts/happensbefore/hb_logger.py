@@ -1,5 +1,6 @@
 from _collections import defaultdict
 from threading import RLock
+import itertools
 import logging
 
 from pox.lib.revent.revent import EventMixin
@@ -62,9 +63,6 @@ class HappensBeforeLogger(EventMixin):
     self.unmatched_controller_lines = [] # lines
     self.unmatched_controller_lines_warned = False
     self.controller_packetin_to_mid_out = dict() # (swid, b64msg) -> mid_out
-    
-    self.swid_to_dpid = dict()
-    self.dpid_to_swid = dict()
     
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
@@ -463,130 +461,71 @@ class HappensBeforeLogger(EventMixin):
     self.write_event_to_trace(event)
     self.log.info("Adding controller edge ("+first+" -> "+second+"): mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
 
-  def rematch_unmatched_lines(self):
-    """
-    Match controller edge: mid_out -> mid_in
-    where:
-     - mid_out is from HbMessageSend
-     - mid_in is from HbMessageHandle 
-     
-     HbMessageSend(mid_out) ->
-                  HbControllerHandle(mid_out,X) -> HbControllerSend(X,mid_in) ->
-     HbMessageHandle(mid_in)
-    """
-    # Just simulate each line being read again
-    lines_to_remove = []
+  def swid_to_dpid(self, swid):
+    try:
+      return int(swid)
+    except ValueError:
+      return None
     
-    #TODO(jm): use handshake instead of lookup table
-    #TODO(jm): remove, quick hack for debugging
-    for i in range(1,100):
-      self.swid_to_dpid[str(i)] = i
-      self.dpid_to_swid[i] = str(i)
+  def match_controller_line_packet_in(self, dpid, line_msg, unmatched_entry):
+    '''
+    Returns True if the line was matched to a mid_out
+    '''
+    mid_out, msg = unmatched_entry #tuple
+    if msg == line_msg:
+      self.controller_packetin_to_mid_out[(dpid,msg)] = mid_out
+      return True
     
-    for line in self.unmatched_controller_lines:
-      if len(line) == 2:
-        in_swid, in_msg = line
-        # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
-        dpid = None
-        if in_swid in self.swid_to_dpid:
-          dpid = self.swid_to_dpid[in_swid]
-          assert self.dpid_to_swid[dpid] == in_swid
-
-        done = False
-        for k,vlist in self.unmatched_HbMessageSend.iteritems():
-          if done:
-            break
-          to_remove_vlist = []
-          for v in vlist: # iterate from newest to oldest
-            if done:
-              break
-            # k: dpid, v: (mid_out, base64_encode(event.msg))
-            v_mid_out, v_msg = v
-            if v_msg == in_msg:
-#               print "Matched a MessageIn log line."
-              # messages match, check if dpid matches or assign it
-              if k not in self.dpid_to_swid and dpid is None:
-                # assign mapping
-                dpid = k
-                self.swid_to_dpid[in_swid] = dpid
-                self.dpid_to_swid[dpid] = in_swid
-                print "First seen: Matched controller swid " + repr(in_swid) + " <-> dpid " + repr(dpid) + "."
-                
-              if dpid == k:
-                # match
-                self.controller_packetin_to_mid_out[line] = v_mid_out
-                lines_to_remove.append(line)
-                to_remove_vlist.append(v)
-                done = True
-          # cleanup
-          for i in to_remove_vlist:
-            assert i in vlist
-            vlist.remove(i)
-          to_remove_vlist = []
-                    
-    for x in lines_to_remove:
-      assert x in self.unmatched_controller_lines
-      self.unmatched_controller_lines.remove(x)
-    lines_to_remove = []
-            
-    for line in self.unmatched_controller_lines:
-      if len(line) == 4:
-        in_swid, in_msg, out_swid, out_msg = line
-        # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
-        
-        mid_out = None
-        if (in_swid, in_msg) in self.controller_packetin_to_mid_out:
-          mid_out = self.controller_packetin_to_mid_out[(in_swid, in_msg)]
-        
-        # skip if mid_out is not known yet
-        if mid_out is not None:
-          dpid = None
-          if out_swid in self.swid_to_dpid:
-            dpid = self.swid_to_dpid[out_swid]
-            assert self.dpid_to_swid[dpid] == out_swid
+  def match_controller_line_packet_out(self, mid_out, dpid, line_msg, unmatched_entry):
+    '''
+    Returns True if the line was matched to a mid_in
+    '''
+    mid_in, msg = unmatched_entry #tuple
+    if self._get_rxbase64(msg) == line_msg:
+      self.add_controller_hb_edge(mid_out, mid_in)
+      
+  
+  def match_controller_line(self, line):
+    '''
+    Returns True if the line was matched
+    '''
+    if len(line) == 2:
+      in_swid, in_msg = line
+      # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
+      in_dpid = self.swid_to_dpid(in_swid)
+      if in_dpid is not None:
+        # we know this switch
+        for unmatched_entry in self.unmatched_HbMessageSend[in_dpid]:
+          if self.match_controller_line_packet_in(in_dpid, in_msg, unmatched_entry):
+            # we know this message
+            self.unmatched_HbMessageSend[in_dpid].remove(unmatched_entry) # okay as we exit the loop now
+            return True
+      return False
+    elif len(line) == 4:
+      in_swid, in_msg, out_swid, out_msg = line
+      # PACKET_IN
+      in_dpid = self.swid_to_dpid(in_swid)
+      if in_dpid is not None:
+        # we know the in switch
+        if (in_dpid,in_msg) in self.controller_packetin_to_mid_out:
+          mid_out = self.controller_packetin_to_mid_out[(in_dpid,in_msg)]
+          # we know the in event
           
-          done = False
-          for k,vlist in self.unmatched_HbMessageHandle.items():
-            if done:
-              break
-            to_remove_vlist = []
-            for v in vlist: # iterate from newest to oldest
-              if done:
-                break
-              # k: dpid, v: (mid_in, base64_encode(event.msg))
-              v_mid_in, v_msg = v
-              if self._get_rxbase64(v_msg) == out_msg:
-#                 print "Matched a MessageOut log line."
-                # messages match, check if dpid matches or assign it
-                if k not in self.dpid_to_swid and dpid is None:
-                  # assign mapping
-                  dpid = k
-                  self.swid_to_dpid[out_swid] = dpid
-                  self.dpid_to_swid[dpid] = out_swid
-                  print "First seen: Matched controller swid " + str(in_swid) + " <-> dpid " + str(dpid) + "."
+          # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
+          out_dpid = self.swid_to_dpid(out_swid)
+          if out_dpid is not None:
+            # we know the out switch
+            for unmatched_entry in self.unmatched_HbMessageHandle[out_dpid]:
+              if self.match_controller_line_packet_out(mid_out, out_dpid, out_msg, unmatched_entry):
+                # we know this message, and an edge was added
+                self.unmatched_HbMessageHandle[out_dpid].remove(unmatched_entry) # okay as we exit the loop now
+                return True
+      return False
 
-                if dpid == k:
-                  # match
-                  self.add_controller_hb_edge(mid_out, v_mid_in)
-                  lines_to_remove.append(line)
-                  to_remove_vlist.append(v)
-                  done = True
-              #TODO(jm): remove debug code    
-#               else:
-#                 if self.unmatched_controller_lines_warned:
-#                   # print some debug output
-#                   print self._get_rxbase64(v_msg)
-#                   print  out_msg
-#                   self.diff_flow_mods(self._get_rxbase64(v_msg), out_msg)
-            # cleanup
-            for i in to_remove_vlist:
-              assert i in vlist
-              vlist.remove(i)
-            to_remove_vlist = []
-    for x in lines_to_remove:
-      assert x in self.unmatched_controller_lines
-      self.unmatched_controller_lines.remove(x)
-    lines_to_remove = []
+  def rematch_unmatched_lines(self):
+    # self.unmatched_controller_lines[:] modifies the list slice instead of assigning a new list
+    self.unmatched_controller_lines = list(itertools.ifilter(self.match_controller_line, self.unmatched_controller_lines))
+
     if len(self.unmatched_controller_lines) > 0:
       print str(len(self.unmatched_controller_lines)) + ' unmatched log lines remain, waiting for events.'
       self.unmatched_controller_lines_warned = True
@@ -594,12 +533,12 @@ class HappensBeforeLogger(EventMixin):
       if self.unmatched_controller_lines_warned:
         self.unmatched_controller_lines_warned = False
         print '0 unmatched log lines remain. Matched all remaining log lines.'
-
-#       print 'If this message is seen often, this might indicate a problem with the controller'
-#       print '  instrumentation: The controller instrumentation might not be writing out the raw'
-#       print '  Openflow message bytes as they are received on the wire.'
-#       print '  This can happen e.g. in Floodlight if the message object is modified via'
-#       print '  references after the write is issued but before the queue is flushed.'
+        
+    # NOTE(jm): If this message is seen often, this might indicate a problem with the controller
+    #           instrumentation: The controller instrumentation might not be writing out the raw
+    #           Openflow message bytes as they are received on the wire.
+    #           This can happen e.g. in Floodlight if the message object is modified via
+    #           references after the write is issued but before the queue is flushed.
 
   def diff_flow_mods(self, b1, b2):
     """
