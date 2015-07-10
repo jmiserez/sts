@@ -13,7 +13,7 @@ start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logbac
               '''-cf ./src/main/resources/hb_default.properties''')
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
-start_cmd = '''echo "no-op"'''
+# start_cmd = '''echo "no-op"'''
 
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
@@ -38,7 +38,6 @@ simulation_config = SimulationConfig(controller_configs=controllers,
                                      kill_controllers_on_exit=True,
                                      interpose_on_controllers=False,
                                      ignore_interposition=False,
-#                                      send_all_to_all=False,
                                      hb_logger_class=HappensBeforeLogger,
                                      hb_logger_params=results_dir)
 
@@ -47,7 +46,8 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
-                      initialization_rounds=1,
+                      initialization_rounds=20,
+                      send_all_to_all=True,
                       check_interval=1000,
                       delay=0.1,
                       halt_on_violation=False,
