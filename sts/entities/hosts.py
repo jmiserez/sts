@@ -378,62 +378,62 @@ class RespondingHost(SimpleHost):
         self.log.info("received invalid arp packet on "
                       "interface %s: %s" % (interface.name, str(packet)))
         return None
-#     elif(packet.type == ethernet.IP_TYPE and 
-#        packet.next.protocol == ipv4.ICMP_PROTOCOL):
-#       
-#       if packet.next.next.type == TYPE_ECHO_REQUEST: # only reply for requests
-#       
-#         self.log.info("Received ECHO_REQUEST, Generating ping echo reply.")
-#         
-#         # 1. Get the payload from the echo request (ping)
-#         # 2. Create an echo reply packet, insert the old payload
-#         # 3. Create an ICMP packet, insert the echo reply
-#         # 4. Create an IPv4 packet, insert the ICMP
-#         # 5. Create an Ethernet packet, insert the IPv4
-#         
-#         p_eth = packet
-#         p_ip = packet.next
-#         p_icmp = packet.next.next
-#         
-#         payload = p_icmp.payload
-#         
-#         r_icmp = icmp(type = TYPE_ECHO_REPLY, 
-#                       payload = payload,
-#                       )
-#         r_ip = ipv4(protocol = ipv4.ICMP_PROTOCOL,
-#                     srcip = interface.ips[0],
-#                     dstip = p_ip.srcip,
-#                     payload = r_icmp,
-#                     )
-#         r_eth = ethernet(src=interface.hw_addr,
-#                          dst=p_eth.src,
-#                          type=ethernet.IP_TYPE,
-#                          payload = r_ip)
-#         
-#         self.send(interface, r_eth)
-#       elif packet.next.next.type == TYPE_ECHO_REPLY:
-#         self.log.info("Received ECHO_REPLY, not responding.")
+    elif(packet.type == ethernet.IP_TYPE and 
+       packet.next.protocol == ipv4.ICMP_PROTOCOL):
+      
+      if packet.next.next.type == TYPE_ECHO_REQUEST: # only reply for requests
+      
+        self.log.info("Received ECHO_REQUEST, Generating ping echo reply.")
         
-    elif (self.send_capabilities and packet.type == ethernet.IP_TYPE and
-          packet.next.protocol == ipv4.ICMP_PROTOCOL):
-      # Temporary hack: if we receive a ICMP packet, send a TCP RST to signal
-      # to POX that we do want to revoke the capability for this flow. See
-      # pox/pox/forwarding/capabilities_manager.py
-      self.log.info("Sending RST on interface %s: in "
-                    "response to: %s" % (interface.name, str(packet)))
-      t = tcp()
-      tcp.RST = True
-      i = ipv4()
-      i.protocol = ipv4.TCP_PROTOCOL
-      i.srcip = interface.ips[0]
-      i.dstip = packet.next.srcip
-      i.payload = t
-      ether = ethernet()
-      ether.type = ethernet.IP_TYPE
-      ether.src = interface.hw_addr
-      ether.dst = packet.src
-      ether.payload = i
-      self.send(interface, ether)
+        # 1. Get the payload from the echo request (ping)
+        # 2. Create an echo reply packet, insert the old payload
+        # 3. Create an ICMP packet, insert the echo reply
+        # 4. Create an IPv4 packet, insert the ICMP
+        # 5. Create an Ethernet packet, insert the IPv4
+        
+        p_eth = packet
+        p_ip = packet.next
+        p_icmp = packet.next.next
+        
+        payload = p_icmp.payload
+        
+        r_icmp = icmp(type = TYPE_ECHO_REPLY, 
+                      payload = payload,
+                      )
+        r_ip = ipv4(protocol = ipv4.ICMP_PROTOCOL,
+                    srcip = interface.ips[0],
+                    dstip = p_ip.srcip,
+                    payload = r_icmp,
+                    )
+        r_eth = ethernet(src=interface.hw_addr,
+                         dst=p_eth.src,
+                         type=ethernet.IP_TYPE,
+                         payload = r_ip)
+        
+        self.send(interface, r_eth)
+      elif packet.next.next.type == TYPE_ECHO_REPLY:
+        self.log.info("Received ECHO_REPLY, not responding.")
+        
+#     elif (self.send_capabilities and packet.type == ethernet.IP_TYPE and
+#           packet.next.protocol == ipv4.ICMP_PROTOCOL):
+#       # Temporary hack: if we receive a ICMP packet, send a TCP RST to signal
+#       # to POX that we do want to revoke the capability for this flow. See
+#       # pox/pox/forwarding/capabilities_manager.py
+#       self.log.info("Sending RST on interface %s: in "
+#                     "response to: %s" % (interface.name, str(packet)))
+#       t = tcp()
+#       tcp.RST = True
+#       i = ipv4()
+#       i.protocol = ipv4.TCP_PROTOCOL
+#       i.srcip = interface.ips[0]
+#       i.dstip = packet.next.srcip
+#       i.payload = t
+#       ether = ethernet()
+#       ether.type = ethernet.IP_TYPE
+#       ether.src = interface.hw_addr
+#       ether.dst = packet.src
+#       ether.payload = i
+#       self.send(interface, ether)
 
 class TracingHost(RespondingHost, EventMixin):
   __metaclass__ = AbstractCombiningEventMixinMetaclass
