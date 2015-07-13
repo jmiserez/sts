@@ -205,6 +205,7 @@ class HappensBeforeLogger(EventMixin):
       self.new_switch_events[event.dpid].append(event) # enqueue event to be output as soon as the end event is reached
     else:
       # Output this operation directly as we missed the preceding event.
+      # TODO(jm): Could we do better, maybe ignore these events altogether?
       self.log.info("Writing switch event even though there was no associated begin event.")
       self.write_event_to_trace(event)
 
