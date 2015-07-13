@@ -20,6 +20,7 @@ import signal
 import sys
 import time
 import traceback
+import shlex
 from functools import partial
 from pox.lib.revent import Event, EventMixin
 
@@ -181,4 +182,91 @@ def popen_filtered(name, args, cwd=None, env=None, redirect_output=True,
     cmd._stdout_thread = _prefix_thread(cmd.stdout, partial(color_normal, label=name))
     cmd._stderr_thread = _prefix_thread(cmd.stderr, partial(color_error, label=name))
   return cmd
+
+class PopenTermination(Event):
+  def __init__ (self, cmd_id, cmd, return_code, return_out, return_err):
+    Event.__init__(self)
+    self.cmd_id = cmd_id
+    self.cmd = cmd # Popen instance
+    self.return_code = return_code # the return code
+    self.return_out = return_out # the returned output from stdout
+    self.return_err = return_err # the returned output from stderr
+    
+class PopenTerminationPublisher(EventMixin):
+  _eventMixin_events = set([PopenTermination])
+  
+  def __init__(self):
+    pass
+    
+  def publish(self, event):
+    self.raiseEvent(event)
+
+popenTerminationPublisher = PopenTerminationPublisher()
+
+def _popen_background_exec_thread(cmd_id, cmd, piped_input=None):
+  def run():
+    if piped_input is not None:
+      ret_out, ret_err = cmd.communicate(piped_input)
+    else:
+      ret_out, ret_err = cmd.communicate()
+    ret_code = cmd.wait()
+    event = PopenTermination(cmd_id, cmd, ret_code, ret_out, ret_err)
+    popenTerminationPublisher.publish(event)
+
+  t = threading.Thread(target=run)
+  t.daemon = True
+  t.start()
+  return t
+
+def popen_simple(args, cwd=None, env=None,
+                     shell=False):
+  ''' Execute an external command and return the Popen instance '''
+  if shell and type(args) == list:
+    args = ' '.join(args)
+  try:
+    cmd = subprocess.Popen(args, stdout=subprocess.PIPE, shell=shell,
+                           stderr=subprocess.PIPE, stdin=subprocess.PIPE, cwd=cwd, env=env,
+                           preexec_fn=lambda: os.setsid())      
+  except OSError as e:
+    raise OSError("Error launching %s in directory %s: %s (error %d)" % (args, cwd, e.strerror, e.errno))
+  return cmd
+
+def popen_background(cmd_id, args, cwd=None, env=None,
+                     shell=False, piped_input=None):
+  '''
+  Execute an external command and raise a PopenTermination event once
+  the command has terminated. The contents of piped_input will be piped
+  into the stdin of the process.
+  '''
+  try:
+    cmd = popen_simple(args,cwd,env,shell)
+  except OSError as e:
+    raise e
+  cmd._background_exec_thread = _popen_background_exec_thread(cmd_id, cmd, piped_input)
+  return cmd
+
+def popen_blocking(cmd_id, args, cwd=None, env=None,
+                     shell=False, piped_input=None):
+  '''
+  Execute an external command and wait until
+  the command has terminated. The contents of piped_input will be piped
+  into the stdin of the process. Returns a PopenTermination event.
+  '''
+  try:
+    cmd = popen_simple(args,cwd,env,shell)
+  except OSError as e:
+    raise e
+  if piped_input is not None:
+    ret_out, ret_err = cmd.communicate(piped_input)
+  else:
+    ret_out, ret_err = cmd.communicate()
+  ret_code = cmd.wait()
+  event = PopenTermination(cmd_id, cmd, ret_code, ret_out, ret_err)
+  return event
+
+def cmdline_to_args(cmdline):
+  ''' Safely convert a command line string to a list of arguments. '''
+  args = shlex.split(cmdline);
+  return args
+
 
