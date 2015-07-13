@@ -60,7 +60,8 @@ class Fuzzer(ControlFlow):
                record_deterministic_values=False,
                mock_link_discovery=False,
                never_drop_whitelisted_packets=True,
-               initialization_rounds=0, send_all_to_all=False):
+               initialization_rounds=0, send_all_to_all=False,
+               apps=None):
     '''
     Options:
       - fuzzer_params: path to event probabilities
@@ -140,6 +141,12 @@ class Fuzzer(ControlFlow):
     # Determine whether to use delayed and randomized flow mod processing
     # (Set by fuzzer_params, not by an optional __init__ argument)
     self.delay_flow_mods = False
+    
+    # add apps
+    if apps is None:
+      apps = []
+    self.apps = apps
+    
 
   def _log_input_event(self, event, **kws):
     if self._input_logger is not None:
@@ -371,6 +378,7 @@ class Fuzzer(ControlFlow):
         self.simulation.dataplane_trace.inject_trace_event()
 
   def trigger_events(self):
+    self.check_app_before()
     self.check_dataplane()
     self.check_tcp_connections()
     self.check_pending_messages()
@@ -381,6 +389,7 @@ class Fuzzer(ControlFlow):
     self.check_controllers()
     self.check_migrations()
     self.check_intracontroller_blocks()
+    self.check_app_after()
 
   def check_dataplane(self, pass_through=False):
     ''' Decide whether to delay, drop, or deliver packets '''
@@ -651,3 +660,11 @@ class Fuzzer(ControlFlow):
 
     if blocked_this_round is not None:
       self.blocked_controller_pairs.append(blocked_this_round)
+
+  def check_app_before(self):
+    for app in self.apps:
+      app.check_app_before(self)
+  
+  def check_app_after(self):
+    for app in self.apps:
+      app.check_app_after(self)

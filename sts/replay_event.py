@@ -561,6 +561,51 @@ class PolicyChange(InputEvent):
     assert_fields_exist(json_hash, 'request_type')
     request_type = json_hash['request_type']
     return PolicyChange(request_type, round=round, label=label, time=time)
+  
+class AppEvent(InputEvent):
+  ''' Generic application event '''
+  def __init__(self, 
+               app_name,
+               data,
+               multipart_group_id=-1,
+               pruning_group_id=-1,
+               label=None, round=-1, time=None):
+    super(InputEvent, self).__init__(label=label, round=round, time=time)
+    self.app_name = app_name
+    self.data = data
+    self.multipart_group_id = multipart_group_id
+    self.pruning_group_id = pruning_group_id
+  
+  def proceed(self, simulation):
+    # TODO(jm) check if this is correct
+    assert self.app_name in simulation.apps.keys()
+    return simulation.apps[self.app_name].proceed(self, simulation)
+  
+  @staticmethod
+  def from_json(json_hash):
+    (label, time, round) = extract_label_time(json_hash)
+    assert_fields_exist(json_hash, 
+                        'app_name', 
+                        'data', 
+                        'multipart_group_id',
+                        'pruning_group_id')
+    app_name = json_hash['app_name']
+    data = json_hash['data']
+    multipart_group_id = int(json_hash['multipart_group_id'])
+    pruning_group_id = int(json_hash['pruning_group_id'])
+    return AppEvent(app_name=app_name,
+                    data=data,
+                    multipart_group_id=multipart_group_id,
+                    pruning_group_id=pruning_group_id,
+                    round=round, label=label, time=time)
+
+  @property
+  def fingerprint(self):
+    return (self.__class__.__name__,
+            self.app_name,
+            self.data,
+            self.multipart_group_id,
+            self.pruning_group_id)
 
 class TrafficInjection(InputEvent):
   ''' Injects a dataplane packet into the network at the given host's access link '''
