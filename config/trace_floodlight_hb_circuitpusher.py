@@ -19,15 +19,17 @@ start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logbac
 
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
-topology_class = StarTopology
-topology_params = "num_hosts=3"
+# topology_class = StarTopology
+# topology_params = "num_hosts=3"
 # topology_class = MeshTopology
 # topology_params = "num_switches=8"
-# topology_class = BinaryLeafTreeTopology
-# topology_params = "num_levels=1"
+topology_class = BinaryLeafTreeTopology
+topology_params = "num_levels=4"
+# topology_class = GridTopology
+# topology_params = "num_rows=3, num_columns=3"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_circuitpusher-star3-traffic-failures"
+results_dir = "traces/floodlight_hb_circuitpusher-mesh8"
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
