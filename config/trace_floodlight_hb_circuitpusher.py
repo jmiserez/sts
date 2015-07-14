@@ -27,7 +27,7 @@ topology_params = "num_hosts=3"
 # topology_params = "num_levels=1"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_circuitpusher-star3-traffic"
+results_dir = "traces/floodlight_hb_circuitpusher-star3-traffic-failures"
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
@@ -54,7 +54,7 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
                       initialization_rounds=20,
-                      send_all_to_all=True,
+                      send_all_to_all=False,
                       check_interval=1,
                       delay=0.1,
                       halt_on_violation=True,
