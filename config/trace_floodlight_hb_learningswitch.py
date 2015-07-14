@@ -21,15 +21,11 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 
 
 
-# topology_class = StarTopology
-# topology_params = "num_hosts=3"
-topology_class = MeshTopology
-topology_params = "num_switches=8"
-# topology_class = BinaryLeafTreeTopology
-# topology_params = "num_levels=1"
+topology_class = StarTopology
+topology_params = "num_hosts=3"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_learningswitch-mesh8"
+results_dir = "traces/floodlight_hb_learningswitch-star3"
 
 #apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 apps = None
