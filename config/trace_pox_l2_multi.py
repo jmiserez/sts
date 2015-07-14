@@ -17,13 +17,13 @@ start_cmd = ('''./pox.py --verbose '''
 
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
-topology_class = StarTopology
-topology_params = "num_hosts=3"
-# topology_class = MeshTopology
-# topology_params = "num_switches=5"
+# topology_class = StarTopology
+# topology_params = "num_hosts=3"
+topology_class = MeshTopology
+topology_params = "num_switches=6"
 
 # Where should the output files be written to
-results_dir = "traces/pox_l2_multi-star3-traffic-failures"
+results_dir = "traces/pox_l2_multi-mesh6"
 
 apps = None
 
