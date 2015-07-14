@@ -271,9 +271,6 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
 
   def on_message_received(self, connection, msg):
     self.raiseEvent(TraceSwitchMessageHandleBegin(self.dpid, connection.controller_id, msg, msg.header_type))
-    # NOTE JM: See process_packet() for an explanation. Probably not necessary for messages,
-    #          but should not interfere either.
-    msg = copy.copy(msg)
     super(TracingNXSoftwareSwitch, self).on_message_received(connection, msg)
     self.raiseEvent(TraceSwitchMessageHandleEnd(self.dpid))
   
@@ -346,7 +343,9 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     #          actually be the same Python objects, which will confuse the logger. In order to fix this, 
     #          we have the switch make a copy before processing the packet any further, and will be
     #          working with this copy from here on out.
+    self.raiseEvent(TraceSwitchPacketUpdateBegin(self.dpid, packet))
     packet = copy.copy(packet)
+    self.raiseEvent(TraceSwitchPacketUpdateEnd(self.dpid, packet))
     self.process_packet_internally(packet, in_port)
     self.raiseEvent(TraceSwitchPacketHandleEnd(self.dpid))
     
