@@ -24,12 +24,12 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 # topology_class = MeshTopology
 # topology_params = "num_switches=8"
 topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=4"
+topology_params = "num_levels=3"
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_circuitpusher-mesh8"
+results_dir = "traces/floodlight_hb_circuitpusher-bintree3"
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
