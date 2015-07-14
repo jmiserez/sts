@@ -29,7 +29,7 @@ topology_params = "num_levels=3"
 # topology_params = "num_rows=3, num_columns=3"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_circuitpusher-bintree3"
+results_dir = "traces/floodlight_hb_circuitpusher-bintree3-traffic"
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
