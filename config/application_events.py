@@ -1,25 +1,35 @@
 import sys
 from threading import RLock
 import itertools
+import logging
 import pox.openflow.libopenflow_01 as of_01
 
 import sts.replay_event
 from sts.util.procutils import PopenTermination, popenTerminationPublisher, popen_background, cmdline_to_args,\
   popen_simple, popen_blocking
 
+# TODO(jm): Figure out how to get logging working from here? logging.getLogger doesn't work.
+
 class ControllerApp(object):
   
   # TODO(jm) document interface and who calls it
   def __init__(self, app_name):
     self.app_name = app_name
+    
+  def start(self):
+    ''' Called in SimulationConfig.bootstrap() once when starting up'''
+    pass
   
   def check_app_before(self, fuzzer):
+    ''' Called by Fuzzer.trigger_events before all other triggers'''
     pass
   
   def check_app_after(self, fuzzer):
+    ''' Called by Fuzzer.trigger_events after all other triggers'''
     pass
   
   def proceed(self, event, simulation):
+    ''' Called by Replayer through AppEvent.proceed when replaying an event'''
     pass
   
 class AppCircuitPusher(ControllerApp):
@@ -52,9 +62,11 @@ class AppCircuitPusher(ControllerApp):
       if circuit_id in self.pending_install:
         self.pending_install.remove(circuit_id)
         self.installed.append(circuit_id)
+        print "Installed circuit: " + str(circuit_id)
       elif circuit_id in self.pending_removal:
         self.pending_removal.remove(circuit_id)
         del self.ids[circuit_id]
+        print "Removed circuit: " + str(circuit_id)
         
   def _install_circuits(self, fuzzer, num_circuits):
     with self.reentrantlock:
@@ -87,6 +99,7 @@ class AppCircuitPusher(ControllerApp):
 #     args = cmdline_to_args('bash -c "ls -al; pwd"')
         cmd = popen_background(circuit_id, args, self.cwd)
 #         event = popen_blocking(circuit_id, args, self.cwd)
+        print "Installing circuit in background: "+str(c[0].toStr()) + " <-> " + str(c[1].toStr() + " (id: " + str(circuit_id) + ")")
         # we will get notified when it is done
         self.pending_install.append(circuit_id)
         data = {'action' : 'add', 'args' : args, 'id' : circuit_id}
@@ -105,12 +118,16 @@ class AppCircuitPusher(ControllerApp):
         args = cmdline_to_args(self.runtime + ' ' + self.script + ' --controller ' + self.controller + 
                                ' --delete --name ' + str(circuit_id))
         cmd = popen_background(circuit_id, args, self.cwd)
+        print "Removing circuit in background: " + str(circuit_id)
         # we will get notified when it is done
         self.pending_removal.append(circuit_id)
         self.installed.remove(circuit_id)
         data = {'action' : 'del', 'args' : args, 'id' : circuit_id}
         fuzzer._log_input_event(sts.replay_event.AppEvent(self.app_name, data))
         num_remaining -= 1
+
+  def start(self):
+    pass
 
   def check_app_before(self, fuzzer):
     pass
