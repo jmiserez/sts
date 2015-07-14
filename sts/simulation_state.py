@@ -142,6 +142,7 @@ class SimulationConfig(object):
     if apps is not None: # mapping name -> app
       for k in apps:
         assert k.app_name not in self.apps
+        k.start()
         self.apps[k.app_name] = k
 
   def bootstrap(self, sync_callback=None, boot_controllers=default_boot_controllers,
