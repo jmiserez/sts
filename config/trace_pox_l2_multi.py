@@ -23,7 +23,7 @@ topology_class = MeshTopology
 topology_params = "num_switches=6"
 
 # Where should the output files be written to
-results_dir = "traces/pox_l2_multi-mesh6-traffic"
+results_dir = "traces/pox_l2_multi-mesh6-traffic-failures"
 
 apps = None
 
