@@ -337,6 +337,10 @@ class CommutativityChecker(object):
     if self.is_add(i_fm) and self.is_add(k_fm):
       return not self.nocommute_add_add(i_fm, k_fm)
     
+    # del del
+    if self.is_del(i_fm) and self.is_del(k_fm):
+      return True # always commutes!
+    
     print "Warning: Unhandled w/w commutativity case!"
     assert False
   
