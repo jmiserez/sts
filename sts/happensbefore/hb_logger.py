@@ -51,9 +51,9 @@ class HappensBeforeLogger(EventMixin):
     self.started_regular_switch_event = dict() # dpid -> event
     self.started_async_switch_event = dict() # dpid -> event
     self.started_host_event = dict() # hid -> event
-    self.regular_switch_event_explicit_successors = defaultdict(list) # dpid -> [event]
-    self.async_switch_event_explicit_successors = defaultdict(list) # dpid -> [event]
-    self.host_event_explicit_successors = defaultdict(list) # hid -> [event]
+    self.explicit_successors_regular_switch_event = defaultdict(list) # dpid -> [event]
+    self.explicit_successors_async_switch_event = defaultdict(list) # dpid -> [event]
+    self.explicit_successors_host_event = defaultdict(list) # hid -> [event]
     self.pending_packet_update = dict() # dpid -> packet
     
     self.msg_to_rxbase64 = dict()
@@ -137,6 +137,7 @@ class HappensBeforeLogger(EventMixin):
         # NOTE JM: do not remove, otherwise exceptions get swallowed by STS
         import traceback
         traceback.print_exc()
+        pass # set a breakpoint here
   
   def subscribe_to_DeferredOFConnection(self, connection):
     connection.addListener(TraceSwitchMessageSend, self.handle_no_exceptions)
@@ -176,7 +177,7 @@ class HappensBeforeLogger(EventMixin):
   def start_async_switch_event(self,dpid,event):
     assert not self.is_async_switch_event_started(dpid)
     self.started_async_switch_event[event.dpid] = event
-    assert event.dpid not in self.async_switch_event_explicit_successors
+    assert event.dpid not in self.explicit_successors_async_switch_event
   
   def finish_async_switch_event(self, dpid):
     # sanity check
@@ -185,9 +186,9 @@ class HappensBeforeLogger(EventMixin):
     assert len(self.started_async_switch_event[dpid].operations) == 1
     self.write_event_to_trace(self.started_async_switch_event[dpid])
     del self.started_async_switch_event[dpid]
-    for successor_event in self.async_switch_event_explicit_successors[dpid]:
+    for successor_event in self.explicit_successors_async_switch_event[dpid]:
       self.write_event_to_trace(successor_event)
-    del self.async_switch_event_explicit_successors[dpid]
+    del self.explicit_successors_async_switch_event[dpid]
   
   def is_regular_switch_event_started(self, dpid):
     return dpid in self.started_regular_switch_event
@@ -201,7 +202,7 @@ class HappensBeforeLogger(EventMixin):
     # sanity check: should be finished first
     assert not self.is_async_switch_event_started(dpid)
     self.started_regular_switch_event[event.dpid] = event
-    assert event.dpid not in self.regular_switch_event_explicit_successors
+    assert event.dpid not in self.explicit_successors_regular_switch_event
       
   def finish_regular_switch_event(self, dpid):
     # sanity check
@@ -210,9 +211,9 @@ class HappensBeforeLogger(EventMixin):
     assert not self.is_async_switch_event_started(dpid)
     self.write_event_to_trace(self.started_regular_switch_event[dpid])
     del self.started_regular_switch_event[dpid]
-    for successor_event in self.regular_switch_event_explicit_successors[dpid]:
+    for successor_event in self.explicit_successors_regular_switch_event[dpid]:
       self.write_event_to_trace(successor_event)
-    del self.regular_switch_event_explicit_successors[dpid]
+    del self.explicit_successors_regular_switch_event[dpid]
     
   def add_operation_to_switch_event(self, event):
     # sanity check: operations can only be triggered as part of a HbMessageHandle
@@ -241,14 +242,14 @@ class HappensBeforeLogger(EventMixin):
       assert (pid_in == None)
       assert (mid_in is not None)
       self.started_regular_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
-      self.async_switch_event_explicit_successors[event.dpid].append(event)
+      self.explicit_successors_async_switch_event[event.dpid].append(event)
     elif self.is_regular_switch_event_started(event.dpid):
       assert (mid_in is not None) or (pid_in is not None)
       if mid_in is not None:
         self.started_regular_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
       if pid_in is not None:
         self.started_regular_switch_event[event.dpid].pid_out.append(pid_in) # link with latest event
-      self.regular_switch_event_explicit_successors[event.dpid].append(event)
+      self.explicit_successors_regular_switch_event[event.dpid].append(event)
     else:
       self.write_event_to_trace(event)
 
@@ -263,16 +264,16 @@ class HappensBeforeLogger(EventMixin):
     # sanity check
     assert not self.is_host_event_started(hid)
     self.started_host_event[hid] = event
-    assert event.hid not in self.host_event_explicit_successors
+    assert event.hid not in self.explicit_successors_host_event
   
   def finish_host_event(self, hid):
     # sanity check
     assert hid in self.started_host_event
     self.write_event_to_trace(self.started_host_event[hid])
     del self.started_host_event[hid]
-    for successor_event in self.host_event_explicit_successors[hid]:
+    for successor_event in self.explicit_successors_host_event[hid]:
       self.write_event_to_trace(successor_event)
-    del self.host_event_explicit_successors[hid]
+    del self.explicit_successors_host_event[hid]
   
   def try_add_successor_to_host_event(self, event, pid_in=None):
     if self.is_host_event_started(event.hid):
@@ -282,7 +283,7 @@ class HappensBeforeLogger(EventMixin):
         # so let's add the current HostHandle event as the predecessor
         self.started_host_event[event.hid].pid_out.append(pid_in) # add an additional link to latest event
       # Write this event
-      self.host_event_explicit_successors[event.hid].append(event)
+      self.explicit_successors_host_event[event.hid].append(event)
     else:
       # This event was raised not during the processing of a HostHandle event.
       self.write_event_to_trace(event)
@@ -371,8 +372,7 @@ class HappensBeforeLogger(EventMixin):
         self.started_regular_switch_event[event.dpid].packet = event.packet
       if hasattr(event, 'in_port'):
         self.started_regular_switch_event[event.dpid].in_port = event.in_port
-    # the tag should still be the same, as no successor events should have been added yet
-    assert self.pids.get_tag(event.packet) == self.started_regular_switch_event[event.dpid].pid_in
+        
     # generate pid_out for buffer write
     pid_out = self.pids.new_tag(event.packet) # tag changes here
     self.started_regular_switch_event[event.dpid].pid_out.append(pid_out)
