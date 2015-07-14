@@ -27,7 +27,22 @@ class HbEvent(JsonEvent):
                     ('msg', base64_encode),
                     ('msg_flowmod', base64_encode),
                     ]
-                     
+  
+class HbAsyncFlowExpiry(HbEvent):
+  '''
+  "Async", as flows expire due to a timer running out. As this can happen even during another event, it needs to be handled separately.
+  Note that a single TraceSwitchFlowTableEntryExpiry operation is always part of this event once finished, but operations of this type
+  can also be part of HbMessageHandle operations (specifically FLOW_MOD, DELETE messages).
+  '''
+  def __init__(self, mid_in=None, mid_out=None, operations=None, dpid=None):
+    HbEvent.__init__(self)
+    self.mid_in = mid_in # to be filled in later: predecessor is the HbMessageHandle that installed the flow (with the same cookie)
+    self.mid_out = [] if mid_out is None else [mid_out]
+    
+    self.operations = [] if operations is None else [operations]
+    
+    self.dpid = dpid
+          
 class HbPacketHandle(HbEvent):
   def __init__(self, pid_in, pid_out=None, mid_out=None, operations=None, dpid=None, packet=None, in_port=None, buffer_out=None):
     HbEvent.__init__(self)

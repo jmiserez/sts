@@ -174,15 +174,21 @@ class ConnectionlessOFConnection(object):
 
 class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceSwitchFlowTableEntryExpiry, TraceSwitchFlowTableWrite])
+  _eventMixin_events = set([TraceAsyncSwitchFlowExpirationBegin, TraceAsyncSwitchFlowExpirationEnd, TraceSwitchFlowTableEntryExpiry, TraceSwitchFlowTableWrite])
   
   def __init__(self, switch, *args, **kw):
     SwitchFlowTable.__init__(self, *args, **kw)
     self.switch = switch
   
   def remove_expired_entries(self, now=None):
-    removed = super(TracingSwitchFlowTable, self).remove_expired_entries(now)
-    self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, self, removed))
+    remove_flows = self.expired_entries(now)
+    for entry in remove_flows:
+        self.raiseEvent(TraceAsyncSwitchFlowExpirationBegin(self.switch.dpid))
+        self.table.remove(entry)
+        self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, self, entry))
+        self.raiseEvent(FlowTableModification(removed=[entry]))
+        self.raiseEvent(TraceAsyncSwitchFlowExpirationEnd(self.switch.dpid))
+    return remove_flows
   
   def process_flow_mod(self, flow_mod):
     """ Process a flow mod sent to the switch
@@ -236,7 +242,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   """
   # use metaclass to add new events
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceSwitchPacketHandleBegin, TraceSwitchPacketHandleEnd,
+  _eventMixin_events = set([TraceAsyncSwitchFlowExpirationBegin, TraceAsyncSwitchFlowExpirationEnd,
+     TraceSwitchPacketHandleBegin, TraceSwitchPacketHandleEnd,
      TraceSwitchMessageHandleBegin, TraceSwitchMessageHandleEnd,
      TraceSwitchMessageSend, TraceSwitchPacketSend, TraceSwitchMessageRx,
      TraceSwitchFlowTableRead,
@@ -252,6 +259,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     self.table = TracingSwitchFlowTable(self) # overwrite SwitchFlowTable
     
     self.table.addListener(TraceSwitchFlowTableWrite, self.reraise_event)
+    self.table.addListener(TraceAsyncSwitchFlowExpirationBegin, self.reraise_event)
+    self.table.addListener(TraceAsyncSwitchFlowExpirationEnd, self.reraise_event)
     self.table.addListener(TraceSwitchFlowTableEntryExpiry, self.reraise_event)
         
   def set_connection(self, connection):
@@ -554,6 +563,7 @@ class FuzzSoftwareSwitch (TracingNXSoftwareSwitch):
       def _print_entry_remove(table_mod):
         if table_mod.removed != []:
           self.log.debug("Table entry removed %s" % str(table_mod.removed))
+      # TODO(jm): Send OpenFlow message to controller if necessary instead of just printing out the removed flows. Do this in TracingNXSoftwareSwitch
       self.table.addListener(FlowTableModification, _print_entry_remove)
 
     def error_handler(e):

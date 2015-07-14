@@ -48,10 +48,12 @@ class HappensBeforeLogger(EventMixin):
     self.pids = ObjectRegistry() # packet obj -> pid
     self.mids = ObjectRegistry() # message obj -> mid
     self.buffer_pids = defaultdict(dict) # dpid -> [buffer_id -> pid]
-    self.started_switch_event = dict() # dpid -> event
+    self.started_regular_switch_event = dict() # dpid -> event
+    self.started_async_switch_event = dict() # dpid -> event
     self.started_host_event = dict() # hid -> event
-    self.new_switch_events = defaultdict(list)
-    self.new_host_events = defaultdict(list)
+    self.regular_switch_event_explicit_successors = defaultdict(list) # dpid -> [event]
+    self.async_switch_event_explicit_successors = defaultdict(list) # dpid -> [event]
+    self.host_event_explicit_successors = defaultdict(list) # hid -> [event]
     self.pending_packet_update = dict() # dpid -> packet
     
     self.msg_to_rxbase64 = dict()
@@ -109,6 +111,8 @@ class HappensBeforeLogger(EventMixin):
               TraceHostPacketHandleBegin: self.handle_host_ph_begin,
               TraceHostPacketHandleEnd: self.handle_host_ph_end,
               TraceHostPacketSend: self.handle_host_ps,
+              TraceAsyncSwitchFlowExpirationBegin: self.handle_async_switch_fexp_begin,
+              TraceAsyncSwitchFlowExpirationEnd: self.handle_async_switch_fexp_end,
               TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
               TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
               TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
@@ -166,114 +170,158 @@ class HappensBeforeLogger(EventMixin):
   # Switch helper functions
   #
   
-  def start_switch_event(self,dpid,event):
-    assert dpid not in self.started_switch_event
-    assert dpid not in self.new_switch_events[dpid]
-    self.started_switch_event[event.dpid] = event
+  def is_async_switch_event_started(self, dpid):
+    return dpid in self.started_async_switch_event
   
-  def finish_switch_event(self, dpid):
-    assert dpid in self.started_switch_event
-    
-    self.write_event_to_trace(self.started_switch_event[dpid])
-    del self.started_switch_event[dpid]
-    for i in self.new_switch_events[dpid]:
-      self.write_event_to_trace(i)
-    del self.new_switch_events[dpid]
-    
-  def is_switch_event_started(self, dpid):
-    return dpid in self.started_switch_event
+  def start_async_switch_event(self,dpid,event):
+    assert not self.is_async_switch_event_started(dpid)
+    self.started_async_switch_event[event.dpid] = event
+    assert event.dpid not in self.async_switch_event_explicit_successors
   
+  def finish_async_switch_event(self, dpid):
+    # sanity check
+    assert self.is_async_switch_event_started(dpid)
+    # implementation detail check: HbAsyncFlowExpiry should have exactly one removed flow
+    assert len(self.started_async_switch_event[dpid].operations) == 1
+    self.write_event_to_trace(self.started_async_switch_event[dpid])
+    del self.started_async_switch_event[dpid]
+    for successor_event in self.async_switch_event_explicit_successors[dpid]:
+      self.write_event_to_trace(successor_event)
+    del self.async_switch_event_explicit_successors[dpid]
+  
+  def is_regular_switch_event_started(self, dpid):
+    return dpid in self.started_regular_switch_event
+    
+  def start_regular_switch_event(self,dpid,event):
+    # sanity check: cannot start a switch event if one was already started
+    #               This would mean that we'd have nested events for 
+    #               HbMessageHandle or HbPacketHandle (should not be possible 
+    #               to OF 1.0 spec, or a multithreaded switch (our's is not).
+    assert not self.is_regular_switch_event_started(dpid)
+    # sanity check: should be finished first
+    assert not self.is_async_switch_event_started(dpid)
+    self.started_regular_switch_event[event.dpid] = event
+    assert event.dpid not in self.regular_switch_event_explicit_successors
+      
+  def finish_regular_switch_event(self, dpid):
+    # sanity check
+    assert self.is_regular_switch_event_started(dpid)
+    # sanity check: should be finished first
+    assert not self.is_async_switch_event_started(dpid)
+    self.write_event_to_trace(self.started_regular_switch_event[dpid])
+    del self.started_regular_switch_event[dpid]
+    for successor_event in self.regular_switch_event_explicit_successors[dpid]:
+      self.write_event_to_trace(successor_event)
+    del self.regular_switch_event_explicit_successors[dpid]
+    
   def add_operation_to_switch_event(self, event):
-    if self.is_switch_event_started(event.dpid):
-      self.started_switch_event[event.dpid].operations.append(event)
-      if isinstance(self.started_switch_event[event.dpid], HbMessageHandle):
+    # sanity check: operations can only be triggered as part of a HbMessageHandle
+    #               or HbPacketHandle event.
+    assert self.is_async_switch_event_started(event.dpid) or self.is_regular_switch_event_started(event.dpid)
+    if self.is_async_switch_event_started(event.dpid):
+      # implementation detail check: no HbAsyncFlowExpiry should have more than one removed flow
+      assert len(self.started_regular_switch_event[event.dpid].operations) == 0
+      self.started_regular_switch_event[event.dpid].operations.append(event)
+    elif self.is_regular_switch_event_started(event.dpid):
+      self.started_regular_switch_event[event.dpid].operations.append(event)
+      if isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle):
+        # TODO(jm): Factor the following step out into a separate step in hb_graph. We can 
+        #           easily add this information later (just scan through the operations).
+        # special case for HbMessageHandle
+        # Usually HbMessageHandle does not have a packet or in_port field, but if 
+        # an output:OFPP_TABLE action is taken then this information should be added
         # (add extra fields for special case HbMessageHandle: through OFPP_TABLE)
         if hasattr(event, 'packet'):
-          self.started_switch_event[event.dpid].packet = event.packet
+          self.started_regular_switch_event[event.dpid].packet = event.packet
         if hasattr(event, 'in_port'):
-          self.started_switch_event[event.dpid].in_port = event.in_port
-    else:
-      # Ignore this operation, as there is no started switch event yet.
-      self.log.info("Ignoring switch operation as there is no associated begin event.")
-
-  def add_successor_to_switch_event(self, event, mid_in=None, pid_in=None):
-    if self.is_switch_event_started(event.dpid):
+          self.started_regular_switch_event[event.dpid].in_port = event.in_port
+        
+  def try_add_successor_to_switch_event(self, event, mid_in=None, pid_in=None):
+    if self.is_async_switch_event_started(event.dpid):
+      assert (pid_in == None)
+      assert (mid_in is not None)
+      self.started_regular_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
+      self.async_switch_event_explicit_successors[event.dpid].append(event)
+    elif self.is_regular_switch_event_started(event.dpid):
+      assert (mid_in is not None) or (pid_in is not None)
       if mid_in is not None:
-        self.started_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
+        self.started_regular_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
       if pid_in is not None:
-        self.started_switch_event[event.dpid].pid_out.append(pid_in) # link with latest event
-      self.new_switch_events[event.dpid].append(event) # enqueue event to be output as soon as the end event is reached
+        self.started_regular_switch_event[event.dpid].pid_out.append(pid_in) # link with latest event
+      self.regular_switch_event_explicit_successors[event.dpid].append(event)
     else:
-      # Output this operation directly as we missed the preceding event.
-      # TODO(jm): Could we do better, maybe ignore these events altogether?
-      self.log.info("Writing switch event even though there was no associated begin event.")
       self.write_event_to_trace(event)
 
   #
   # Host helper functions
   #
-
-  def start_host_event(self,hid,event):
-    for i in self.new_host_events[hid]:
-      self.write_event_to_trace(i)
-    del self.new_host_events[hid]
-    assert event.hid not in self.started_host_event 
-    
-    self.started_host_event[event.hid] = event
-  def finish_host_event(self, hid):
-    assert hid in self.started_host_event
-    
-    self.write_event_to_trace(self.started_host_event[hid])
-    del self.started_host_event[hid]
-    for i in self.new_host_events[hid]:
-      self.write_event_to_trace(i)
-    del self.new_host_events[hid]
     
   def is_host_event_started(self, hid):
     return hid in self.started_host_event
+
+  def start_host_event(self, hid, event):
+    # sanity check
+    assert not self.is_host_event_started(hid)
+    self.started_host_event[hid] = event
+    assert event.hid not in self.host_event_explicit_successors
   
-  def add_successor_to_host_event(self, event, pid_in=None):
+  def finish_host_event(self, hid):
+    # sanity check
+    assert hid in self.started_host_event
+    self.write_event_to_trace(self.started_host_event[hid])
+    del self.started_host_event[hid]
+    for successor_event in self.host_event_explicit_successors[hid]:
+      self.write_event_to_trace(successor_event)
+    del self.host_event_explicit_successors[hid]
+  
+  def try_add_successor_to_host_event(self, event, pid_in=None):
     if self.is_host_event_started(event.hid):
+      # This event is triggered during the processing of a HostHandle event
       if pid_in is not None:
-        self.started_host_event[event.hid].pid_out.append(pid_in) # link with latest event
-      self.new_host_events[event.hid].append(event)
+        # The event that was triggered is capable of having a predecessor, 
+        # so let's add the current HostHandle event as the predecessor
+        self.started_host_event[event.hid].pid_out.append(pid_in) # add an additional link to latest event
+      # Write this event
+      self.host_event_explicit_successors[event.hid].append(event)
     else:
-      # Output this operation directly as we missed the preceding event.
-      self.log.info("Writing host event even though there was no associated begin event.")
+      # This event was raised not during the processing of a HostHandle event.
       self.write_event_to_trace(event)
   
   #
   # Switch events
   #
   
+  def handle_async_switch_fexp_begin(self, event):
+    begin_event = HbAsyncFlowExpiry(dpid=event.dpid)
+    self.start_async_switch_event(event.dpid, begin_event)
+  
+  def handle_async_switch_fexp_end(self, event):
+    self.finish_async_switch_event(event.dpid)
+  
   def handle_switch_ph_begin(self, event):
     pid_in = self.pids.get_tag(event.packet) # matches a pid_out as the Python object ids will be the same
     
     begin_event = HbPacketHandle(pid_in, dpid=event.dpid, packet=event.packet, in_port=event.in_port)
-    self.start_switch_event(event.dpid, begin_event)
+    self.start_regular_switch_event(event.dpid, begin_event)
   
   def handle_switch_ph_end(self, event):
-    self.finish_switch_event(event.dpid)
+    self.finish_regular_switch_event(event.dpid)
   
   def handle_switch_mh_begin(self, event):
       mid_in = self.mids.get_tag(event.msg) # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation.
       msg_type = event.msg.header_type
       
       msg_flowmod = None if not hasattr(event, 'flow_mod') else event.flow_mod
-      
-#       if msg_type == 18: #OFPT_BARRIER_REQUEST
-#         print 'BARRIER!'
-      
+
       begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg, msg_flowmod=msg_flowmod)
-      self.start_switch_event(event.dpid, begin_event)
+      self.start_regular_switch_event(event.dpid, begin_event)
       
       # match with controller instrumentation
-      self.unmatched_HbMessageHandle[event.dpid].insert(0, (mid_in, base64_encode(event.msg))) # prepend
-#       print self._get_rxbase64(base64_encode(event.msg))
+      self.unmatched_HbMessageHandle[event.dpid].append((mid_in, base64_encode(event.msg)))
       self.rematch_unmatched_lines()
   
   def handle_switch_mh_end(self, event):
-    self.finish_switch_event(event.dpid)
+    self.finish_regular_switch_event(event.dpid)
   
   def handle_switch_ms(self, event):
     mid_in = self.mids.new_tag(event.msg) # tag changes here
@@ -284,13 +332,12 @@ class HappensBeforeLogger(EventMixin):
     self.mids.remove_obj(event.msg)
     
     new_event = HbMessageSend(mid_in, mid_out, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)   
-    self.add_successor_to_switch_event(new_event, mid_in=mid_in)
+    self.try_add_successor_to_switch_event(new_event, mid_in=mid_in)
     
     # add base64 encoded message to list for controller instrumentation
     # this will always come before the switch has had a chance to write out something, 
     # so no need to check anything here
-    self.unmatched_HbMessageSend[event.dpid].insert(0, (mid_out, base64_encode(event.msg))) #prepend
-#     print base64_encode(event.msg)
+    self.unmatched_HbMessageSend[event.dpid].append((mid_out, base64_encode(event.msg)))
     self.rematch_unmatched_lines()
   
   def handle_switch_ps(self, event):
@@ -298,7 +345,7 @@ class HappensBeforeLogger(EventMixin):
     pid_out = self.pids.new_tag(event.packet) # tag changes here
     
     new_event = HbPacketSend(pid_in, pid_out, dpid=event.dpid, packet=event.packet, out_port=event.out_port)
-    self.add_successor_to_switch_event(new_event, pid_in=pid_in)
+    self.try_add_successor_to_switch_event(new_event, pid_in=pid_in)
     
   #
   # Switch operation events
@@ -311,24 +358,24 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_table_entry_expiry(self, event):
-    self.add_operation_to_switch_event(event)
+    pass
     
   def handle_switch_buf_put(self, event):
-    assert self.is_switch_event_started(event.dpid)
+    assert self.is_regular_switch_event_started(event.dpid)
     BufferTypes = (HbPacketHandle, HbMessageHandle) 
-    assert isinstance(self.started_switch_event[event.dpid], BufferTypes)
-    if isinstance(self.started_switch_event[event.dpid], HbMessageHandle):
+    assert isinstance(self.started_regular_switch_event[event.dpid], BufferTypes)
+    if isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle):
       print "Warning: Possible infinite recursion in switch, due to OFPP_TABLE PacketOut."
       # (add extra fields for special case HbMessageHandle: through OFPP_TABLE)
       if hasattr(event, 'packet'):
-        self.started_switch_event[event.dpid].packet = event.packet
+        self.started_regular_switch_event[event.dpid].packet = event.packet
       if hasattr(event, 'in_port'):
-        self.started_switch_event[event.dpid].in_port = event.in_port
+        self.started_regular_switch_event[event.dpid].in_port = event.in_port
     # the tag should still be the same, as no successor events should have been added yet
-    assert self.pids.get_tag(event.packet) == self.started_switch_event[event.dpid].pid_in
+    assert self.pids.get_tag(event.packet) == self.started_regular_switch_event[event.dpid].pid_in
     # generate pid_out for buffer write
     pid_out = self.pids.new_tag(event.packet) # tag changes here
-    self.started_switch_event[event.dpid].pid_out.append(pid_out)
+    self.started_regular_switch_event[event.dpid].pid_out.append(pid_out)
     self.buffer_pids[event.dpid][event.buffer_id] = pid_out
     self.add_operation_to_switch_event(event)
     
@@ -338,8 +385,8 @@ class HappensBeforeLogger(EventMixin):
     #           E.g. in a distributed controller if one thread processes the PACKET_IN and then another thread
     #           creates a PACKET_OUT to send the packet out from the buffer. The current controller instrumentation
     #           does not capture this, so adding this edge might help in that specific case.
-    if self.is_switch_event_started(event.dpid):
-      assert isinstance(self.started_switch_event[event.dpid], HbMessageHandle)
+    if self.is_regular_switch_event_started(event.dpid):
+      assert isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle)
       # update the pid_in of the current event using the packet from the buffer
 #       pid_in = self.pids.get_tag(event.packet)
       # NOTE: do NOT use the current tag of the packet, as it might have already been resent. Instead, read
@@ -348,7 +395,7 @@ class HappensBeforeLogger(EventMixin):
       if not event.buffer_id in self.buffer_pids[event.dpid]:
         print event.buffer_id
         assert False
-      self.started_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
+      self.started_regular_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
       
       # NOTE: deleting buffer entries is not correct in all cases, so don't do it.
       # del self.buffer_pids[event.dpid][event.buffer_id]
@@ -397,7 +444,7 @@ class HappensBeforeLogger(EventMixin):
     pid_out = self.pids.new_tag(event.packet) # tag changes here
     
     new_event = HbHostSend(pid_in, pid_out, hid=event.hid, packet=event.packet, out_port=event.out_port)
-    self.add_successor_to_host_event(new_event, pid_in=pid_in)
+    self.try_add_successor_to_host_event(new_event, pid_in=pid_in)
   
   #
   # Controller instrumentation information
@@ -476,6 +523,7 @@ class HappensBeforeLogger(EventMixin):
     if msg == line_msg:
       self.controller_packetin_to_mid_out[(dpid,msg)] = mid_out
       return True
+    return False
     
   def match_controller_line_packet_out(self, mid_out, dpid, line_msg, unmatched_entry):
     '''
@@ -484,7 +532,8 @@ class HappensBeforeLogger(EventMixin):
     mid_in, msg = unmatched_entry #tuple
     if self._get_rxbase64(msg) == line_msg:
       self.add_controller_hb_edge(mid_out, mid_in)
-      
+      return True
+    return False
   
   def match_controller_line(self, line):
     '''

@@ -41,17 +41,19 @@ EventType = enum('HbPacketHandle',
                  'HbHostSend', 
                  'HbControllerHandle', 
                  'HbControllerSend',
+                 'HbAsyncFlowExpiry',
                  )
 
 OpType = enum('TraceSwitchFlowTableRead',
               'TraceSwitchFlowTableWrite',
-              'TraceSwitchFlowTableEntryExpiry',
               'TraceSwitchBufferPut', 
               'TraceSwitchBufferGet', 
               )
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
-predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
+predecessor_types = {EventType.HbAsyncFlowExpiry:  [EventType.HbMessageSend,
+                                                    ],
+                     EventType.HbPacketHandle:     [EventType.HbPacketSend,
                                                     EventType.HbHostSend,
                                                    ],
                      EventType.HbPacketSend:       [EventType.HbPacketHandle,
@@ -62,7 +64,8 @@ predecessor_types = {EventType.HbPacketHandle:     [EventType.HbPacketSend,
                                                     EventType.HbPacketHandle, # buffer put -> buffer get!
                                                     EventType.HbMessageSend, # merged controller edges
                                                    ],
-                     EventType.HbMessageSend:      [EventType.HbPacketHandle,
+                     EventType.HbMessageSend:      [EventType.HbAsyncFlowExpiry,
+                                                    EventType.HbPacketHandle,
                                                     EventType.HbMessageHandle,
                                                    ], 
                      EventType.HbHostHandle:       [EventType.HbPacketSend], 
@@ -78,6 +81,8 @@ def ofp_flow_mod_command_to_string(t):
   return ofp_flow_mod_command_rev_map.keys()[ofp_flow_mod_command_rev_map.values().index(t)]
 
 class CommutativityChecker(object):
+  
+  # TODO(jm): make use_comm_spec a config option
   def __init__(self, use_comm_spec=True):
     self.use_comm_spec = use_comm_spec # Use commutativity spec if True
     
@@ -422,6 +427,7 @@ class CommutativityChecker(object):
 
 class RaceDetector(object):
   
+  # TODO(jm): make filter_rw a config option
   def __init__(self, graph, filter_rw=True):
     self.graph = graph
     
@@ -493,6 +499,8 @@ class RaceDetector(object):
     else:
       return True    
   
+  
+  # TODO(jm): make verbose a config option
   def detect_races(self, event=None, verbose=False):
     """
     Detect all races that involve event.
@@ -625,8 +633,6 @@ class RaceDetector(object):
     print "| Total filtered races:  {:<18} |".format(self.total_filtered)
     print "+-------------------------------------------+"
     
-
-    
 class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None):
@@ -702,11 +708,11 @@ class HappensBeforeGraph(object):
   def _update_event_has_no_further_successors_mid_out(self, event):
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
-      
+  
   def _add_edge(self, before, after, sanity_check=True):
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.id)+") < "+after.typestr+" ("+str(after.id)+")"
-#       assert False 
+      assert False 
     self.predecessors[after].add(before)
     self.successors[before].add(after)
     
@@ -717,6 +723,7 @@ class HappensBeforeGraph(object):
         for other in self.events_by_pid_out[event.pid_in]: 
           self._add_edge(other, event)
           self._update_event_is_linked_pid_in(event)
+    # TODO(jm): remove by reordering first
     # recheck events added in an order different from the trace order
     if hasattr(event, 'pid_out'):
       for pid_out in event.pid_out:
@@ -732,6 +739,7 @@ class HappensBeforeGraph(object):
         for other in self.events_by_mid_out[event.mid_in]:
           self._add_edge(other, event)
           self._update_event_is_linked_mid_in(event)
+    # TODO(jm): remove by reordering first
     # recheck events added in an order different from the trace order (mainly controller events as they are asynchronously logged)
     if hasattr(event, 'mid_out'):
       for mid_out in event.mid_out:
@@ -789,6 +797,7 @@ class HappensBeforeGraph(object):
       for out_evt in out_events:
         self._add_edge(in_evt, out_evt, sanity_check=False)
   
+  # TODO(jm): make online_update a config option
   def add_line(self, line, online_update=False):
     if len(line) > 1 and not line.startswith('#'):
       
@@ -843,7 +852,9 @@ class HappensBeforeGraph(object):
     assert event.id not in self.events_by_id
     self.events_by_id[event.id] = event
     self._add_to_lookup_tables(event)
-    
+
+    def _handle_HbAsyncFlowExpiry(event):
+      self._update_edges(event)
     def _handle_HbPacketHandle(event):
       self._update_edges(event)
     def _handle_HbPacketSend(event):
@@ -863,7 +874,8 @@ class HappensBeforeGraph(object):
     def _handle_default(event):
       pass
     
-    handlers = { EventType.HbPacketHandle:      _handle_HbPacketHandle,
+    handlers = { EventType.HbAsyncFlowExpiry:   _handle_HbAsyncFlowExpiry,
+                 EventType.HbPacketHandle:      _handle_HbPacketHandle,
                  EventType.HbPacketSend:        _handle_HbPacketSend,
                  EventType.HbMessageHandle:     _handle_HbMessageHandle,
                  EventType.HbMessageSend:       _handle_HbMessageSend,

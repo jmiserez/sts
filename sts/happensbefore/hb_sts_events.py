@@ -30,7 +30,17 @@ class TraceSwitchEvent(JsonEvent):
                     'touched_flow_bytes',
                     ('touched_flow_now', lambda fp: repr(fp)), # str() is not precise for floating point numbers in Python < v3.2
                     ]
-               
+
+class TraceAsyncSwitchFlowExpirationBegin(TraceSwitchEvent):
+  def __init__(self, dpid):
+    TraceSwitchEvent.__init__(self)
+    self.dpid = dpid
+    
+class TraceAsyncSwitchFlowExpirationEnd(TraceSwitchEvent):
+  def __init__(self, dpid):
+    TraceSwitchEvent.__init__(self)
+    self.dpid = dpid
+
 class TraceSwitchPacketHandleBegin(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port):
     TraceSwitchEvent.__init__(self)
