@@ -25,7 +25,7 @@ topology_class = GridTopology
 topology_params = "num_rows=3, num_columns=3"
 
 # Where should the output files be written to
-results_dir = "traces/pox_l2_multi-grid33-traffic"
+results_dir = "traces/pox_l2_multi-grid33-traffic-failures"
 
 apps = None
 
