@@ -5,7 +5,9 @@ from sts.control_flow.fuzzer import Fuzzer
 from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
-from sts.happensbefore.hb_logger import HappensBeforeLogger 
+from sts.happensbefore.hb_logger import HappensBeforeLogger
+from config.application_events import AppCircuitPusher
+
 
 
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
@@ -17,13 +19,18 @@ start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logbac
 
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
-topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=1"
+
+topology_class = MeshTopology
+topology_params = "num_switches=8"
+# topology_class = BinaryLeafTreeTopology
+# topology_params = "num_levels=1"
 # topology_class = StarTopology
 # topology_params = "num_hosts=3"
 
 # Where should the output files be written to
 results_dir = "experiments/floodlight_hb_default"
+
+apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
 # include all defaults
 simulation_config = SimulationConfig(controller_configs=controllers,
@@ -39,7 +46,8 @@ simulation_config = SimulationConfig(controller_configs=controllers,
                                      interpose_on_controllers=False,
                                      ignore_interposition=False,
                                      hb_logger_class=HappensBeforeLogger,
-                                     hb_logger_params=results_dir)
+                                     hb_logger_params=results_dir,
+                                     apps=apps)
 
 # Manual, interactive mode
 # control_flow = Interactive(simulation_config, input_logger=InputLogger())
@@ -52,4 +60,5 @@ control_flow = Fuzzer(simulation_config,
                       delay=0.1,
                       halt_on_violation=False,
 #                       invariant_check_name="check_everything")
-                      invariant_check_name="InvariantChecker.check_liveness")
+                      invariant_check_name="InvariantChecker.check_liveness",
+                      apps=apps)
