@@ -285,8 +285,8 @@ class SimpleHost(HostAbstractClass, EventMixin):
         self.send(interface, arp_reply)
         return arp_reply
       else:
-        self.log.info("received invalid arp packet on "
-                      "interface %s: %s" % (interface.name, str(packet)))
+#         self.log.info("received invalid arp packet on "
+#                       "interface %s: %s" % (interface.name, str(packet)))
         return None
     elif (self.send_capabilities and packet.type == ethernet.IP_TYPE and
           packet.next.protocol == ipv4.ICMP_PROTOCOL):
