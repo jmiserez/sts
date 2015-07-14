@@ -21,8 +21,8 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 
 
 
-topology_class = StarTopology
-topology_params = "num_hosts=3"
+# topology_class = StarTopology
+# topology_params = "num_hosts=3"
 topology_class = MeshTopology
 topology_params = "num_switches=8"
 # topology_class = BinaryLeafTreeTopology
@@ -56,7 +56,7 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
-                      initialization_rounds=20,
+                      initialization_rounds=10,
                       send_all_to_all=True,
                       check_interval=1,
                       delay=0.1,
