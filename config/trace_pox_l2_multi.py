@@ -19,11 +19,13 @@ controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
 # topology_class = StarTopology
 # topology_params = "num_hosts=3"
-topology_class = MeshTopology
-topology_params = "num_switches=6"
+# topology_class = MeshTopology
+# topology_params = "num_switches=6"
+topology_class = GridTopology
+topology_params = "num_rows=3, num_columns=3"
 
 # Where should the output files be written to
-results_dir = "traces/pox_l2_multi-mesh6-traffic-failures"
+results_dir = "traces/pox_l2_multi-grid33"
 
 apps = None
 
