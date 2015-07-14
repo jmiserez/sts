@@ -27,7 +27,7 @@ topology_params = "num_hosts=3"
 # topology_params = "num_levels=1"
 
 # Where should the output files be written to
-results_dir = "traces/floodlight_hb_circuitpusher-star3"
+results_dir = "traces/floodlight_hb_circuitpusher-star3-traffic"
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
