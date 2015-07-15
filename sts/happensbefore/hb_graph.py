@@ -552,9 +552,16 @@ class RaceDetector(object):
     count = 0
     percentage_done = 0
     def nCr(n,r):
-      import math
-      f = math.factorial
-      return f(n) / f(r) / f(n-r)
+      ''' Implements multiplicative formula: https://en.wikipedia.org/wiki/Binomial_coefficient#Multiplicative_formula '''
+      if r < 0 or r > n:
+        return 0
+      if r == 0 or r == n:
+          return 1
+      c = 1
+      for i in xrange(min(r, n - r)):
+          c = c * (n - i) // (i + 1)
+      return c
+
     ww_combination_count = nCr(len(self.write_operations),2)
     
     if verbose:
