@@ -505,7 +505,7 @@ class RaceDetector(object):
   
   
   # TODO(jm): make verbose a config option
-  def detect_races(self, event=None, verbose=True):
+  def detect_races(self, event=None, verbose=False):
     """
     Detect all races that involve event.
     Detect all races for all events if event is None.
@@ -551,7 +551,11 @@ class RaceDetector(object):
     
     count = 0
     percentage_done = 0
-    ww_combination_count = len(self.write_operations)*len(self.write_operations)
+    def nCr(n,r):
+      import math
+      f = math.factorial
+      return f(n) / f(r) / f(n-r)
+    ww_combination_count = nCr(len(self.write_operations),2)
     
     if verbose:
       print "Processing {} w/w combinations".format(ww_combination_count)
@@ -561,9 +565,10 @@ class RaceDetector(object):
       k_event, k_flow_table, k_flow_mod, k_dbg_str = k
       if verbose:
         count += 1
-        if (count / ww_combination_count) * 100 > percentage_done:
-          percentage_done += 10
-          print "{}% ".format(count)
+        percentage = int(((count / float(ww_combination_count)) * 100)) // 10 * 10
+        if percentage > percentage_done:
+          percentage_done = percentage
+          print "{}% ".format(percentage)
       if (i_event != k_event and
           (event is None or event == i_event or event == k_event) and
           i_event.dpid == k_event.dpid and
@@ -585,14 +590,12 @@ class RaceDetector(object):
       for k in self.write_operations:
         if verbose:
           count += 1
-          if (count / rw_combination_count) * 100 > percentage_done:
-            percentage_done += 10
-            print "{}% ".format(count)
+          percentage = int(((count / float(rw_combination_count)) * 100)) // 10 * 10
+          if percentage > percentage_done:
+            percentage_done = percentage
+            print "{}% ".format(percentage)
         i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
         k_event, k_flow_table, k_flow_mod, k_dbg_str = k
-        if verbose:
-          count += 1
-          print "Processing r/w combination {} ".format(count)
         if (i_event != k_event and
             (event is None or event == i_event or event == k_event) and
             i_event.dpid == k_event.dpid and
@@ -997,7 +1000,7 @@ class Main(object):
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
-    self.graph.race_detector.detect_races(verbose=False)
+    self.graph.race_detector.detect_races(verbose=True)
     t2 = time.time()
     self.graph.race_detector.print_races()
     t3 = time.time()
