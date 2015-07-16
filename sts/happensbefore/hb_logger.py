@@ -36,6 +36,7 @@ class HappensBeforeLogger(EventMixin):
   
   def __init__(self, patch_panel):
     self.log = logging.getLogger("hb_logger")
+    # TODO(jm): a regular (non reentrant) lock would suffice here
     self.reentrantlock = RLock()
 
     self.hb_graph = None
@@ -586,8 +587,7 @@ class HappensBeforeLogger(EventMixin):
 
   def rematch_unmatched_lines(self):
     # self.unmatched_controller_lines[:] modifies the list slice instead of assigning a new list
-    self.unmatched_controller_lines = list(itertools.ifilter(self.match_controller_line, self.unmatched_controller_lines))
-
+    self.unmatched_controller_lines = list(itertools.ifilterfalse(self.match_controller_line, self.unmatched_controller_lines))
     if len(self.unmatched_controller_lines) > 0:
       print str(len(self.unmatched_controller_lines)) + ' unmatched log lines remain, waiting for events.'
       self.unmatched_controller_lines_warned = True
