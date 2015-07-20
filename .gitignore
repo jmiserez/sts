@@ -33,6 +33,7 @@ runtime_stats/*dat
 docs/_build/doctrees/*
 documentation/*
 documentation
+traces/
 
 # Controllers
 nox/
