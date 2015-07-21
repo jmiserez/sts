@@ -84,6 +84,7 @@ class TracingOFConnection(OFConnection, EventMixin):
         break
       else:
         message = message[0:packet_length]
+        # TODO(jm) possibly remove this and revert this read() function back to the way it was before 
         self.raiseEvent(TraceSwitchMessageRx(msg_obj, base64_encode_raw(message)))
 
       io_worker.consume_receive_buf(packet_length)

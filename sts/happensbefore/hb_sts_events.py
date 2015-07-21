@@ -53,6 +53,7 @@ class TraceSwitchPacketHandleEnd(TraceSwitchEvent):
     TraceSwitchEvent.__init__(self)
     self.dpid = dpid
 
+# TODO(jm): remove this, and all uses of TraceSwitchMessageRx
 class TraceSwitchMessageRx(TraceSwitchEvent):
   def __init__(self, msg, b64msg):
     TraceSwitchEvent.__init__(self)

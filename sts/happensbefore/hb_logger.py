@@ -3,13 +3,15 @@ from threading import RLock
 import itertools
 import logging
 import time
+import base64
+import copy
 
 from pox.lib.revent.revent import EventMixin
 from sts.happensbefore.hb_sts_events import *
 from sts.happensbefore.hb_tags import ObjectRegistry
 from sts.happensbefore.hb_events import *
 from pox.openflow.libopenflow_01 import *
-from sts.util.convenience import base64_encode
+from sts.util.convenience import base64_encode_raw, base64_decode, base64_decode_openflow
 from sts.util.procutils import prefixThreadOutputMatcher, PrefixThreadLineMatch
 from sts.happensbefore.hb_graph import HappensBeforeGraph
 
@@ -319,7 +321,7 @@ class HappensBeforeLogger(EventMixin):
       self.start_regular_switch_event(event.dpid, begin_event)
       
       # match with controller instrumentation
-      self.unmatched_HbMessageHandle[event.dpid].append((time.time(), mid_in, base64_encode(event.msg)))
+      self.unmatched_HbMessageHandle[event.dpid].append((time.time(), mid_in, event.msg))
       self.rematch_unmatched_lines()
   
   def handle_switch_mh_end(self, event):
@@ -339,7 +341,7 @@ class HappensBeforeLogger(EventMixin):
     # add base64 encoded message to list for controller instrumentation
     # this will always come before the switch has had a chance to write out something, 
     # so no need to check anything here
-    self.unmatched_HbMessageSend[event.dpid].append((time.time(), mid_out, base64_encode(event.msg)))
+    self.unmatched_HbMessageSend[event.dpid].append((time.time(), mid_out, event.msg))
     self.rematch_unmatched_lines()
   
   def handle_switch_ps(self, event):
@@ -407,7 +409,7 @@ class HappensBeforeLogger(EventMixin):
   #
   
   def handle_switch_rx_wire(self, event):
-    msg = base64_encode(event.msg)
+    msg = event.msg
     b64msg = event.b64msg
     self.msg_to_rxbase64[msg] = b64msg
   
@@ -515,14 +517,18 @@ class HappensBeforeLogger(EventMixin):
       return int(swid)
     except ValueError:
       return None
+  
+  def compare_msg(self, m1, m2):
+    if m1 == m2:
+      return True
     
   def match_controller_line_packet_in(self, dpid, line_msg, unmatched_entry):
     '''
     Returns True if the line was matched to a mid_out
     '''
     timestamp, mid_out, msg = unmatched_entry #tuple
-    if msg == line_msg:
-      self.controller_packetin_to_mid_out[(dpid,msg)] = mid_out
+    if self.compare_msg(msg, base64_decode_openflow(line_msg)):
+      self.controller_packetin_to_mid_out[(dpid,line_msg)] = mid_out
       return True
     return False
     
@@ -531,7 +537,7 @@ class HappensBeforeLogger(EventMixin):
     Returns True if the line was matched to a mid_in
     '''
     timestamp, mid_in, msg = unmatched_entry #tuple
-    if self._get_rxbase64(msg) == line_msg:
+    if self.compare_msg(base64_decode_openflow(self._get_rxbase64(msg)), base64_decode_openflow(line_msg)):
       self.add_controller_hb_edge(mid_out, mid_in)
       return True
     return False
@@ -553,6 +559,7 @@ class HappensBeforeLogger(EventMixin):
         for unmatched_entry in self.unmatched_HbMessageSend[in_dpid]:
           if self.match_controller_line_packet_in(in_dpid, in_msg, unmatched_entry):
             # we know this message
+            print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), in_dpid, str(unmatched_entry[2]))
             self.unmatched_HbMessageSend[in_dpid].remove(unmatched_entry) # okay as we exit the loop now
             return True
       return False
@@ -563,24 +570,26 @@ class HappensBeforeLogger(EventMixin):
       if in_dpid is None:
         # the controller did not supply the dpid, no way for us to ever match it
         print 'Error: Discarding controller line: ' + line
+        assert False
         return True
       else:
         # we know the in switch
         if (in_dpid,in_msg) in self.controller_packetin_to_mid_out:
           mid_out = self.controller_packetin_to_mid_out[(in_dpid,in_msg)]
           # we know the in event
-          
           # PACKET_OUT/FLOW_MOD <==> find mid_in, add HB edge
           out_dpid = self.swid_to_dpid(out_swid)
           if out_dpid is None:
             # the controller did not supply the dpid, no way for us to ever match it
             print 'Error: Discarding controller line: ' + line
+            assert False
             return True
           else:
             # we know the out switch
             for unmatched_entry in self.unmatched_HbMessageHandle[out_dpid]:
               if self.match_controller_line_packet_out(mid_out, out_dpid, out_msg, unmatched_entry):
                 # we know this message, and an edge was added
+                print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), out_dpid, str(unmatched_entry[2]))
                 self.unmatched_HbMessageHandle[out_dpid].remove(unmatched_entry) # okay as we exit the loop now
                 return True
       return False
@@ -593,7 +602,7 @@ class HappensBeforeLogger(EventMixin):
     have_old_events = False
     print "Controller log: {} log lines, {} STS events not matched.".format(len(self.unmatched_controller_lines), len(self.unmatched_HbMessageHandle) + len(self.unmatched_HbMessageSend))
     now = time.time()
-    threshold = 10 # time in seconds
+    threshold = 30 # time in seconds
     
     # check the events written to stdout by the controller. These events should definitely be matched!
     for line in self.unmatched_controller_lines:
@@ -608,24 +617,49 @@ class HappensBeforeLogger(EventMixin):
 #           age = now - evt[0]
 #           if age > threshold:
 #             have_old_events = True
-            
+
+
+
     # print everything out
     if have_old_events:
+      print "=================================================================================================="
+      print "=================================================================================================="
       for line in self.unmatched_controller_lines:
         age = now - line[0]
-        if age > threshold:
-          have_old_events = True
-          print "  -> Unmatched controller line: age: {} - {}".format(age, str(line))
+        if len(line) == 3:
+          timestamp, in_swid, in_msg = line
+          print " "
+          print "  -> Unmatched line: age: {} - MessageIn: {} ({}: {})".format(age, str(timestamp), str(in_swid), str(base64_decode_openflow(in_msg)))
+        elif len(line) == 5:
+          timestamp, in_swid, in_msg, out_swid, out_msg = line
+          print " "
+          print "  -> Unmatched line: age: {} - MessageOut: {} ({}: {} --> {}: {})".format(age, str(timestamp), str(in_swid), str(base64_decode_openflow(in_msg)), str(out_swid), str(base64_decode_openflow(out_msg)))
+      print "=================================================================================================="
       for dpid, events in self.unmatched_HbMessageSend.iteritems():
         for evt in events:
           age = now - evt[0]
           if age > threshold:
-            print "  -> unmatched HbMessageSend: age: {} - {}: {}".format(age, dpid, str(evt))
-      for dpid, events in self.unmatched_HbMessageHandle.iteritems():
-        for evt in events:
-          age = now - evt[0]
-          if age > threshold:
-            print "  -> unmatched HbMessageHandle: age: {} - {}: {}".format(age, dpid, str(evt))
+            print " "
+            if evt[2].header_type not in (ofp_type_rev_map['OFPT_BARRIER_REPLY'], 
+                                          ofp_type_rev_map['OFPT_VENDOR'], 
+                                          ofp_type_rev_map['OFPT_STATS_REPLY'], 
+                                          ofp_type_rev_map['OFPT_GET_CONFIG_REPLY'], 
+                                          ofp_type_rev_map['OFPT_FEATURES_REPLY'], 
+                                          ofp_type_rev_map['OFPT_HELLO']):
+              print "  -> unmatched HbMessageSend: age: {} - {}: {}".format(age, dpid, str(evt[2]))
+      print "=================================================================================================="
+      print "=================================================================================================="
+      import pdb
+      pdb.set_trace()
+      
+      
+      
+#       for dpid, events in self.unmatched_HbMessageHandle.iteritems():
+#         for evt in events:
+#           age = now - evt[0]
+#           if age > threshold:
+#             print "  -> unmatched HbMessageHandle: age: {} - {}: {}".format(age, dpid, str(evt[2]))
+      
       
     
     # NOTE(jm): If this message is seen often, this might indicate a problem with the controller
