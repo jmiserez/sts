@@ -410,6 +410,7 @@ class HappensBeforeLogger(EventMixin):
   
   def handle_switch_rx_wire(self, event):
     msg = event.msg
+    # TODO(jm): use deepcopy instead of base64 here
     b64msg = event.b64msg
     self.msg_to_rxbase64[msg] = b64msg
   
@@ -461,6 +462,7 @@ class HappensBeforeLogger(EventMixin):
     This is especially the case where different Openflow libraries are used
     (e.g. when using a Floodlight controller).
     """
+    # TODO(jm): rename method to use deepcopy instead of base64 here
     if msg in self.msg_to_rxbase64:
       return self.msg_to_rxbase64[msg]
     else:
@@ -512,40 +514,49 @@ class HappensBeforeLogger(EventMixin):
     self.write_event_to_trace(event)
     self.log.info("Adding controller edge ("+first+" -> "+second+"): mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
 
+  # TODO(jm): rename this function to start with _
   def swid_to_dpid(self, swid):
     try:
       return int(swid)
     except ValueError:
       return None
   
+  # TODO(jm): rename this function to start with _
   def compare_msg(self, m1, m2):
-    if m1 == m2:
-      return True
-    
+    # TODO(jm): Normalize messages for comparison where necessary (check).
+    return m1 == m2
+  
+  # TODO(jm): rename this function to start with _
   def match_controller_line_packet_in(self, dpid, line_msg, unmatched_entry):
     '''
     Returns True if the line was matched to a mid_out
     '''
     timestamp, mid_out, msg = unmatched_entry #tuple
+    # TODO(jm): performance: do not decode every time we do the comparison, only decode once
     if self.compare_msg(msg, base64_decode_openflow(line_msg)):
       self.controller_packetin_to_mid_out[(dpid,line_msg)] = mid_out
       return True
     return False
-    
+  
+  # TODO(jm): rename this function to start with _
   def match_controller_line_packet_out(self, mid_out, dpid, line_msg, unmatched_entry):
     '''
     Returns True if the line was matched to a mid_in
     '''
     timestamp, mid_in, msg = unmatched_entry #tuple
+    # TODO(jm): performance: do not decode every time we do the comparison, only decode once
+    # TODO(jm): performance: do not fetch rxbase64 every time, only do it once
     if self.compare_msg(base64_decode_openflow(self._get_rxbase64(msg)), base64_decode_openflow(line_msg)):
       self.add_controller_hb_edge(mid_out, mid_in)
       return True
     return False
   
+  # TODO(jm): rename this function to start with _
   def match_controller_line(self, line):
     '''
     Returns True if the line was matched
     '''
+    # TODO(jm): Process all lines with length 3 first, then all longer lines.
     if len(line) == 3:
       timestamp, in_swid, in_msg = line
       # PACKET_IN <==> find mid_out, add link to self.controller_packetin_to_mid_out
@@ -559,7 +570,7 @@ class HappensBeforeLogger(EventMixin):
         for unmatched_entry in self.unmatched_HbMessageSend[in_dpid]:
           if self.match_controller_line_packet_in(in_dpid, in_msg, unmatched_entry):
             # we know this message
-            print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), in_dpid, str(unmatched_entry[2]))
+#             print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), in_dpid, str(unmatched_entry[2]))
             self.unmatched_HbMessageSend[in_dpid].remove(unmatched_entry) # okay as we exit the loop now
             return True
       return False
@@ -589,17 +600,20 @@ class HappensBeforeLogger(EventMixin):
             for unmatched_entry in self.unmatched_HbMessageHandle[out_dpid]:
               if self.match_controller_line_packet_out(mid_out, out_dpid, out_msg, unmatched_entry):
                 # we know this message, and an edge was added
-                print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), out_dpid, str(unmatched_entry[2]))
+#                 print "====> MATCHED: age: {} - {}: {}".format(str(time.time()-unmatched_entry[0]), out_dpid, str(unmatched_entry[2]))
                 self.unmatched_HbMessageHandle[out_dpid].remove(unmatched_entry) # okay as we exit the loop now
                 return True
       return False
 
+  # TODO(jm): rename this function to start with _
   def rematch_unmatched_lines(self):
     # self.unmatched_controller_lines[:] modifies the list slice instead of assigning a new list
     self.unmatched_controller_lines = list(itertools.ifilterfalse(self.match_controller_line, self.unmatched_controller_lines))
     
+    # TODO(jm): remove the following debug code
     # debugging
     have_old_events = False
+    # TODO(jm): Only print out warning if something went wrong
     print "Controller log: {} log lines, {} STS events not matched.".format(len(self.unmatched_controller_lines), len(self.unmatched_HbMessageHandle) + len(self.unmatched_HbMessageSend))
     now = time.time()
     threshold = 30 # time in seconds
@@ -610,16 +624,6 @@ class HappensBeforeLogger(EventMixin):
       if age > threshold:
         have_old_events = True
     
-    # check the events sending msgs to the controller from STS. Ideally the controller should acknowledge every 
-    # message and not miss any, however depending on the application this may not be necessary.
-#     for dpid, events in self.unmatched_HbMessageSend.iteritems():
-#         for evt in events:
-#           age = now - evt[0]
-#           if age > threshold:
-#             have_old_events = True
-
-
-
     # print everything out
     if have_old_events:
       print "=================================================================================================="
@@ -651,23 +655,18 @@ class HappensBeforeLogger(EventMixin):
       print "=================================================================================================="
       import pdb
       pdb.set_trace()
-      
-      
-      
-#       for dpid, events in self.unmatched_HbMessageHandle.iteritems():
-#         for evt in events:
-#           age = now - evt[0]
-#           if age > threshold:
-#             print "  -> unmatched HbMessageHandle: age: {} - {}: {}".format(age, dpid, str(evt[2]))
-      
-      
+
     
+    # TODO(jm): remove the following note
+          
     # NOTE(jm): If this message is seen often, this might indicate a problem with the controller
     #           instrumentation: The controller instrumentation might not be writing out the raw
     #           Openflow message bytes as they are received on the wire.
     #           This can happen e.g. in Floodlight if the message object is modified via
     #           references after the write is issued but before the queue is flushed.
 
+
+  # TODO(jm): Remove this function
   def diff_flow_mods(self, b1, b2):
     """
     For debugging. Print out both flow mods given in base64.
