@@ -254,6 +254,12 @@ class HappensBeforeLogger(EventMixin):
         self.started_regular_switch_event[event.dpid].pid_out.append(pid_in) # link with latest event
       self.explicit_successors_regular_switch_event[event.dpid].append(event)
     else:
+      # sanity check
+      if ((not hasattr(event, 'msg_type')) or 
+              (event.msg_type in (ofp_type_rev_map['OFPT_PACKET_IN'], 
+                                  ofp_type_rev_map['OFPT_FLOW_REMOVED'], 
+                                  ofp_type_rev_map['OFPT_BARRIER_REPLY']))):
+        assert False
       self.write_event_to_trace(event)
 
   #
