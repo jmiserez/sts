@@ -55,8 +55,18 @@ class TraceSwitchPacketHandleEnd(TraceSwitchEvent):
 
 # TODO(jm): remove this, and all uses of TraceSwitchMessageRx
 class TraceSwitchMessageRx(TraceSwitchEvent):
-  def __init__(self, msg, b64msg):
+  def __init__(self, dpid, controller_id, msg, b64msg):
     TraceSwitchEvent.__init__(self)
+    self.dpid = dpid
+    self.controller_id = controller_id
+    self.msg = msg
+    self.b64msg = b64msg
+    
+class TraceSwitchMessageTx(TraceSwitchEvent):
+  def __init__(self, dpid, controller_id, msg, b64msg):
+    TraceSwitchEvent.__init__(self)
+    self.dpid = dpid
+    self.controller_id = controller_id
     self.msg = msg
     self.b64msg = b64msg
 
@@ -74,9 +84,10 @@ class TraceSwitchMessageHandleEnd(TraceSwitchEvent):
     self.dpid = dpid
   
 class TraceSwitchMessageSend(TraceSwitchEvent):
-  def __init__(self, dpid, controller_id, msg):
+  def __init__(self, dpid, cid, controller_id, msg):
     TraceSwitchEvent.__init__(self)
     self.dpid = dpid
+    self.cid = cid
     self.controller_id = controller_id
     self.msg = msg
 

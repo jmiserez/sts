@@ -56,14 +56,29 @@ class TracingOFConnection(OFConnection, EventMixin):
   This version of OFConnection raises events when a message is sent
   """
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceSwitchMessageSend, TraceSwitchMessageRx])
+  _eventMixin_events = set([TraceSwitchMessageTx, TraceSwitchMessageRx])
   
   def __init__(self, *args, **kw):
     OFConnection.__init__(self, *args, **kw)
   
   def send(self, ofp_message):
-    ofp_message.pack()
-    self.raiseEvent(TraceSwitchMessageSend(self.dpid, self.controller_id, ofp_message))
+    # NOTE(jm): When running in Interactive mode, this method is called immediately
+    #           after the switch sends the message out.
+    #           However, when running in Fuzzer mode (and possibly others),
+    #           messages are enqueued to the connection buffer by the switch and
+    #           this method is only called in the next round, when the switch event
+    #           is long finished.
+    #           Possibly messages are also being dropped in Fuzzer mode and this
+    #           method will never be called (I have not verified if this is the 
+    #           case) 
+    
+    # NOTE(jm): pack() will generate an XID if it is None. So we call pack() now
+    #           so that we can be reasonably sure that the message we record in
+    #           the trace will be the same as the one that is actually sent out.
+    #           (The methods called in send() will call pack() right after this.
+    ofp_message = ofp_message.pack()
+    # TODO(jm): do something useful with this event
+    self.raiseEvent(TraceSwitchMessageTx(self.dpid, self.controller_id, ofp_message, base64_encode_raw(ofp_message)))
     super(TracingOFConnection, self).send(ofp_message)
     
   def read (self, io_worker):
@@ -84,8 +99,8 @@ class TracingOFConnection(OFConnection, EventMixin):
         break
       else:
         message = message[0:packet_length]
-        # TODO(jm) possibly remove this and revert this read() function back to the way it was before 
-        self.raiseEvent(TraceSwitchMessageRx(msg_obj, base64_encode_raw(message)))
+        # TODO(jm) possibly remove this and revert this read() function back to the way it was before
+        self.raiseEvent(TraceSwitchMessageRx(self.dpid, self.controller_id, msg_obj, base64_encode_raw(message)))
 
       io_worker.consume_receive_buf(packet_length)
 
@@ -104,6 +119,10 @@ class TracingOFConnection(OFConnection, EventMixin):
     return True
 
 class DeferredOFConnection(TracingOFConnection):
+  
+  __metaclass__ = CombiningEventMixinMetaclass
+  _eventMixin_events = set([TraceSwitchMessageSend])
+  
   def __init__(self, io_worker, cid, dpid, openflow_buffer):
     super(DeferredOFConnection, self).__init__(io_worker)
     self.cid = cid
@@ -134,6 +153,8 @@ class DeferredOFConnection(TracingOFConnection):
 
   def send(self, ofp_message):
     ''' Interpose on switch sends as well '''
+    # TODO(jm): Should we call pack() here?
+    self.raiseEvent(TraceSwitchMessageSend(self.dpid, self.cid, self.controller_id, ofp_message))
     self.openflow_buffer.insert_pending_send(self.dpid, self.cid, ofp_message, self)
 
   def allow_message_send(self, ofp_message):
@@ -143,6 +164,9 @@ class DeferredOFConnection(TracingOFConnection):
 class ConnectionlessOFConnection(object):
   ''' For use with InteractiveReplayer, where controllers are mocked out, and
   events are replayed to headless switches.'''
+
+  # TODO(jm): Add EventMixin for the necessary events here, so that this works
+  #           the same way as the DeferredOFConnectuion and TracingOFConnection
   def __init__(self, cid, dpid):
     self.cid = cid
     self.dpid = dpid
@@ -165,12 +189,14 @@ class ConnectionlessOFConnection(object):
 
   def send(self, ofp_message):
     ''' Into the abyss you go!'''
+    # TODO(jm): Call TraceSwitchMessageSend event here, and possibly TraceSwitchMessageTx as well.
     pass
 
   # N.B. different interface than OFConnection. It's OK, since we don't actually
   # use io_workers -- this is only invoked by
   # ControlMessageReceive.manually_inject()
   def read (self, ofp_message):
+    # TODO(jm): Call TraceSwitchMessageRx event here.
     self.on_message_handler(self, ofp_message)
 
 class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):

@@ -123,6 +123,7 @@ class HappensBeforeLogger(EventMixin):
               TraceSwitchMessageSend: self.handle_switch_ms,
               TraceSwitchPacketSend: self.handle_switch_ps,
               TraceSwitchMessageRx: self.handle_switch_rx_wire,
+              TraceSwitchMessageTx: self.handle_switch_tx_wire,
               TraceSwitchFlowTableRead: self.handle_switch_table_read,
               TraceSwitchFlowTableWrite: self.handle_switch_table_write,
               TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
@@ -143,6 +144,7 @@ class HappensBeforeLogger(EventMixin):
         pass # set a breakpoint here
   
   def subscribe_to_DeferredOFConnection(self, connection):
+    connection.addListener(TraceSwitchMessageTx, self.handle_no_exceptions)
     connection.addListener(TraceSwitchMessageSend, self.handle_no_exceptions)
       
   def _subscribe_to_PatchPanel(self, patch_panel):
@@ -415,10 +417,23 @@ class HappensBeforeLogger(EventMixin):
   #
   
   def handle_switch_rx_wire(self, event):
+    """
+    Called when a OF message is received over the wire from the switch
+    """
     msg = event.msg
     # TODO(jm): use deepcopy instead of base64 here
     b64msg = event.b64msg
     self.msg_to_rxbase64[msg] = b64msg
+    
+  def handle_switch_tx_wire(self, event):
+    """
+    Called when a OF message is actually sent over the wire to the switch
+    """
+    # TODO(jm): do something with this event, e.g. link the original
+    #           TraceSwitchMessageSend with this event to make it clear that the
+    #           OF message sent in the TraceSwitchMessageSend event was not
+    #           dropped by the Fuzzer (see DeferredOFConnection).
+    pass
   
   def handle_switch_pu_begin(self, event):
     """
