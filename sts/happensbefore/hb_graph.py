@@ -6,7 +6,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
 from pox.openflow.libopenflow_01 import *
 from pox.openflow.flow_table import FlowTable, TableEntry, SwitchFlowTable
 from pox.openflow.software_switch import OFConnection
+from pox.lib.addresses import EthAddr
+from pox.lib.packet.ethernet import ethernet
+from pox.lib.packet.icmp import icmp
+from pox.lib.packet.ipv4 import ipv4
+from pox.lib.packet.icmp import _type_to_name as icmp_names
+from pox.lib.packet.packet_utils import ipproto_to_str
 
+import argparse
 import json
 from collections import namedtuple, defaultdict, deque, OrderedDict
 import itertools
@@ -79,6 +86,39 @@ def ofp_type_to_string(t):
 
 def ofp_flow_mod_command_to_string(t):
   return ofp_flow_mod_command_rev_map.keys()[ofp_flow_mod_command_rev_map.values().index(t)]
+
+def eth_repr(pkt):
+    s = ''.join(('ETH: ', '[', str(EthAddr(pkt.src)), '>', str(EthAddr(pkt.dst)), ':',
+                ethernet.getNameForType(pkt.type), ']'))
+    if pkt.next is None:
+      pass
+    elif pkt.type == ethernet.LLDP_TYPE:
+      s += "| LLDP"
+    elif pkt.type == 35138:
+      print "BUGGY PKT type {0} str type {1}".format(pkt.type, ethernet.getNameForType(pkt.type))
+      s += "| Unkown PKT"
+    else:
+      s += "|" + str(pkt.next)
+    return '\\n'.join(s.split('|'))
+
+def icmp_repr(pkt):
+  t = icmp_names.get(pkt.type, str(pkt.type))
+  s = 'ICMP: {t:%s c:%i}' % (t, pkt.code)
+  if pkt.next is None:
+      return s
+  return '|' + ''.join((s, str(pkt.next)))
+
+def ipv4_repr(pkt):
+  s = 'IPv4' + ''.join(('(','['#+'v:'+str(self.v),'hl:'+str(self.hl),\
+                     #    'l:', str(self.iplen)
+                     'ttl:', str(pkt.ttl), ']',
+                      ipproto_to_str(pkt.protocol), \
+                      #   ' cs:', '%x' %self.csum,
+                      '[',str(pkt.srcip), '>', str(pkt.dstip),'])'))
+  if pkt.next == None:
+      return s
+  return '|' + ''.join((s, str(pkt.next)))
+
 
 class CommutativityChecker(object):
   
@@ -919,8 +959,20 @@ class HappensBeforeGraph(object):
         self.add_line(line, online_update=False)
     print "Read in " + str(len(self.events)) + " events." 
     self.events.sort(key=lambda i: i.id)
-  
-  def store_graph(self, filename="hb.dot"):
+
+  def pkt_info(self, data):
+    """
+    Returns a string representation of base64 encoded packet
+
+    Note: this function moneky patches __str__ in ethernet, icmp, ipv4, etc..
+    """
+    packet = CommutativityChecker.decode_packet(data)
+    ethernet.__str__ = eth_repr
+    icmp.__str__ = icmp_repr
+    ipv4.__str__ = ipv4_repr
+    return str(packet)
+
+  def store_graph(self, filename="hb.dot",  print_packets=False):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
     
@@ -975,11 +1027,30 @@ class HappensBeforeGraph(object):
               optype = 'FlowTableRead'
               shape = '[shape="box"]'
               break
-        if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-          try:
-            dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}\\n{4}"] {5};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType._names()[i.type],i.msg_type_str,optype,shape))
-          except:
-            dot_lines.append('{0} [label="{0}\\n{1}\\n{2}\\n{3}"]{4};\n'.format(i.id,"" if not hasattr(i, 'dpid') else i.dpid,EventType._names()[i.type],optype,shape))
+
+        if print_packets:
+          pkt = 'No Pkt'
+          if hasattr(i, 'packet'):
+            pkt = self.pkt_info(i.packet)
+          if hasattr(i, 'msg_type_str') and i.msg_type_str == 'OFPT_PACKET_IN':
+            pass
+            #TODO(AH): Print the conent of packet in/out
+        else:
+          pkt = 'No print'
+
+        if not hasattr(i, 'msg_type'):
+          line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\nOp:{3}\\nPkt: {5}"]{4};\n'.format(
+            i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], optype, shape, pkt)
+          dot_lines.append(line)
+
+        elif getattr(i, 'msg_type_str', None) in interesting_msg_types:
+          line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\n MsgType: {3}\\nOp: {4}\\n Pkt: {6}"] {5};\n'.format(
+              i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], i.msg_type_str, optype, shape, pkt)
+          dot_lines.append(line)
+        else:
+          #print "Event ignored from the graph: ", i
+          pass
+
     for k,v in transitive_predecessors.iteritems():
       if k not in pruned_events:
         for i in v:
@@ -993,13 +1064,15 @@ class HappensBeforeGraph(object):
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
+
   
 class Main(object):
   
-  def __init__(self,filename):
+  def __init__(self,filename, print_pkt):
     self.filename = filename
     self.results_dir = os.path.dirname(os.path.realpath(self.filename))
     self.output_filename = self.results_dir + "/" + "hb.dot"
+    self.print_pkt = print_pkt
     
   def run(self):
     import time
@@ -1011,7 +1084,7 @@ class Main(object):
     t2 = time.time()
     self.graph.race_detector.print_races()
     t3 = time.time()
-    self.graph.store_graph(self.output_filename)
+    self.graph.store_graph(self.output_filename, self.print_pkt)
     t4 = time.time()
     
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
@@ -1022,9 +1095,10 @@ class Main(object):
     
     
 if __name__ == '__main__':
-  if len(sys.argv) < 2:
-    print "Usage: read_trace.py <file>"
-  else:
-    print "Using file {0}".format(sys.argv[1])
-    main = Main(sys.argv[1])
-    main.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument('trace_file')
+  parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
+                      help="Print packet headers in the graph")
+  args = parser.parse_args()
+  main = Main(args.trace_file, args.print_pkt)
+  main.run()
