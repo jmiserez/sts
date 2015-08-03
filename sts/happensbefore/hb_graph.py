@@ -1069,9 +1069,9 @@ class HappensBeforeGraph(object):
   
 class Main(object):
   
-  def __init__(self,filename, print_pkt):
-    self.filename = filename
-    self.results_dir = os.path.dirname(os.path.realpath(self.filename))
+  def __init__(self, filename, print_pkt):
+    self.filename = os.path.realpath(filename)
+    self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
     self.print_pkt = print_pkt
     
