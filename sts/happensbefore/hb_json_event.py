@@ -43,14 +43,15 @@ class AttributeCombiningMetaclass(type):
 class JsonEvent(Event):
   
   _ids = itertools.count(0)
-  _to_json_attrs = ['id',
-                    'type']
-  
-  def __init__(self):
+  _to_json_attrs = ['eid', 'type']
+  _from_json_attrs = {}
+  _json_types = {}
+
+  def __init__(self, eid=None):
     Event.__init__(self)
-    self.id = self._ids.next()
+    self.eid = eid if id else self._ids.next()
     self.type = self.__class__.__name__
-  
+
   def to_json(self):
     json_dict = OrderedDict()
     for i in self._to_json_attrs:
@@ -63,3 +64,24 @@ class JsonEvent(Event):
         json_dict[i] = getattr(self, i)
         
     return json.dumps(json_dict, sort_keys=False)
+
+  @classmethod
+  def register_type(cls, klass):
+    """Register a class to be decoded in from_json"""
+    cls._json_types[klass.__name__] = klass
+
+  @classmethod
+  def from_json(cls, json_dict):
+    """Decode json dict to JsonEvent"""
+    assert json_dict.get('type', None) in cls._json_types,\
+      "Unrecognized event type %s" % json_dict.get('type', None)
+    cls_type = cls._json_types[json_dict['type']]
+    vals = {}
+    for k, v in json_dict.iteritems():
+      if k in cls_type._from_json_attrs:
+        vals[k] = cls_type._from_json_attrs[k](v)
+    obj = cls_type(**vals)
+    return obj
+
+
+JsonEvent.register_type(JsonEvent)
