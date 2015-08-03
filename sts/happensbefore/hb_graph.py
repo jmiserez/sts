@@ -1027,30 +1027,31 @@ class HappensBeforeGraph(object):
               optype = 'FlowTableRead'
               shape = '[shape="box"]'
               break
-
-        if print_packets:
-          pkt = 'No Pkt'
-          if hasattr(i, 'packet'):
+        
+        event_info_lines = []
+        if optype != "":
+          event_info_lines.append("Op: " + optype)
+        if (hasattr(i, 'msg_type')):
+          event_info_lines.append("MsgType: " + i.msg_type_str)
+        if hasattr(i, 'packet'):
+          if print_packets:
             pkt = self.pkt_info(i.packet)
-          if hasattr(i, 'msg_type_str') and i.msg_type_str == 'OFPT_PACKET_IN':
-            pass
-            #TODO(AH): Print the conent of packet in/out
-        else:
-          pkt = 'No print'
-
-        if not hasattr(i, 'msg_type'):
-          line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\nOp:{3}\\nPkt: {5}"]{4};\n'.format(
-            i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], optype, shape, pkt)
-          dot_lines.append(line)
-
-        elif getattr(i, 'msg_type_str', None) in interesting_msg_types:
-          line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\n MsgType: {3}\\nOp: {4}\\n Pkt: {6}"] {5};\n'.format(
-              i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], i.msg_type_str, optype, shape, pkt)
-          dot_lines.append(line)
-        else:
-          #print "Event ignored from the graph: ", i
-          pass
-
+            event_info_lines.append("Pkt: " + pkt)
+        if (hasattr(i, 'in_port')):
+          event_info_lines.append("InPort: " + str(i.in_port))
+        if (hasattr(i, 'buffer_id')):
+          event_info_lines.append("BufferId: " + str(i.buffer_id))
+        if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
+          event_info_lines_str = ""
+          for x in event_info_lines:
+            event_info_lines_str += '\n'
+            event_info_lines_str += str(x)
+          dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
+              i.id, 
+              "" if not hasattr(i, 'dpid') else i.dpid,
+              EventType._names()[i.type],
+              event_info_lines_str,
+              shape))
     for k,v in transitive_predecessors.iteritems():
       if k not in pruned_events:
         for i in v:
