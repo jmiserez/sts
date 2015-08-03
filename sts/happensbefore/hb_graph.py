@@ -479,6 +479,8 @@ class RaceDetector(object):
     self.write_operations = []
     self.races_harmful = []
     self.races_commute = []
+    self.racing_events = set()
+    self.racing_events_harmful = set()
     self.total_operations = 0
     self.total_harmful = 0
     self.total_commute = 0
@@ -587,6 +589,8 @@ class RaceDetector(object):
     
     self.races_harmful = []
     self.races_commute = []
+    self.racing_events = set()
+    self.racing_events_harmful = set()
     self.total_filtered = 0
     
     count = 0
@@ -625,7 +629,11 @@ class RaceDetector(object):
           self.races_commute.append(('w/w',i_event,k_event,i_dbg_str,k_dbg_str))
         else:
           self.races_harmful.append(('w/w',i_event,k_event,i_dbg_str,k_dbg_str))
-    
+          self.racing_events_harmful.add(i_event)
+          self.racing_events_harmful.add(k_event)
+        self.racing_events.add(i_event)
+        self.racing_events.add(k_event)
+        
     percentage_done = 0
     count = 0
     rw_combination_count = len(self.read_operations)*len(self.write_operations)
@@ -655,6 +663,10 @@ class RaceDetector(object):
               self.races_commute.append(('r/w',i_event,k_event,i_dbg_str,k_dbg_str))
             else:
               self.races_harmful.append(('r/w',i_event,k_event,i_dbg_str,k_dbg_str))
+              self.racing_events_harmful.add(i_event)
+              self.racing_events_harmful.add(k_event)
+            self.racing_events.add(i_event)
+            self.racing_events.add(k_event)
     
     self.total_operations = len(self.write_operations) + len(self.read_operations)
     self.total_harmful = len(self.races_harmful)
@@ -972,7 +984,7 @@ class HappensBeforeGraph(object):
     ipv4.__str__ = ipv4_repr
     return str(packet)
 
-  def store_graph(self, filename="hb.dot",  print_packets=False):
+  def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
     
@@ -1011,6 +1023,14 @@ class HappensBeforeGraph(object):
             transitive_predecessors[out_evt].add(in_evt)
         pruned_events.append(i)
     
+    if print_only_racing:
+      for i in self.events:
+        if i not in self.race_detector.racing_events:
+          pruned_events.append(i)
+        else:
+          if print_only_harmful and i not in self.race_detector.racing_events_harmful:
+            pruned_events.append(i)
+            
     dot_lines = []
     dot_lines.append("digraph G {\n");
     for i in self.events:
@@ -1042,26 +1062,29 @@ class HappensBeforeGraph(object):
             pkt = self.pkt_info(i.packet)
             event_info_lines.append("Pkt: " + pkt)
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-          event_info_lines_str = ""
-          for x in event_info_lines:
-            event_info_lines_str += '\n'
-            event_info_lines_str += str(x)
-          dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
-              i.id, 
-              "" if not hasattr(i, 'dpid') else i.dpid,
-              EventType._names()[i.type],
-              event_info_lines_str,
-              shape))
+            event_info_lines_str = ""
+            for x in event_info_lines:
+              event_info_lines_str += '\n'
+              event_info_lines_str += str(x)
+            dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
+                i.id, 
+                "" if not hasattr(i, 'dpid') else i.dpid,
+                EventType._names()[i.type],
+                event_info_lines_str,
+                shape))
     for k,v in transitive_predecessors.iteritems():
       if k not in pruned_events:
         for i in v:
           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
             dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
-    for race in self.race_detector.races_commute:
-      dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].id, race[2].id))
+    if not print_only_harmful:
+      for race in self.race_detector.races_commute:
+        if race[1] not in pruned_events and race[2] not in pruned_events:
+          dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].id, race[2].id))
     for race in self.race_detector.races_harmful:
-      dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].id, race[2].id))
+      if race[1] not in pruned_events and race[2] not in pruned_events:
+          dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].id, race[2].id))
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
@@ -1069,11 +1092,13 @@ class HappensBeforeGraph(object):
   
 class Main(object):
   
-  def __init__(self, filename, print_pkt):
+  def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
     self.print_pkt = print_pkt
+    self.print_only_racing = print_only_racing
+    self.print_only_harmful = print_only_harmful
     
   def run(self):
     import time
@@ -1085,7 +1110,7 @@ class Main(object):
     t2 = time.time()
     self.graph.race_detector.print_races()
     t3 = time.time()
-    self.graph.store_graph(self.output_filename, self.print_pkt)
+    self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
     t4 = time.time()
     
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
@@ -1100,6 +1125,10 @@ if __name__ == '__main__':
   parser.add_argument('trace_file')
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
                       help="Print packet headers in the graph")
+  parser.add_argument('--racing', dest='print_only_racing', action='store_true', default=False,
+                      help="Print only races in the graph")
+  parser.add_argument('--harmful', dest='print_only_harmful', action='store_true', default=False,
+                      help="Print only harmful races (lines) in the graph")
   args = parser.parse_args()
-  main = Main(args.trace_file, args.print_pkt)
+  main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful)
   main.run()
