@@ -1033,14 +1033,14 @@ class HappensBeforeGraph(object):
           event_info_lines.append("Op: " + optype)
         if (hasattr(i, 'msg_type')):
           event_info_lines.append("MsgType: " + i.msg_type_str)
-        if hasattr(i, 'packet'):
-          if print_packets:
-            pkt = self.pkt_info(i.packet)
-            event_info_lines.append("Pkt: " + pkt)
         if (hasattr(i, 'in_port')):
           event_info_lines.append("InPort: " + str(i.in_port))
         if (hasattr(i, 'buffer_id')):
           event_info_lines.append("BufferId: " + str(i.buffer_id))
+        if hasattr(i, 'packet'):
+          if print_packets:
+            pkt = self.pkt_info(i.packet)
+            event_info_lines.append("Pkt: " + pkt)
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
           event_info_lines_str = ""
           for x in event_info_lines:
