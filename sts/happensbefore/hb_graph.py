@@ -171,12 +171,12 @@ class CommutativityChecker(object):
   
   @classmethod
   def read_flow_table(cls, table, packet, in_port):
-    p = RaceDetector.decode_packet(packet)
+    p = CommutativityChecker.decode_packet(packet)
     return table.entry_for_packet(p, in_port)
   
   @classmethod
   def write_flow_table(cls, table, flow_mod):
-    fm = RaceDetector.decode_flow_mod(flow_mod)
+    fm = CommutativityChecker.decode_flow_mod(flow_mod)
     return table.process_flow_mod(fm)
   
   def is_flowmod_subset(self,e1,e2,strict=False):
