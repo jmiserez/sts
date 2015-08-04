@@ -49,7 +49,7 @@ class JsonEvent(Event):
 
   def __init__(self, eid=None):
     Event.__init__(self)
-    self.eid = eid if id else self._ids.next()
+    self.eid = eid if eid else self._ids.next()
     self.type = self.__class__.__name__
 
   def to_json(self):
