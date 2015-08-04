@@ -405,14 +405,14 @@ class CommutativityChecker(object):
     
     # add
     if self.is_add(k_fm):
-      return not self.nocommute_read_add(pkt_match, i_retval, k_fm, i_event.id, k_event.id)
+      return not self.nocommute_read_add(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
     
     # mod
     if self.is_del(k_fm):
-      return not self.nocommute_read_del(pkt_match, i_retval, k_fm, i_event.id, k_event.id)
+      return not self.nocommute_read_del(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
     
     # del
-      return not self.nocommute_read_mod(pkt_match, i_retval, k_fm, i_event.id, k_event.id)
+      return not self.nocommute_read_mod(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
   
     print "Warning: Unhandled r/w commutativity case!"
     assert False
@@ -448,7 +448,7 @@ class CommutativityChecker(object):
     if self.use_comm_spec:
       return self.check_comm_spec_rw(i,k)
     
-    if i_event.id < k_event.id: # read occurred first in trace
+    if i_event.eid < k_event.eid: # read occurred first in trace
       ik_table = self.decode_flow_table(i_flow_table)
       ki_table = self.decode_flow_table(i_flow_table)
     else: # write occurred first in trace
@@ -504,8 +504,8 @@ class RaceDetector(object):
   
   def is_ordered(self, event, other):
     # TODO(jm): horribly inefficient, this should be done the right way
-    older = event if event.id < other.id else other
-    newer = event if event.id > other.id else other
+    older = event if event.eid < other.eid else other
+    newer = event if event.eid > other.eid else other
     if self.is_reachable(newer, older):
       return True
     if self.is_reachable(older, newer): # need to check due to async controller instrumentation # TODO(jm): change numbering of controller events so that we can finally remove this
@@ -529,7 +529,7 @@ class RaceDetector(object):
     
     visited_ids = set()
     for i in visited:
-      visited_ids.add(i.id)
+      visited_ids.add(i.eid)
     return visited_ids
   
   def has_common_ancestor(self, event, other):
@@ -664,33 +664,33 @@ class RaceDetector(object):
   def print_races(self):
     for race in self.races_commute:
       print "+-------------------------------------------+"
-      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race[0], race[1].id, race[2].id)
+      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race[0], race[1].eid, race[2].eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[1].id)
+      print "| op # {:<37}|".format(race[1].eid)
       print "+-------------------------------------------+"
       print "| " + race[3]
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[2].id)
+      print "| op # {:<37}|".format(race[2].eid)
       print "+-------------------------------------------+"
       print "| " + race[4]
       print "+-------------------------------------------+"
     for race in self.races_harmful:
       print "+-------------------------------------------+"
-      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race[0], race[1].id, race[2].id)
+      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race[0], race[1].eid, race[2].eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[1].id)
+      print "| op # {:<37}|".format(race[1].eid)
       print "+-------------------------------------------+"
       print "| " + race[3]
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[2].id)
+      print "| op # {:<37}|".format(race[2].eid)
       print "+-------------------------------------------+"
       print "| " + race[4]
       print "+-------------------------------------------+"
     print "+-------------------------------------------+"
     for ev in self.read_operations:
-      print "| {:>4}: {:28} (read) |".format(ev[0].id, EventType._names()[ev[0].type])
+      print "| {:>4}: {:28} (read) |".format(ev[0].eid, EventType._names()[ev[0].type])
     for ev in self.write_operations:
-      print "| {:>4}: {:27} (write) |".format(ev[0].id, EventType._names()[ev[0].type])
+      print "| {:>4}: {:27} (write) |".format(ev[0].eid, EventType._names()[ev[0].type])
     print "| Total operations:      {:<18} |".format(self.total_operations)
     print "|-------------------------------------------|"
     print "| Total commuting races: {:<18} |".format(self.total_commute)
@@ -776,7 +776,7 @@ class HappensBeforeGraph(object):
   
   def _add_edge(self, before, after, sanity_check=True):
     if sanity_check and before.type not in predecessor_types[after.type]:
-      print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.id)+") < "+after.typestr+" ("+str(after.id)+")"
+      print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
     self.predecessors[after].add(before)
     self.successors[before].add(after)
@@ -914,8 +914,8 @@ class HappensBeforeGraph(object):
   
   def add_event(self, event):
     self.events.append(event)
-    assert event.id not in self.events_by_id
-    self.events_by_id[event.id] = event
+    assert event.eid not in self.events_by_id
+    self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
 
     def _handle_HbAsyncFlowExpiry(event):
@@ -958,7 +958,7 @@ class HappensBeforeGraph(object):
       for line in f:
         self.add_line(line, online_update=False)
     print "Read in " + str(len(self.events)) + " events." 
-    self.events.sort(key=lambda i: i.id)
+    self.events.sort(key=lambda i: i.eid)
 
   def pkt_info(self, data):
     """
@@ -1040,12 +1040,12 @@ class HappensBeforeGraph(object):
 
         if not hasattr(i, 'msg_type'):
           line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\nOp:{3}\\nPkt: {5}"]{4};\n'.format(
-            i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], optype, shape, pkt)
+            i.eid, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], optype, shape, pkt)
           dot_lines.append(line)
 
         elif getattr(i, 'msg_type_str', None) in interesting_msg_types:
           line = '{0} [label="ID: {0}\\n DPID: {1}\\n Event: {2}\\n MsgType: {3}\\nOp: {4}\\n Pkt: {6}"] {5};\n'.format(
-              i.id, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], i.msg_type_str, optype, shape, pkt)
+              i.eid, "" if not hasattr(i, 'dpid') else i.dpid, EventType._names()[i.type], i.msg_type_str, optype, shape, pkt)
           dot_lines.append(line)
         else:
           #print "Event ignored from the graph: ", i
@@ -1055,12 +1055,12 @@ class HappensBeforeGraph(object):
       if k not in pruned_events:
         for i in v:
           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
-            dot_lines.append('    {} -> {};\n'.format(i.id,k.id))
+            dot_lines.append('    {} -> {};\n'.format(i.eid,k.eid))
     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
     for race in self.race_detector.races_commute:
-      dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].id, race[2].id))
+      dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].eid, race[2].eid))
     for race in self.race_detector.races_harmful:
-      dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].id, race[2].id))
+      dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].eid, race[2].eid))
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
