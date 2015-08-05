@@ -4,7 +4,6 @@ Events instrumenting STS internals.
 
 from hb_json_event import JsonEvent
 from hb_json_event import AttributeCombiningMetaclass
-from hb_utils import base64_decode
 from hb_utils import base64_decode_openflow
 from hb_utils import base64_encode
 from hb_utils import base64_encode_flow
@@ -12,6 +11,7 @@ from hb_utils import base64_encode_flow_list
 from hb_utils import base64_encode_flow_table
 from hb_utils import decode_flow_table
 from hb_utils import decode_flow_mod
+from hb_utils import decode_packet
 from hb_utils import get_port_no
 
 
@@ -43,7 +43,7 @@ class TraceSwitchEvent(JsonEvent):
     'dpid': lambda x: x,
     'controller_id': lambda x: x, # socket.getpeername(), NOT the STS cid
     'hid': lambda x: x,
-    'packet': base64_decode,
+    'packet': decode_packet,
     'in_port': lambda x: x,
     'out_port': lambda x: x,
     'buffer_id': lambda x: x,

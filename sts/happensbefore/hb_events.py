@@ -48,7 +48,7 @@ class HbEvent(JsonEvent):
     'dpid': lambda x: x,  # The unique per switch datapath ID
     'controller_id': lambda x: x, # socket.getpeername(), NOT the STS cid (#NOTE (AH):  why not?)
     'hid': lambda x: x,  # Host ID
-    'packet': base64_decode,  # The content of the packet
+    'packet': decode_packet,  # The content of the packet
     'in_port': lambda x: x,  # The ingress port number
     'out_port': lambda x: x,  # The egress port number
     'msg': base64_decode_openflow,  # The content of the openflow message
