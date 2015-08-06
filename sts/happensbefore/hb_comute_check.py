@@ -182,15 +182,12 @@ class CommutativityChecker(object):
     else:
       return e1.match == e2.match and e1.priority == e2.priority and e1.actions != e2.actions
 
-  def check_comm_spec_ww(self, i, k):
-    i_event, i_flow_table, i_flow_mod, i_dbg_str = i
-    k_event, k_flow_table, k_flow_mod, k_dbg_str = k
-
-    i_fm = i_flow_mod
+  def check_comm_spec_ww(self, i_event, i_op, k_event, k_op):
+    i_fm = i_op.flow_mod
     i_fm.match.wildcards = i_fm.match._unwire_wildcards(i_fm.match.wildcards)
     i_fm.match.wildcards = i_fm.match._normalize_wildcards(i_fm.match.wildcards)
 
-    k_fm = k_flow_mod
+    k_fm = k_op.flow_mod
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
 
@@ -227,22 +224,20 @@ class CommutativityChecker(object):
     print "Warning: Unhandled w/w commutativity case!"
     assert False
 
-  def check_comm_spec_rw(self, i, k):
-    i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
-    k_event, k_flow_table, k_flow_mod, k_dbg_str = k
+  def check_comm_spec_rw(self, i_event, i_op, k_event, k_op):
 
-    pkt_match = ofp_match.from_packet(i_packet, i_in_port)
+    pkt_match = ofp_match.from_packet(i_event.packet, i_event.in_port)
 
     pkt_match.wildcards = pkt_match._unwire_wildcards(pkt_match.wildcards)
     pkt_match.wildcards = pkt_match._normalize_wildcards(pkt_match.wildcards)
 
     # may be None
-    i_retval = i_flow_mod
+    i_retval = i_op.flow_mod
     if i_retval is not None:
       i_retval.match.wildcards = i_retval.match._unwire_wildcards(i_retval.match.wildcards)
       i_retval.match.wildcards = i_retval.match._normalize_wildcards(i_retval.match.wildcards)
 
-    k_fm = k_flow_mod
+    k_fm = k_op.flow_mod
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
 
@@ -260,49 +255,43 @@ class CommutativityChecker(object):
     print "Warning: Unhandled r/w commutativity case!"
     assert False
 
-  def check_commutativity_ww(self, i, k):
-    i_event, i_flow_table, i_flow_mod, i_dbg_str = i
-    k_event, k_flow_table, k_flow_mod, k_dbg_str = k
-
+  def check_commutativity_ww(self, i_event, i_op, k_event, k_op):
     if self.use_comm_spec:
-      return self.check_comm_spec_ww(i,k)
+      return self.check_comm_spec_ww(i_event, i_op, k_event, k_op)
 
     # TODO(jm): Add flag so that we can also check the simulation, and verify
     #           or compare the spec with the simulated/simple version.
     #           Note that in some cases the spec may be more accurate!
 
-    ik_table = i_flow_table
-    write_flow_table(ik_table, i_flow_mod)
-    write_flow_table(ik_table, k_flow_mod)
+    ik_table = i_op.flow_table
+    write_flow_table(ik_table, i_op.flow_mod)
+    write_flow_table(ik_table, k_op.flow_mod)
 
-    ki_table = k_flow_table
-    write_flow_table(ki_table, k_flow_mod)
-    write_flow_table(ki_table, i_flow_mod)
+    ki_table = k_op.flow_table
+    write_flow_table(ki_table, k_op.flow_mod)
+    write_flow_table(ki_table, i_op.flow_mod)
 
     if compare_flow_table(ik_table, ki_table):
       return True
     else:
       return False
 
-  def check_commutativity_rw(self, i, k):
-    i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
-    k_event, k_flow_table, k_flow_mod, k_dbg_str = k
-
+  def check_commutativity_rw(self, i_event, i_op, k_event, k_op):
     if self.use_comm_spec:
-      return self.check_comm_spec_rw(i,k)
+      return self.check_comm_spec_rw(i_event, i_op, k_event, k_op)
 
     if i_event.eid < k_event.eid: # read occurred first in trace
-      ik_table = i_flow_table
-      ki_table = i_flow_table
+      ik_table = i_op.flow_table
+      ki_table = i_op.flow_table
     else: # write occurred first in trace
-      ik_table = k_flow_table
-      ki_table = k_flow_table
+      ik_table = k_op.flow_table
+      ki_table = k_op.flow_table
 
-    ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
-    write_flow_table(ik_table, k_flow_mod)
+    ik_retval = read_flow_table(ik_table, i_event.packet, i_event.in_port)
+    write_flow_table(ik_table, k_op.flow_mod)
 
-    write_flow_table(ki_table, k_flow_mod)
-    ki_retval = read_flow_table(ki_table, i_packet, i_in_port)
+    write_flow_table(ki_table, k_op.flow_mod)
+    ki_retval = read_flow_table(ki_table, i_event.packet, i_event.in_port)
 
     ik_fm = None if ik_retval is None else ik_retval.to_flow_mod()
     ki_fm = None if ki_retval is None else ki_retval.to_flow_mod()

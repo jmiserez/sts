@@ -1,10 +1,8 @@
+from collections import namedtuple
 import itertools
 import networkx as nx
 
-from pox.openflow.flow_table import TableEntry
-from pox.openflow.libopenflow_01 import ofp_match
-
-from hb_utils import ofp_flow_mod_command_to_str
+from hb_utils import op_to_str
 from hb_utils import nCr
 
 from hb_comute_check import CommutativityChecker
@@ -47,6 +45,10 @@ predecessor_types = {
     'HbControllerHandle',
   ],
 }
+
+
+# Define race type
+Race = namedtuple('Race', ['rtype', 'i_event', 'i_op', 'k_event', 'k_op'])
 
 
 class RaceDetector(object):
@@ -126,26 +128,13 @@ class RaceDetector(object):
           if k.type == 'TraceSwitchFlowTableWrite':
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
-            dbg_fm = k.flow_mod
-            dbg_str = "Write: "+str("None" if dbg_fm is None else ofp_flow_mod_command_to_str(dbg_fm.command) + " => " +TableEntry.from_flow_mod(
-                                        dbg_fm
-                                        ).show())
-            op = (i, k.flow_table, k.flow_mod, dbg_str)
-            self.write_operations.append(op)
+            self.write_operations.append((i, k))
           elif k.type == 'TraceSwitchFlowTableRead':
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
             assert hasattr(i, 'packet')
             assert hasattr(i, 'in_port')
-#             dbg_table = decode_flow_table(k.flow_table)
-            dbg_fm_retval = k.flow_mod
-            dbg_packet = i.packet
-            dbg_m_pkt = ofp_match.from_packet(dbg_packet, i.in_port)
-
-            dbg_str = "Read rule: "+str("None" if dbg_fm_retval is None else TableEntry.from_flow_mod(dbg_fm_retval).show()
-                                        ) + "\n| For packet: " + str(dbg_m_pkt)
-            op = (i, k.flow_table, k.flow_mod, i.packet, i.in_port, dbg_str)
-            self.read_operations.append(op)
+            self.read_operations.append((i, k))
 
   def detect_ww_races(self, event=None, verbose=False):
     count = 0
@@ -156,9 +145,7 @@ class RaceDetector(object):
     if verbose:
       print "Processing {} w/w combinations".format(ww_combination_count)
     # write <-> write
-    for i, k in itertools.combinations(self.write_operations,2):
-      i_event, i_flow_table, i_flow_mod, i_dbg_str = i
-      k_event, k_flow_table, k_flow_mod, k_dbg_str = k
+    for (i_event, i_op), (k_event, k_op) in itertools.combinations(self.write_operations, 2):
       if verbose:
         count += 1
         percentage = int(((count / float(ww_combination_count)) * 100)) // 10 * 10
@@ -170,10 +157,11 @@ class RaceDetector(object):
           i_event.dpid == k_event.dpid and
           not self.is_ordered(i_event, k_event)):
 
-        if self.commutativity_checker.check_commutativity_ww(i,k):
-          self.races_commute.append(('w/w',i_event,k_event,i_dbg_str,k_dbg_str))
+        if self.commutativity_checker.check_commutativity_ww(i_event, i_op,
+                                                             k_event, k_op):
+          self.races_commute.append(Race('w/w', i_event, i_op, k_event, k_op))
         else:
-          self.races_harmful.append(('w/w',i_event,k_event,i_dbg_str,k_dbg_str))
+          self.races_harmful.append(Race('w/w',i_event, i_op, k_event, k_op))
           self.racing_events_harmful.add(i_event)
           self.racing_events_harmful.add(k_event)
         self.racing_events.add(i_event)
@@ -187,16 +175,14 @@ class RaceDetector(object):
     if verbose:
       print "Processing {} r/w combinations".format(rw_combination_count)
     # read <-> write
-    for i in self.read_operations:
-      for k in self.write_operations:
+    for i_event, i_op in self.read_operations:
+      for k_event, k_op in self.write_operations:
         if verbose:
           count += 1
           percentage = int(((count / float(rw_combination_count)) * 100)) // 10 * 10
           if percentage > percentage_done:
             percentage_done = percentage
             print "{}% ".format(percentage)
-        i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
-        k_event, k_flow_table, k_flow_mod, k_dbg_str = k
         if (i_event != k_event and
             (event is None or event == i_event or event == k_event) and
             i_event.dpid == k_event.dpid and
@@ -205,10 +191,11 @@ class RaceDetector(object):
           if self.filter_rw and not self.has_common_ancestor(i_event, k_event):
             self.total_filtered += 1
           else:
-            if self.commutativity_checker.check_commutativity_rw(i,k):
-              self.races_commute.append(('r/w',i_event,k_event,i_dbg_str,k_dbg_str))
+            if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
+                                                                 k_event, k_op):
+              self.races_commute.append(Race('r/w',i_event, i_op, k_event, k_op))
             else:
-              self.races_harmful.append(('r/w',i_event,k_event,i_dbg_str,k_dbg_str))
+              self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
               self.racing_events_harmful.add(i_event)
               self.racing_events_harmful.add(k_event)
             self.racing_events.add(i_event)
@@ -244,27 +231,27 @@ class RaceDetector(object):
   def print_races(self):
     for race in self.races_commute:
       print "+-------------------------------------------+"
-      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race[0], race[1].eid, race[2].eid)
+      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[1].eid)
+      print "| op # {:<37}|".format(race.i_event.eid)
       print "+-------------------------------------------+"
-      print "| " + race[3]
+      print "| " + op_to_str(race.i_op)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[2].eid)
+      print "| op # {:<37}|".format(race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| " + race[4]
+      print "| " + op_to_str(race.k_op)
       print "+-------------------------------------------+"
     for race in self.races_harmful:
       print "+-------------------------------------------+"
-      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race[0], race[1].eid, race[2].eid)
+      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[1].eid)
+      print "| op # {:<37}|".format(race.i_event.eid)
       print "+-------------------------------------------+"
-      print "| " + race[3]
+      print "| " + op_to_str(race.i_op)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race[2].eid)
+      print "| op # {:<37}|".format(race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| " + race[4]
+      print "| " + op_to_str(race.k_op)
       print "+-------------------------------------------+"
     print "+-------------------------------------------+"
     for ev in self.read_operations:
