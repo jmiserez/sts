@@ -147,6 +147,10 @@ class HbMessageHandle(HbEvent):
     if msg_flowmod is not None:
       self.msg_flowmod = msg_flowmod # needed for rule 3
 
+  @property
+  def msg_type_str(self):
+    return ofp_type_to_str(self.msg_type)
+
 
 class HbMessageSend(HbEvent):
   """
@@ -163,6 +167,10 @@ class HbMessageSend(HbEvent):
     self.dpid = dpid
     self.controller_id = controller_id
     self.msg = msg
+
+  @property
+  def msg_type_str(self):
+    return ofp_type_to_str(self.msg_type)
 
 
 class HbHostHandle(HbEvent):

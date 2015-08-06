@@ -13,6 +13,7 @@ from hb_utils import decode_flow_table
 from hb_utils import decode_flow_mod
 from hb_utils import decode_packet
 from hb_utils import get_port_no
+from hb_utils import ofp_type_to_str
 
 
 class TraceSwitchEvent(JsonEvent):
@@ -106,6 +107,7 @@ class TraceSwitchMessageTx(TraceSwitchEvent):
     self.msg = msg
     self.b64msg = b64msg
 
+
 class TraceSwitchMessageHandleBegin(TraceSwitchEvent):
   def __init__(self, dpid, controller_id, msg, msg_type, eid=None):
     TraceSwitchEvent.__init__(self, eid=eid)
@@ -113,6 +115,11 @@ class TraceSwitchMessageHandleBegin(TraceSwitchEvent):
     self.controller_id = controller_id
     self.msg = msg
     self.msg_type = msg_type
+
+  @property
+  def msg_type_str(self):
+    return ofp_type_to_str(self.msg_type)
+
 
 
 class TraceSwitchMessageHandleEnd(TraceSwitchEvent):
