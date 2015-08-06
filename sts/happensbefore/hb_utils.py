@@ -18,6 +18,20 @@ from pox.openflow.libopenflow_01 import ofp_type_rev_map
 from pox.openflow.libopenflow_01 import ofp_flow_mod_command_rev_map
 
 
+def enum(*sequential, **named):
+  enums = dict(zip(sequential, range(len(sequential))), **named)
+  reverse = dict((value, key) for key, value in enums.iteritems())
+  @classmethod
+  def _names(cls): # returns dict: ordinal -> string
+    return reverse
+  enums['_names'] = _names
+  @classmethod
+  def _ordinals(cls): # returns dict: string -> ordinal
+    # filter _names, _ordinals
+    return {k: v for k, v in enums.items() if not k.startswith('_')}
+  enums['_ordinals'] = _ordinals
+  return type('Enum', (), enums)
+
 
 def check_list(obj):
   if isinstance(obj, list):

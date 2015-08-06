@@ -27,7 +27,7 @@ from hb_utils import decode_packet
 from hb_utils import pkt_info
 from hb_utils import ofp_flow_mod_command_to_str
 from hb_utils import nCr
-
+from hb_utils import enum
 
 #
 # Do not import any STS types! We would like to be able to run this offline
