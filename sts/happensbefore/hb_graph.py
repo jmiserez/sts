@@ -21,6 +21,16 @@ import pprint
 import base64
 from copy import copy
 
+from hb_utils import decode_flow_table
+from hb_utils import decode_flow_mod
+from hb_utils import decode_packet
+from hb_utils import pkt_info
+from hb_utils import compare_flow_table
+from hb_utils import read_flow_table
+from hb_utils import ofp_flow_mod_command_to_str
+from hb_utils import nCr
+from hb_utils import write_flow_table
+
 #
 # Do not import any STS types! We would like to be able to run this offline
 # from a trace file without having to depend on STS.
@@ -81,104 +91,13 @@ predecessor_types = {EventType.HbAsyncFlowExpiry:  [EventType.HbMessageSend,
                      EventType.HbControllerSend:   [EventType.HbControllerHandle],
                     }
 
-def ofp_type_to_string(t):
-  return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
-
-def ofp_flow_mod_command_to_string(t):
-  return ofp_flow_mod_command_rev_map.keys()[ofp_flow_mod_command_rev_map.values().index(t)]
-
-def eth_repr(pkt):
-    s = ''.join(('ETH: ', '[', str(EthAddr(pkt.src)), '>', str(EthAddr(pkt.dst)), ':',
-                ethernet.getNameForType(pkt.type), ']'))
-    if pkt.next is None:
-      pass
-    elif pkt.type == ethernet.LLDP_TYPE:
-      s += "| LLDP"
-    elif pkt.type == 35138:
-      print "BUGGY PKT type {0} str type {1}".format(pkt.type, ethernet.getNameForType(pkt.type))
-      s += "| Unkown PKT"
-    else:
-      s += "|" + str(pkt.next)
-    return '\\n'.join(s.split('|'))
-
-def icmp_repr(pkt):
-  t = icmp_names.get(pkt.type, str(pkt.type))
-  s = 'ICMP: {t:%s c:%i}' % (t, pkt.code)
-  if pkt.next is None:
-      return s
-  return '|' + ''.join((s, str(pkt.next)))
-
-def ipv4_repr(pkt):
-  s = 'IPv4' + ''.join(('(','['#+'v:'+str(self.v),'hl:'+str(self.hl),\
-                     #    'l:', str(self.iplen)
-                     'ttl:', str(pkt.ttl), ']',
-                      ipproto_to_str(pkt.protocol), \
-                      #   ' cs:', '%x' %self.csum,
-                      '[',str(pkt.srcip), '>', str(pkt.dstip),'])'))
-  if pkt.next == None:
-      return s
-  return '|' + ''.join((s, str(pkt.next)))
-
 
 class CommutativityChecker(object):
   
   # TODO(jm): make use_comm_spec a config option
   def __init__(self, use_comm_spec=True):
     self.use_comm_spec = use_comm_spec # Use commutativity spec if True
-    
-  @classmethod
-  def decode_flow_mod(cls, data):
-    if data is None:
-      return None
-    bits = base64.b64decode(data)
-    fm = ofp_flow_mod()
-    fm.unpack(bits) # NOTE: unpack IS in-situ for ofp_flow_mod() type
-    return fm
-  
-  @classmethod
-  def decode_packet(cls, data):
-    bits = base64.b64decode(data)
-    p = ethernet()
-    p = p.unpack(bits) # NOTE: unpack IS NOT in-situ for ethernet() type
-    return p
-  
-  @classmethod
-  def decode_flow_table(cls, data):
-    table = SwitchFlowTable()
-    for row in data:
-      flow_mod = RaceDetector.decode_flow_mod(row)
-      entry = TableEntry.from_flow_mod(flow_mod)
-      table.add_entry(entry)
-    return table
-  
-  @classmethod
-  def compare_flow_table(cls, table, other):
-    fm1 = []
-    for i in table.table:
-      fm1.append(i.to_flow_mod())
-    fm2 = []
-    for i in other.table:
-      fm2.append(i.to_flow_mod())
-      
-    # TODO(jm): This could be improved by using anewer version of POX, where flow table entries are always in priority order. Then only one pass would be necessary.
-    for i in fm1:
-      if i not in fm2:
-        return False
-    for i in fm2:
-      if i not in fm1:
-        return False
-    return True
-  
-  @classmethod
-  def read_flow_table(cls, table, packet, in_port):
-    p = CommutativityChecker.decode_packet(packet)
-    return table.entry_for_packet(p, in_port)
-  
-  @classmethod
-  def write_flow_table(cls, table, flow_mod):
-    fm = CommutativityChecker.decode_flow_mod(flow_mod)
-    return table.process_flow_mod(fm)
-  
+
   def is_flowmod_subset(self,e1,e2,strict=False):
     """
     Check if flow mod e1 is a subset of flow mod e2, with different semantics
@@ -343,11 +262,11 @@ class CommutativityChecker(object):
     i_event, i_flow_table, i_flow_mod, i_dbg_str = i
     k_event, k_flow_table, k_flow_mod, k_dbg_str = k
     
-    i_fm = CommutativityChecker.decode_flow_mod(i_flow_mod)
+    i_fm = decode_flow_mod(i_flow_mod)
     i_fm.match.wildcards = i_fm.match._unwire_wildcards(i_fm.match.wildcards)
     i_fm.match.wildcards = i_fm.match._normalize_wildcards(i_fm.match.wildcards)
     
-    k_fm = CommutativityChecker.decode_flow_mod(k_flow_mod)
+    k_fm = decode_flow_mod(k_flow_mod)
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
     
@@ -388,18 +307,18 @@ class CommutativityChecker(object):
     i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
     k_event, k_flow_table, k_flow_mod, k_dbg_str = k
     
-    pkt_match = ofp_match.from_packet(self.decode_packet(i_packet), i_in_port)
+    pkt_match = ofp_match.from_packet(decode_packet(i_packet), i_in_port)
     
     pkt_match.wildcards = pkt_match._unwire_wildcards(pkt_match.wildcards)
     pkt_match.wildcards = pkt_match._normalize_wildcards(pkt_match.wildcards)
     
     # may be None
-    i_retval = CommutativityChecker.decode_flow_mod(i_flow_mod)
+    i_retval = decode_flow_mod(i_flow_mod)
     if i_retval is not None:
       i_retval.match.wildcards = i_retval.match._unwire_wildcards(i_retval.match.wildcards)
       i_retval.match.wildcards = i_retval.match._normalize_wildcards(i_retval.match.wildcards)
     
-    k_fm = CommutativityChecker.decode_flow_mod(k_flow_mod)
+    k_fm = decode_flow_mod(k_flow_mod)
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
     
@@ -428,15 +347,15 @@ class CommutativityChecker(object):
     #           or compare the spec with the simulated/simple version.
     #           Note that in some cases the spec may be more accurate!
     
-    ik_table = self.decode_flow_table(i_flow_table)
-    self.write_flow_table(ik_table, i_flow_mod)
-    self.write_flow_table(ik_table, k_flow_mod)
+    ik_table = decode_flow_table(i_flow_table)
+    write_flow_table(ik_table, i_flow_mod)
+    write_flow_table(ik_table, k_flow_mod)
     
-    ki_table = self.decode_flow_table(k_flow_table)
-    self.write_flow_table(ki_table, k_flow_mod)
-    self.write_flow_table(ki_table, i_flow_mod)
+    ki_table = decode_flow_table(k_flow_table)
+    write_flow_table(ki_table, k_flow_mod)
+    write_flow_table(ki_table, i_flow_mod)
     
-    if self.compare_flow_table(ik_table, ki_table):
+    if compare_flow_table(ik_table, ki_table):
       return True
     else:
       return False
@@ -449,22 +368,22 @@ class CommutativityChecker(object):
       return self.check_comm_spec_rw(i,k)
     
     if i_event.eid < k_event.eid: # read occurred first in trace
-      ik_table = self.decode_flow_table(i_flow_table)
-      ki_table = self.decode_flow_table(i_flow_table)
+      ik_table = decode_flow_table(i_flow_table)
+      ki_table = decode_flow_table(i_flow_table)
     else: # write occurred first in trace
-      ik_table = self.decode_flow_table(k_flow_table)
-      ki_table = self.decode_flow_table(k_flow_table)
+      ik_table = decode_flow_table(k_flow_table)
+      ki_table = decode_flow_table(k_flow_table)
     
-    ik_retval = self.read_flow_table(ik_table, i_packet, i_in_port)
-    self.write_flow_table(ik_table, k_flow_mod)
+    ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
+    write_flow_table(ik_table, k_flow_mod)
     
-    self.write_flow_table(ki_table, k_flow_mod)
-    ki_retval = self.read_flow_table(ki_table, i_packet, i_in_port)
+    write_flow_table(ki_table, k_flow_mod)
+    ki_retval = read_flow_table(ki_table, i_packet, i_in_port)
     
     ik_fm = None if ik_retval is None else ik_retval.to_flow_mod()
     ki_fm = None if ki_retval is None else ki_retval.to_flow_mod()
     
-    if (ik_fm == ki_fm and self.compare_flow_table(ik_table, ki_table)):
+    if (ik_fm == ki_fm and compare_flow_table(ik_table, ki_table)):
       return True
     else:
       return False
@@ -561,8 +480,8 @@ class RaceDetector(object):
           if k.type == OpType.TraceSwitchFlowTableWrite:
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
-            dbg_fm = CommutativityChecker.decode_flow_mod(k.flow_mod)
-            dbg_str = "Write: "+str("None" if dbg_fm is None else ofp_flow_mod_command_to_string(dbg_fm.command) + " => " +TableEntry.from_flow_mod(
+            dbg_fm = decode_flow_mod(k.flow_mod)
+            dbg_str = "Write: "+str("None" if dbg_fm is None else ofp_flow_mod_command_to_str(dbg_fm.command) + " => " +TableEntry.from_flow_mod(
                                         dbg_fm
                                         ).show())
             op = (i, k.flow_table, k.flow_mod, dbg_str)
@@ -572,9 +491,9 @@ class RaceDetector(object):
             assert hasattr(k, 'flow_mod')
             assert hasattr(i, 'packet')
             assert hasattr(i, 'in_port')
-#             dbg_table = self.decode_flow_table(k.flow_table)
-            dbg_fm_retval = CommutativityChecker.decode_flow_mod(k.flow_mod)
-            dbg_packet = CommutativityChecker.decode_packet(i.packet)
+#             dbg_table = decode_flow_table(k.flow_table)
+            dbg_fm_retval = decode_flow_mod(k.flow_mod)
+            dbg_packet = decode_packet(i.packet)
             dbg_m_pkt = ofp_match.from_packet(dbg_packet, i.in_port)
             
             dbg_str = "Read rule: "+str("None" if dbg_fm_retval is None else TableEntry.from_flow_mod(dbg_fm_retval).show()
@@ -595,16 +514,6 @@ class RaceDetector(object):
     
     count = 0
     percentage_done = 0
-    def nCr(n,r):
-      ''' Implements multiplicative formula: https://en.wikipedia.org/wiki/Binomial_coefficient#Multiplicative_formula '''
-      if r < 0 or r > n:
-        return 0
-      if r == 0 or r == n:
-          return 1
-      c = 1
-      for i in xrange(min(r, n - r)):
-          c = c * (n - i) // (i + 1)
-      return c
 
     ww_combination_count = nCr(len(self.write_operations),2)
     
@@ -972,18 +881,6 @@ class HappensBeforeGraph(object):
     print "Read in " + str(len(self.events)) + " events." 
     self.events.sort(key=lambda i: i.eid)
 
-  def pkt_info(self, data):
-    """
-    Returns a string representation of base64 encoded packet
-
-    Note: this function moneky patches __str__ in ethernet, icmp, ipv4, etc..
-    """
-    packet = CommutativityChecker.decode_packet(data)
-    ethernet.__str__ = eth_repr
-    icmp.__str__ = icmp_repr
-    ipv4.__str__ = ipv4_repr
-    return str(packet)
-
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
@@ -1059,7 +956,7 @@ class HappensBeforeGraph(object):
           event_info_lines.append("BufferId: " + str(i.buffer_id))
         if hasattr(i, 'packet'):
           if print_packets:
-            pkt = self.pkt_info(i.packet)
+            pkt = pkt_info(i.packet)
             event_info_lines.append("Pkt: " + pkt)
         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
             event_info_lines_str = ""
