@@ -19,6 +19,10 @@ from hb_race_detector import EventType
 from hb_race_detector import OpType
 from hb_race_detector import predecessor_types
 
+# To make sure all events are registered
+from hb_json_event import *
+from hb_events import *
+from hb_sts_events import *
 
 #
 # Do not import any STS types! We would like to be able to run this offline
@@ -78,7 +82,7 @@ class HappensBeforeGraph(object):
                            (self.events_flowmod_by_dpid_match, 
                             lambda x: (x.type == EventType.HbMessageHandle and
                                        hasattr(x, 'msg_type_str') and 
-                                       x.msg_type_str == "OFPT_FLOW_MOD" and
+                                       x.msg_type == "OFPT_FLOW_MOD" and
                                        hasattr(x, 'dpid') and
                                        hasattr(x, 'msg_flowmod')
                                        ),
@@ -142,7 +146,7 @@ class HappensBeforeGraph(object):
             self._update_event_is_linked_mid_in(other)
   
   def _rule_03_barrier_pre(self, event):
-    if event.type == EventType.HbMessageHandle:
+    if event.type == 'HbMessageHandle':
       if event.msg_type_str == "OFPT_BARRIER_REQUEST":
         for other in self.events_before_next_barrier[event.dpid]:
           self._add_edge(other, event)
@@ -151,7 +155,7 @@ class HappensBeforeGraph(object):
         self.events_before_next_barrier[event.dpid].append(event)
         
   def _rule_04_barrier_post(self, event):
-    if event.type == EventType.HbMessageHandle:
+    if event.type == 'HbMessageHandle':
       if event.msg_type_str == "OFPT_BARRIER_REQUEST":
         self.most_recent_barrier[event.dpid] = event
       else:
@@ -163,7 +167,7 @@ class HappensBeforeGraph(object):
     # TODO(jm): This is not correct. Flow removed messages do not necessarily contain the exact same flowmod message as was installed.
     # TODO(jm): Rather, we should match only on (match, cookie, priority), not also on actions
     #          and also only consider flow mods where the OFPFF_SEND_FLOW_REM flag was set
-    if event.type == EventType.HbMessageHandle and event.msg_type_str == "OFPT_FLOW_REMOVED":
+    if event.type == 'HbMessageHandle' and event.msg_type_str == "OFPT_FLOW_REMOVED":
       search_key = (event.dpid, event.msg_flowmod)
       # TODO(jm): here: check for all self.events_flowmod_by_dpid_match, generate search_key2 by removing actions and then compare
       # TODO(jm): better yet, add a new self.events_flowremoved_mcp_by_dpid_match dict  
@@ -192,54 +196,20 @@ class HappensBeforeGraph(object):
   
   # TODO(jm): make online_update a config option
   def add_line(self, line, online_update=False):
-    if len(line) > 1 and not line.startswith('#'):
-      
-      def lists_to_tuples(dct):
-        '''
-        Convert all lists to tuples so that the resulting objects are 
-        hashable later on.
-        '''
-        for k,v in dct.copy().iteritems():
-          if isinstance(v, list):
-            dct[k] = tuple(v)
-        return dct
-      
-      event_json = json.loads(line, object_hook=lists_to_tuples)
-      event_typestr = event_json['type']
-      
-      assert event_typestr in EventType._ordinals()
-      event_json['typestr'] = event_typestr
-      event_json['type'] = EventType._ordinals()[event_typestr]
-      if 'msg_type' in event_json:
-        msg_type_str = event_json['msg_type']
-        event_json['msg_type_str'] = msg_type_str
-        event_json['msg_type'] = ofp_type_rev_map[msg_type_str]
-        
-      if 'operations' in event_json:
-        ops = []
-        for i in event_json['operations']:
-          op_json = json.loads(i, object_hook=lists_to_tuples)
-          op_typestr = op_json['type']
-          assert op_typestr in OpType._ordinals()
-          op_json['typestr'] = op_typestr
-          op_json['type'] = OpType._ordinals()[op_typestr]
-          
-          op = namedtuple('Op', op_json)(**op_json)
-          ops.append(op)
-#           print str(event_json['id']) + ': ' + event_typestr + ' -> ' + op_typestr
-        event_json['operations'] = tuple(ops)
-        
-      event = namedtuple('Event', event_json)(**event_json)
-      self.add_event(event)
-      
-      if online_update:
-        self.race_detector.detect_races(event)
-        has_new_races = self.race_detector.total_races > 0
-        self.race_detector.detect_races()
-        if has_new_races:
-          self.race_detector.print_races()
-        self.store_graph()
-  
+    # Skip empty lines and the ones start with '#'
+    if not line or line.startswith('#'):
+      return
+
+    event = JsonEvent.from_json(json.loads(line))
+    self.add_event(event)
+    if online_update:
+      self.race_detector.detect_races(event)
+      has_new_races = self.race_detector.total_races > 0
+      self.race_detector.detect_races()
+      if has_new_races:
+        self.race_detector.print_races()
+      self.store_graph()
+
   def add_event(self, event):
     self.events.append(event)
     assert event.eid not in self.events_by_id
@@ -267,15 +237,15 @@ class HappensBeforeGraph(object):
     def _handle_default(event):
       pass
     
-    handlers = { EventType.HbAsyncFlowExpiry:   _handle_HbAsyncFlowExpiry,
-                 EventType.HbPacketHandle:      _handle_HbPacketHandle,
-                 EventType.HbPacketSend:        _handle_HbPacketSend,
-                 EventType.HbMessageHandle:     _handle_HbMessageHandle,
-                 EventType.HbMessageSend:       _handle_HbMessageSend,
-                 EventType.HbHostHandle:        _handle_HbHostHandle,
-                 EventType.HbHostSend:          _handle_HbHostSend,
-                 EventType.HbControllerHandle:  _handle_HbControllerHandle,
-                 EventType.HbControllerSend:    _handle_HbControllerSend,
+    handlers = {'HbAsyncFlowExpiry':   _handle_HbAsyncFlowExpiry,
+                'HbPacketHandle':      _handle_HbPacketHandle,
+                'HbPacketSend':        _handle_HbPacketSend,
+                'HbMessageHandle':     _handle_HbMessageHandle,
+                'HbMessageSend':       _handle_HbMessageSend,
+                'HbHostHandle':        _handle_HbHostHandle,
+                'HbHostSend':          _handle_HbHostSend,
+                'HbControllerHandle':  _handle_HbControllerHandle,
+                'HbControllerSend':    _handle_HbControllerSend,
                  }
     handlers.get(event.type, _handle_default)(event)
   
@@ -373,7 +343,7 @@ class HappensBeforeGraph(object):
             dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
                 i.eid, 
                 "" if not hasattr(i, 'dpid') else i.dpid,
-                EventType._names()[i.type],
+                i.type,
                 event_info_lines_str,
                 shape))
     for k,v in transitive_predecessors.iteritems():

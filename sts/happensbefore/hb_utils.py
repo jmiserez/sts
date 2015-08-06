@@ -219,7 +219,6 @@ def pkt_info(packet):
 
   Note: this function moneky patches __str__ in ethernet, icmp, ipv4, etc..
   """
-  packet = decode_packet(packet)
   ethernet.__str__ = eth_repr
   icmp.__str__ = icmp_repr
   ipv4.__str__ = ipv4_repr

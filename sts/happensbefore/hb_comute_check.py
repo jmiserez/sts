@@ -11,9 +11,6 @@ from pox.openflow.libopenflow_01 import OFPFC_MODIFY
 from pox.openflow.libopenflow_01 import OFPFC_MODIFY_STRICT
 from pox.openflow.libopenflow_01 import OFPP_NONE
 
-from hb_utils import decode_flow_table
-from hb_utils import decode_flow_mod
-from hb_utils import decode_packet
 from hb_utils import compare_flow_table
 from hb_utils import read_flow_table
 from hb_utils import write_flow_table
@@ -189,11 +186,11 @@ class CommutativityChecker(object):
     i_event, i_flow_table, i_flow_mod, i_dbg_str = i
     k_event, k_flow_table, k_flow_mod, k_dbg_str = k
 
-    i_fm = decode_flow_mod(i_flow_mod)
+    i_fm = i_flow_mod
     i_fm.match.wildcards = i_fm.match._unwire_wildcards(i_fm.match.wildcards)
     i_fm.match.wildcards = i_fm.match._normalize_wildcards(i_fm.match.wildcards)
 
-    k_fm = decode_flow_mod(k_flow_mod)
+    k_fm = k_flow_mod
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
 
@@ -234,18 +231,18 @@ class CommutativityChecker(object):
     i_event, i_flow_table, i_flow_mod, i_packet, i_in_port, i_dbg_str = i
     k_event, k_flow_table, k_flow_mod, k_dbg_str = k
 
-    pkt_match = ofp_match.from_packet(decode_packet(i_packet), i_in_port)
+    pkt_match = ofp_match.from_packet(i_packet, i_in_port)
 
     pkt_match.wildcards = pkt_match._unwire_wildcards(pkt_match.wildcards)
     pkt_match.wildcards = pkt_match._normalize_wildcards(pkt_match.wildcards)
 
     # may be None
-    i_retval = decode_flow_mod(i_flow_mod)
+    i_retval = i_flow_mod
     if i_retval is not None:
       i_retval.match.wildcards = i_retval.match._unwire_wildcards(i_retval.match.wildcards)
       i_retval.match.wildcards = i_retval.match._normalize_wildcards(i_retval.match.wildcards)
 
-    k_fm = decode_flow_mod(k_flow_mod)
+    k_fm = k_flow_mod
     k_fm.match.wildcards = k_fm.match._unwire_wildcards(k_fm.match.wildcards)
     k_fm.match.wildcards = k_fm.match._normalize_wildcards(k_fm.match.wildcards)
 
@@ -274,11 +271,11 @@ class CommutativityChecker(object):
     #           or compare the spec with the simulated/simple version.
     #           Note that in some cases the spec may be more accurate!
 
-    ik_table = decode_flow_table(i_flow_table)
+    ik_table = i_flow_table
     write_flow_table(ik_table, i_flow_mod)
     write_flow_table(ik_table, k_flow_mod)
 
-    ki_table = decode_flow_table(k_flow_table)
+    ki_table = k_flow_table
     write_flow_table(ki_table, k_flow_mod)
     write_flow_table(ki_table, i_flow_mod)
 
@@ -295,11 +292,11 @@ class CommutativityChecker(object):
       return self.check_comm_spec_rw(i,k)
 
     if i_event.eid < k_event.eid: # read occurred first in trace
-      ik_table = decode_flow_table(i_flow_table)
-      ki_table = decode_flow_table(i_flow_table)
+      ik_table = i_flow_table
+      ki_table = i_flow_table
     else: # write occurred first in trace
-      ik_table = decode_flow_table(k_flow_table)
-      ki_table = decode_flow_table(k_flow_table)
+      ik_table = k_flow_table
+      ki_table = k_flow_table
 
     ik_retval = read_flow_table(ik_table, i_packet, i_in_port)
     write_flow_table(ik_table, k_flow_mod)

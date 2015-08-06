@@ -3,14 +3,13 @@ import itertools
 from pox.openflow.flow_table import TableEntry
 from pox.openflow.libopenflow_01 import ofp_match
 
-from hb_utils import decode_flow_mod
-from hb_utils import decode_packet
 from hb_utils import ofp_flow_mod_command_to_str
 from hb_utils import nCr
 from hb_utils import enum
 
 from hb_comute_check import CommutativityChecker
 
+from hb_events import *
 
 EventType = enum('HbPacketHandle',
                  'HbPacketSend',
@@ -32,28 +31,42 @@ OpType = enum('TraceSwitchFlowTableRead',
 
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
-predecessor_types = {EventType.HbAsyncFlowExpiry:  [EventType.HbMessageSend,
-                                                    ],
-                     EventType.HbPacketHandle:     [EventType.HbPacketSend,
-                                                    EventType.HbHostSend,
-                                                   ],
-                     EventType.HbPacketSend:       [EventType.HbPacketHandle,
-                                                    EventType.HbMessageHandle,
-                                                   ],
-                     EventType.HbMessageHandle:    [EventType.HbMessageHandle,
-                                                    EventType.HbControllerSend,
-                                                    EventType.HbPacketHandle, # buffer put -> buffer get!
-                                                    EventType.HbMessageSend, # merged controller edges
-                                                   ],
-                     EventType.HbMessageSend:      [EventType.HbAsyncFlowExpiry,
-                                                    EventType.HbPacketHandle,
-                                                    EventType.HbMessageHandle,
-                                                   ],
-                     EventType.HbHostHandle:       [EventType.HbPacketSend],
-                     EventType.HbHostSend:         [EventType.HbHostHandle],
-                     EventType.HbControllerHandle: [EventType.HbMessageSend],
-                     EventType.HbControllerSend:   [EventType.HbControllerHandle],
-                    }
+predecessor_types = {
+  'HbAsyncFlowExpiry': [
+    'HbMessageSend',
+  ],
+  'HbPacketHandle': [
+    'HbPacketSend',
+    'HbHostSend',
+  ],
+  'HbPacketSend': [
+    'HbPacketHandle',
+    'HbMessageHandle',
+  ],
+  'HbMessageHandle': [
+    'HbMessageHandle',
+    'HbControllerSend',
+    'HbPacketHandle', # buffer put -> buffer get!
+    'HbMessageSend', # merged controller edges
+  ],
+  'HbMessageSend': [
+    'HbAsyncFlowExpiry',
+    'HbPacketHandle',
+    'HbMessageHandle',
+  ],
+  'HbHostHandle': [
+    'HbPacketSend'
+  ],
+  'HbHostSend': [
+    'HbHostHandle',
+  ],
+  'HbControllerHandle': [
+    'HbMessageSend',
+  ],
+  'HbControllerSend': [
+    'HbControllerHandle',
+  ],
+}
 
 
 class RaceDetector(object):
@@ -144,23 +157,23 @@ class RaceDetector(object):
     for i in self.graph.events:
       if hasattr(i, 'operations'):
         for k in i.operations:
-          if k.type == OpType.TraceSwitchFlowTableWrite:
+          if k.type == 'TraceSwitchFlowTableWrite':
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
-            dbg_fm = decode_flow_mod(k.flow_mod)
+            dbg_fm = k.flow_mod
             dbg_str = "Write: "+str("None" if dbg_fm is None else ofp_flow_mod_command_to_str(dbg_fm.command) + " => " +TableEntry.from_flow_mod(
                                         dbg_fm
                                         ).show())
             op = (i, k.flow_table, k.flow_mod, dbg_str)
             self.write_operations.append(op)
-          elif k.type == OpType.TraceSwitchFlowTableRead:
+          elif k.type == 'TraceSwitchFlowTableRead':
             assert hasattr(k, 'flow_table')
             assert hasattr(k, 'flow_mod')
             assert hasattr(i, 'packet')
             assert hasattr(i, 'in_port')
 #             dbg_table = decode_flow_table(k.flow_table)
-            dbg_fm_retval = decode_flow_mod(k.flow_mod)
-            dbg_packet = decode_packet(i.packet)
+            dbg_fm_retval = k.flow_mod
+            dbg_packet = i.packet
             dbg_m_pkt = ofp_match.from_packet(dbg_packet, i.in_port)
 
             dbg_str = "Read rule: "+str("None" if dbg_fm_retval is None else TableEntry.from_flow_mod(dbg_fm_retval).show()
@@ -289,9 +302,9 @@ class RaceDetector(object):
       print "+-------------------------------------------+"
     print "+-------------------------------------------+"
     for ev in self.read_operations:
-      print "| {:>4}: {:28} (read) |".format(ev[0].eid, EventType._names()[ev[0].type])
+      print "| {:>4}: {:28} (read) |".format(ev[0].eid, ev[0].type)
     for ev in self.write_operations:
-      print "| {:>4}: {:27} (write) |".format(ev[0].eid, EventType._names()[ev[0].type])
+      print "| {:>4}: {:27} (write) |".format(ev[0].eid, ev[0].type)
     print "| Total operations:      {:<18} |".format(self.total_operations)
     print "|-------------------------------------------|"
     print "| Total commuting races: {:<18} |".format(self.total_commute)
