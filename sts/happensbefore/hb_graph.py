@@ -34,19 +34,6 @@ from hb_utils import enum
 # from a trace file without having to depend on STS.
 #
 
-def enum(*sequential, **named):
-    enums = dict(zip(sequential, range(len(sequential))), **named)
-    reverse = dict((value, key) for key, value in enums.iteritems())
-    @classmethod
-    def _names(cls): # returns dict: ordinal -> string
-      return reverse
-    enums['_names'] = _names
-    @classmethod
-    def _ordinals(cls): # returns dict: string -> ordinal
-      # filter _names, _ordinals
-      return {k: v for k, v in enums.items() if not k.startswith('_')}
-    enums['_ordinals'] = _ordinals
-    return type('Enum', (), enums)
  
 EventType = enum('HbPacketHandle',
                  'HbPacketSend',
