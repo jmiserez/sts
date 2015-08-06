@@ -132,12 +132,11 @@ class RaceDetector(object):
     else:
       return True
 
-
-  # TODO(jm): make verbose a config option
-  def detect_races(self, event=None, verbose=False):
+  def read_ops(self):
     """
-    Detect all races that involve event.
-    Detect all races for all events if event is None.
+    Helper method to extract read and write operations from the HB graph.
+    MUST be called before detect_rw and detect_ww. But detect_races calls it
+    automatically.
     """
     self.read_operations = []
     self.write_operations = []
@@ -169,17 +168,7 @@ class RaceDetector(object):
             op = (i, k.flow_table, k.flow_mod, i.packet, i.in_port, dbg_str)
             self.read_operations.append(op)
 
-
-    if verbose:
-      print "Total write operations: {}".format(len(self.write_operations))
-      print "Total read operations: {}".format(len(self.read_operations))
-
-    self.races_harmful = []
-    self.races_commute = []
-    self.racing_events = set()
-    self.racing_events_harmful = set()
-    self.total_filtered = 0
-
+  def detect_ww_races(self, event=None, verbose=False):
     count = 0
     percentage_done = 0
 
@@ -211,6 +200,7 @@ class RaceDetector(object):
         self.racing_events.add(i_event)
         self.racing_events.add(k_event)
 
+  def detect_rw_races(self, event=None, verbose=False):
     percentage_done = 0
     count = 0
     rw_combination_count = len(self.read_operations)*len(self.write_operations)
@@ -244,6 +234,28 @@ class RaceDetector(object):
               self.racing_events_harmful.add(k_event)
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)
+
+  # TODO(jm): make verbose a config option
+  def detect_races(self, event=None, verbose=False):
+    """
+    Detect all races that involve event.
+    Detect all races for all events if event is None.
+    """
+    self.read_ops()
+
+    if verbose:
+      print "Total write operations: {}".format(len(self.write_operations))
+      print "Total read operations: {}".format(len(self.read_operations))
+
+    self.races_harmful = []
+    self.races_commute = []
+    self.racing_events = set()
+    self.racing_events_harmful = set()
+    self.total_filtered = 0
+
+    self.detect_ww_races(event, verbose)
+
+    self.detect_rw_races(event, verbose)
 
     self.total_operations = len(self.write_operations) + len(self.read_operations)
     self.total_harmful = len(self.races_harmful)
