@@ -1,4 +1,5 @@
 import itertools
+import networkx as nx
 
 from pox.openflow.flow_table import TableEntry
 from pox.openflow.libopenflow_01 import ofp_match
@@ -70,18 +71,8 @@ class RaceDetector(object):
 
     self.filter_rw = filter_rw # Filter events with no common ancestor if True.
 
-  def is_reachable(self, source, target, visited=None):
-    if visited is None:
-      visited = set()
-    visited.add(source)
-    parents = self.graph.predecessors[source]
-    if target in parents:
-      return True
-    for p in parents:
-      if p not in visited:
-        if self.is_reachable(p, target, visited):
-          return True
-    return False
+  def is_reachable(self, source, target):
+    return nx.has_path(self.graph.g, source.eid, target.eid)
 
   def is_ordered(self, event, other):
     # TODO(jm): horribly inefficient, this should be done the right way
@@ -95,23 +86,19 @@ class RaceDetector(object):
 
   def get_ancestors(self, event):
     visited = set()
-    visited.add(event)
+    visited.add(event.eid)
 
-    parents = self.graph.predecessors[event]
+    parents = self.graph.g.predecessors(event.eid)
 
     while len(parents) > 0:
       nextp = set()
       for p in parents:
         visited.add(p)
-        nextp.update(self.graph.predecessors[p])
+        nextp.update(self.graph.g.predecessors(p))
 
       nextp.difference_update(visited) #remove already visited
       parents = nextp
-
-    visited_ids = set()
-    for i in visited:
-      visited_ids.add(i.eid)
-    return visited_ids
+    return visited
 
   def has_common_ancestor(self, event, other):
     # TODO(jm): horribly inefficient, this should be done the right way. But it works for now.
