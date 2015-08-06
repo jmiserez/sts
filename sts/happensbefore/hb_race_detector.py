@@ -59,7 +59,7 @@ predecessor_types = {EventType.HbAsyncFlowExpiry:  [EventType.HbMessageSend,
 class RaceDetector(object):
 
   # TODO(jm): make filter_rw a config option
-  def __init__(self, graph, filter_rw=FalseFalse):
+  def __init__(self, graph, filter_rw=False):
     self.graph = graph
 
     self.read_operations = []
