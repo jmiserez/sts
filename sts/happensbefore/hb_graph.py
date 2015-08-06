@@ -3,23 +3,14 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
-from pox.openflow.libopenflow_01 import *
-from pox.openflow.flow_table import FlowTable, TableEntry, SwitchFlowTable
-from pox.openflow.software_switch import OFConnection
-from pox.lib.addresses import EthAddr
-from pox.lib.packet.ethernet import ethernet
-from pox.lib.packet.icmp import icmp
-from pox.lib.packet.ipv4 import ipv4
-from pox.lib.packet.icmp import _type_to_name as icmp_names
-from pox.lib.packet.packet_utils import ipproto_to_str
+
 
 import argparse
 import json
-from collections import namedtuple, defaultdict, deque, OrderedDict
+from collections import defaultdict
+from collections import namedtuple
 
-import pprint
-import base64
-from copy import copy
+from pox.openflow.libopenflow_01 import ofp_type_rev_map
 
 from hb_utils import pkt_info
 
