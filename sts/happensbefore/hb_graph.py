@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
 
 import argparse
 from collections import defaultdict
+import networkx as nx
 
 from hb_utils import pkt_info
 
@@ -28,13 +29,11 @@ class HappensBeforeGraph(object):
   def __init__(self, results_dir=None):
     self.results_dir = results_dir
     
-    self.events = []
+    self.g = nx.DiGraph()
+
     self.events_by_id = dict()
     self.pruned_events = set()
-    
-    self.predecessors = defaultdict(set)
-    self.successors = defaultdict(set)
-    
+
     self.events_by_pid_out = defaultdict(list)
     self.events_by_mid_out = defaultdict(list)
     
@@ -53,7 +52,34 @@ class HappensBeforeGraph(object):
     
     # for races
     self.race_detector = RaceDetector(self)
-      
+
+  @property
+  def events(self):
+    for _, data in self.g.nodes_iter(True):
+      yield data['event']
+
+  @property
+  def predecessors(self):
+    """Horribly inefficient!!!!!"""
+    predecessors = defaultdict(set)
+    for eid, data in self.g.nodes(data=True):
+      event = data['event']
+      predecessors[event] = set()
+      for pred in self.g.predecessors_iter(eid):
+        predecessors[event].add(self.g.node[pred]['event'])
+    return predecessors
+
+  @property
+  def successors(self):
+    """Horribly inefficient!!!!!"""
+    successors = defaultdict(set)
+    for eid, data in self.g.nodes(data=True):
+      event = data['event']
+      successors[event] = set()
+      for pred in self.g.successors_iter(eid):
+        successors[event].add(self.g.node[pred]['event'])
+    return successors
+
   def _add_to_lookup_tables(self, event):
     if hasattr(event, 'pid_out'):
       for x in event.pid_out:
@@ -103,8 +129,9 @@ class HappensBeforeGraph(object):
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
-    self.predecessors[after].add(before)
-    self.successors[before].add(after)
+    #self.predecessors[after].add(before)
+    #self.successors[before].add(after)
+    self.g.add_edge(before.eid, after.eid)
     
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
@@ -204,8 +231,9 @@ class HappensBeforeGraph(object):
       self.store_graph()
 
   def add_event(self, event):
-    self.events.append(event)
+    #self.events.append(event)
     assert event.eid not in self.events_by_id
+    self.g.add_node(event.eid, event=event)
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
 
@@ -243,13 +271,13 @@ class HappensBeforeGraph(object):
     handlers.get(event.type, _handle_default)(event)
   
   def load_trace(self, filename):
-    self.events = []
+    self.g = nx.DiGraph()
     self.events_by_id = dict()
     with open(filename) as f:
       for line in f:
         self.add_line(line, online_update=False)
-    print "Read in " + str(len(self.events)) + " events." 
-    self.events.sort(key=lambda i: i.eid)
+    print "Read in " + str(len(list(self.events))) + " events."
+    #self.events.sort(key=lambda i: i.eid)
 
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
