@@ -234,7 +234,7 @@ def op_to_str(op):
   else:
     opstr = op.type + ": "
   if op.flow_mod:
-    opstr += ofp_flow_mod_command_to_string(op.flow_mod.command)
+    opstr += ofp_flow_mod_command_to_str(op.flow_mod.command)
     opstr += " => " + TableEntry.from_flow_mod(op.flow_mod).show()
   else:
     opstr += "None"
