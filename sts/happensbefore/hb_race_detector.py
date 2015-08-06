@@ -5,11 +5,8 @@ from pox.openflow.libopenflow_01 import ofp_match
 
 from hb_utils import ofp_flow_mod_command_to_str
 from hb_utils import nCr
-from hb_utils import enum
 
 from hb_comute_check import CommutativityChecker
-
-from hb_events import *
 
 
 # Sanity check! This is a mapping of all predecessor types that make sense.

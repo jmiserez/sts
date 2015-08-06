@@ -4,13 +4,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
 
-
 import argparse
-import json
 from collections import defaultdict
-from collections import namedtuple
-
-from pox.openflow.libopenflow_01 import ofp_type_rev_map
 
 from hb_utils import pkt_info
 
