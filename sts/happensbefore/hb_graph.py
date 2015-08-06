@@ -15,8 +15,6 @@ from pox.openflow.libopenflow_01 import ofp_type_rev_map
 from hb_utils import pkt_info
 
 from hb_race_detector import RaceDetector
-from hb_race_detector import EventType
-from hb_race_detector import OpType
 from hb_race_detector import predecessor_types
 
 # To make sure all events are registered
@@ -80,7 +78,7 @@ class HappensBeforeGraph(object):
                             lambda x: hasattr(x, 'mid_in'), 
                             lambda x: x.mid_in ),
                            (self.events_flowmod_by_dpid_match, 
-                            lambda x: (x.type == EventType.HbMessageHandle and
+                            lambda x: (x.type == 'HbMessageHandle' and
                                        hasattr(x, 'msg_type_str') and 
                                        x.msg_type == "OFPT_FLOW_MOD" and
                                        hasattr(x, 'dpid') and
@@ -313,11 +311,11 @@ class HappensBeforeGraph(object):
         shape = ""
         if hasattr(i, 'operations'):
           for x in i.operations:
-            if x.type == OpType.TraceSwitchFlowTableWrite:
+            if x.type == 'TraceSwitchFlowTableWrite':
               optype = 'FlowTableWrite'
               shape = '[shape=box style="bold"]'
               break
-            if x.type == OpType.TraceSwitchFlowTableRead:
+            if x.type == 'TraceSwitchFlowTableRead':
               optype = 'FlowTableRead'
               shape = '[shape="box"]'
               break

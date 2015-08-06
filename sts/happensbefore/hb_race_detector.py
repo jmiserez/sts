@@ -11,24 +11,6 @@ from hb_comute_check import CommutativityChecker
 
 from hb_events import *
 
-EventType = enum('HbPacketHandle',
-                 'HbPacketSend',
-                 'HbMessageHandle',
-                 'HbMessageSend',
-                 'HbHostHandle',
-                 'HbHostSend',
-                 'HbControllerHandle',
-                 'HbControllerSend',
-                 'HbAsyncFlowExpiry',
-                 )
-
-
-OpType = enum('TraceSwitchFlowTableRead',
-              'TraceSwitchFlowTableWrite',
-              'TraceSwitchBufferPut',
-              'TraceSwitchBufferGet',
-              )
-
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
 predecessor_types = {
