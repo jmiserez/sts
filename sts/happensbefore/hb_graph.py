@@ -472,7 +472,7 @@ class CommutativityChecker(object):
 class RaceDetector(object):
   
   # TODO(jm): make filter_rw a config option
-  def __init__(self, graph, filter_rw=True):
+  def __init__(self, graph, filter_rw=False):
     self.graph = graph
     
     self.read_operations = []
@@ -532,7 +532,6 @@ class RaceDetector(object):
     visited_ids = set()
     for i in visited:
       visited_ids.add(i.id)
-      
     return visited_ids
   
   def has_common_ancestor(self, event, other):
@@ -546,15 +545,6 @@ class RaceDetector(object):
     else:
       return True    
   
-  def dbg1_print_all_ancestors(self):
-    ancs = dict()
-    for e in self.graph.events:
-      ancs[e.id] = self.get_ancestors(e)
-    
-    sorted_keys = sorted(ancs)
-    for k in sorted_keys:
-      print "{} -> {}".format(k, sorted(list(ancs[k])))
-      
   
   # TODO(jm): make verbose a config option
   def detect_races(self, event=None, verbose=False):
@@ -1115,20 +1105,19 @@ class Main(object):
     self.graph = HappensBeforeGraph(results_dir=self.results_dir)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
-    self.graph.race_detector.dbg1()
-#     t1 = time.time()
-#     self.graph.race_detector.detect_races(verbose=True)
-#     t2 = time.time()
-#     self.graph.race_detector.print_races()
-#     t3 = time.time()
-#     self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
-#     t4 = time.time()
-#     
-#     print "Done. Time elapsed: "+(str(t4-t0))+"s"
-#     print "load_trace: "+(str(t1-t0))+"s"
-#     print "detect_races: "+(str(t2-t1))+"s"
-#     print "print_races: "+(str(t3-t2))+"s"
-#     print "store_graph: "+(str(t4-t3))+"s"
+    t1 = time.time()
+    self.graph.race_detector.detect_races(verbose=True)
+    t2 = time.time()
+    self.graph.race_detector.print_races()
+    t3 = time.time()
+    self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
+    t4 = time.time()
+    
+    print "Done. Time elapsed: "+(str(t4-t0))+"s"
+    print "load_trace: "+(str(t1-t0))+"s"
+    print "detect_races: "+(str(t2-t1))+"s"
+    print "print_races: "+(str(t3-t2))+"s"
+    print "store_graph: "+(str(t4-t3))+"s"
     
     
 if __name__ == '__main__':
