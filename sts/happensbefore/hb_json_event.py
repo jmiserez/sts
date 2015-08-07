@@ -44,7 +44,7 @@ class JsonEvent(Event):
   
   _ids = itertools.count(0)
   _to_json_attrs = ['eid', 'type']
-  _from_json_attrs = {}
+  _from_json_attrs = {'eid': lambda x: x}
   _json_types = {}
 
   def __init__(self, eid=None):

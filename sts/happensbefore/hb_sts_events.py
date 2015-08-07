@@ -206,6 +206,24 @@ class TraceSwitchPacketUpdateEnd(TraceSwitchEvent):
 
 
 class TraceHostEvent(JsonEvent):
+  __metaclass__ = AttributeCombiningMetaclass
+  _attr_combining_metaclass_args = ["_to_json_attrs"]
+
+  _to_json_attrs = [
+    'hid',
+    ('packet', base64_encode),
+    ('in_port', get_port_no),
+    ('out_port', get_port_no),
+  ]
+
+  _from_json_attrs = {
+    'eid': lambda x: x,
+    'hid': lambda x: x,
+    'packet': decode_packet,
+    'in_port': lambda x: x,
+    'out_port': lambda x: x,
+  }
+
   def __init__(self, eid=None):
     super(TraceHostEvent, self).__init__(eid=eid)
 
