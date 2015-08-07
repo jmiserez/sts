@@ -86,32 +86,16 @@ class RaceDetector(object):
       return True
     return False
 
-  def get_ancestors(self, event):
-    visited = set()
-    visited.add(event.eid)
-
-    parents = self.graph.g.predecessors(event.eid)
-
-    while len(parents) > 0:
-      nextp = set()
-      for p in parents:
-        visited.add(p)
-        nextp.update(self.graph.g.predecessors(p))
-
-      nextp.difference_update(visited) #remove already visited
-      parents = nextp
-    return visited
-
   def has_common_ancestor(self, event, other):
-    # TODO(jm): horribly inefficient, this should be done the right way. But it works for now.
-    event_ancs = self.get_ancestors(event)
-    other_ancs = self.get_ancestors(other)
-
-    isdisjoint = event_ancs.isdisjoint(other_ancs)
-    if isdisjoint:
-      return False
-    else:
-      return True
+    """
+    Returns true the two events have a common ancestor or they're ancestors of
+    each other.
+    """
+    event_ancs = nx.ancestors(self.graph.g, event.eid)
+    other_ancs = nx.ancestors(self.graph.g, other.eid)
+    event_ancs.add(event.eid)
+    other_ancs.add(other.eid)
+    return not event_ancs.isdisjoint(other_ancs)
 
   def read_ops(self):
     """
