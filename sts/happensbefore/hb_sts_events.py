@@ -1,6 +1,7 @@
 """
 Events instrumenting STS internals.
 """
+import time
 
 from hb_json_event import JsonEvent
 from hb_json_event import AttributeCombiningMetaclass
@@ -36,7 +37,7 @@ class TraceSwitchEvent(JsonEvent):
                     ('matched_flow', base64_encode),
                     ('touched_flow', base64_encode),
                     'touched_flow_bytes',
-                    ('touched_flow_now', lambda fp: repr(fp)), # str() is not precise for floating point numbers in Python < v3.2
+                    ('t', lambda fp: repr(fp)), # str() is not precise for floating point numbers in Python < v3.2
                     ]
 
   _from_json_attrs = {
@@ -56,43 +57,44 @@ class TraceSwitchEvent(JsonEvent):
     'matched_flow': decode_flow_mod,
     'touched_flow': decode_flow_mod,
     'touched_flow_bytes': lambda x: x,
-    'touched_flow_now': lambda x: x,
+    't': lambda x: float(x),
   }
 
-  def __init__(self, eid=None):
+  def __init__(self, t, eid=None):
     super(TraceSwitchEvent, self).__init__(eid=eid)
+    self.t = t or time.time()
 
 
 class TraceAsyncSwitchFlowExpirationBegin(TraceSwitchEvent):
-  def __init__(self, dpid, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
 
 
 class TraceAsyncSwitchFlowExpirationEnd(TraceSwitchEvent):
-  def __init__(self, dpid, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
 
 
 class TraceSwitchPacketHandleBegin(TraceSwitchEvent):
-  def __init__(self, dpid, packet, in_port, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, in_port, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
 
 
 class TraceSwitchPacketHandleEnd(TraceSwitchEvent):
-  def __init__(self, dpid, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
 
 
 # TODO(jm): remove this, and all uses of TraceSwitchMessageRx
 class TraceSwitchMessageRx(TraceSwitchEvent):
-  def __init__(self, dpid, controller_id, msg, b64msg, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, controller_id, msg, b64msg, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.controller_id = controller_id
     self.msg = msg
@@ -100,8 +102,8 @@ class TraceSwitchMessageRx(TraceSwitchEvent):
 
 
 class TraceSwitchMessageTx(TraceSwitchEvent):
-  def __init__(self, dpid, controller_id, msg, b64msg, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, controller_id, msg, b64msg, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.controller_id = controller_id
     self.msg = msg
@@ -109,8 +111,8 @@ class TraceSwitchMessageTx(TraceSwitchEvent):
 
 
 class TraceSwitchMessageHandleBegin(TraceSwitchEvent):
-  def __init__(self, dpid, controller_id, msg, msg_type, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, controller_id, msg, msg_type, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.controller_id = controller_id
     self.msg = msg
@@ -123,13 +125,13 @@ class TraceSwitchMessageHandleBegin(TraceSwitchEvent):
 
 
 class TraceSwitchMessageHandleEnd(TraceSwitchEvent):
-  def __init__(self, dpid, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
   
 class TraceSwitchMessageSend(TraceSwitchEvent):
-  def __init__(self, dpid, cid, controller_id, msg, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, cid, controller_id, msg, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.cid = cid
     self.controller_id = controller_id
@@ -137,8 +139,8 @@ class TraceSwitchMessageSend(TraceSwitchEvent):
 
 
 class TraceSwitchPacketSend(TraceSwitchEvent):
-  def __init__(self, dpid, packet, out_port, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, out_port, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.out_port = out_port
@@ -146,8 +148,8 @@ class TraceSwitchPacketSend(TraceSwitchEvent):
 
 class TraceSwitchFlowTableRead(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, flow_table, flow_mod,
-               touched_flow_bytes=None, touched_flow_now=None, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+               touched_flow_bytes=None, touched_flow_now=None, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
@@ -159,15 +161,15 @@ class TraceSwitchFlowTableRead(TraceSwitchEvent):
 
 
 class TraceSwitchFlowTableWrite(TraceSwitchEvent):
-  def __init__(self, dpid, flow_table, flow_mod, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, flow_table, flow_mod, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
     self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod))
     
 class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
-  def __init__(self, dpid, flow_table, removed, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, flow_table, removed, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
     self.flow_mod = decode_flow_mod(base64_encode_flow(removed))
@@ -175,8 +177,8 @@ class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
 
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
-  def __init__(self, dpid, packet, in_port, buffer_id, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
@@ -184,23 +186,23 @@ class TraceSwitchBufferPut(TraceSwitchEvent):
 
 
 class TraceSwitchBufferGet(TraceSwitchEvent):
-  def __init__(self, dpid, packet, in_port, buffer_id, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
     self.buffer_id = buffer_id
 
 class TraceSwitchPacketUpdateBegin(TraceSwitchEvent):
-  def __init__(self, dpid, packet, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
 
 
 class TraceSwitchPacketUpdateEnd(TraceSwitchEvent):
-  def __init__(self, dpid, packet, eid=None):
-    TraceSwitchEvent.__init__(self, eid=eid)
+  def __init__(self, dpid, packet, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
 
@@ -214,6 +216,7 @@ class TraceHostEvent(JsonEvent):
     ('packet', base64_encode),
     ('in_port', get_port_no),
     ('out_port', get_port_no),
+    ('t', lambda fp: repr(fp)),
   ]
 
   _from_json_attrs = {
@@ -222,29 +225,31 @@ class TraceHostEvent(JsonEvent):
     'packet': decode_packet,
     'in_port': lambda x: x,
     'out_port': lambda x: x,
+    't': lambda x: float(x),
   }
 
-  def __init__(self, eid=None):
+  def __init__(self, t=None, eid=None):
     super(TraceHostEvent, self).__init__(eid=eid)
+    self.t = t
 
 
 class TraceHostPacketHandleBegin(TraceHostEvent):
-  def __init__(self, hid, packet, in_port, eid=None):
-    TraceHostEvent.__init__(self, eid=eid)
+  def __init__(self, hid, packet, in_port, t=None, eid=None):
+    TraceHostEvent.__init__(self, t=t, eid=eid)
     self.hid = hid
     self.packet = packet
     self.in_port = in_port
 
 
 class TraceHostPacketHandleEnd(TraceHostEvent):
-  def __init__(self, hid, eid=None):
-    TraceHostEvent.__init__(self, eid=eid)
+  def __init__(self, hid, t=None, eid=None):
+    TraceHostEvent.__init__(self, t=t, eid=eid)
     self.hid = hid
 
 
 class TraceHostPacketSend(TraceHostEvent):
-  def __init__(self, hid, packet, out_port, eid=None):
-    TraceHostEvent.__init__(self, eid=eid)
+  def __init__(self, hid, packet, out_port, t=None, eid=None):
+    TraceHostEvent.__init__(self, t=t, eid=eid)
     self.hid = hid
     self.packet = packet
     self.out_port = out_port

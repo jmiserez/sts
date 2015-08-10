@@ -217,11 +217,11 @@ class RaceDetector(object):
       print "+-------------------------------------------+"
       print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race.i_op.eid)
+      print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
       print "+-------------------------------------------+"
       print "| " + op_to_str(race.i_op)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race.k_op.eid)
+      print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
       print "+-------------------------------------------+"
       print "| " + op_to_str(race.k_op)
       print "+-------------------------------------------+"
@@ -229,11 +229,11 @@ class RaceDetector(object):
       print "+-------------------------------------------+"
       print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race.i_op.eid)
+      print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
       print "+-------------------------------------------+"
       print "| " + op_to_str(race.i_op)
       print "+-------------------------------------------+"
-      print "| op # {:<37}|".format(race.k_op.eid)
+      print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
       print "+-------------------------------------------+"
       print "| " + op_to_str(race.k_op)
       print "+-------------------------------------------+"
