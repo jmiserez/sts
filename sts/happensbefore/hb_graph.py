@@ -414,10 +414,10 @@ class HappensBeforeGraph(object):
     if not print_only_harmful:
       for race in self.race_detector.races_commute:
         if race[1] not in pruned_events and race[2] not in pruned_events:
-          dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race[0], race[1].eid, race[2].eid))
+          dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
     for race in self.race_detector.races_harmful:
       if race[1] not in pruned_events and race[2] not in pruned_events:
-          dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race[0], race[1].eid, race[2].eid))
+          dot_lines.append('    {1} -> {2} [style="bold"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
