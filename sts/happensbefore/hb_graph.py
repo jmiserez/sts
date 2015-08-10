@@ -57,7 +57,7 @@ class HappensBeforeGraph(object):
     self.rw_delta = rw_delta
     self.add_hb_time = add_hb_time
     # Just to keep track of how many HB edges where added based on time
-    self._time_hb_edges_counter = 0
+    self._time_hb_rw_edges_counter = 0
 
   @property
   def events(self):
@@ -202,7 +202,7 @@ class HappensBeforeGraph(object):
           self._add_edge(other, event)
           # do not remove, one flow mod could have installed multiple rules
 
-  def _rule_06_time(self, event):
+  def _rule_06_time_rw(self, event):
     if type(event) not in [HbPacketHandle]:
       return
     packet_match = ofp_match.from_packet(event.packet, event.in_port)
@@ -222,7 +222,7 @@ class HappensBeforeGraph(object):
           continue
         delta = abs(op.t - operations[0].t)
         if (delta > self.rw_delta):
-          self._time_hb_edges_counter += 1
+          self._time_hb_rw_edges_counter += 1
           self._add_edge(e, event, sanity_check=False)
         break
 
@@ -233,7 +233,7 @@ class HappensBeforeGraph(object):
     self._rule_04_barrier_post(event)
     self._rule_05_flow_removed(event)
     if self.add_hb_time:
-      self._rule_06_time(event)
+      self._rule_06_time_rw(event)
   
   def _add_transitive_edges(self, event):
     """
@@ -459,7 +459,7 @@ class Main(object):
     print "detect_races: "+(str(t2-t1))+"s"
     print "print_races: "+(str(t3-t2))+"s"
     print "store_graph: "+(str(t4-t3))+"s"
-    print "HB edges based on time", self.graph._time_hb_edges_counter
+    print "HB edges based on time", self.graph._time_hb_rw_edges_counter
     
     
 if __name__ == '__main__':
