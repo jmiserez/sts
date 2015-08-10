@@ -26,7 +26,7 @@ from hb_sts_events import *
 
 class HappensBeforeGraph(object):
  
-  def __init__(self, results_dir=None):
+  def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -52,6 +52,11 @@ class HappensBeforeGraph(object):
     
     # for races
     self.race_detector = RaceDetector(self)
+
+    self.rw_delta = rw_delta
+    self.add_hb_time = add_hb_time
+    # Just to keep track of how many HB edges where added based on time
+    self._time_hb_edges_counter = 0
 
   @property
   def events(self):
@@ -195,13 +200,39 @@ class HappensBeforeGraph(object):
         for other in self.events_flowmod_by_dpid_match[search_key]:
           self._add_edge(other, event)
           # do not remove, one flow mod could have installed multiple rules
-  
+
+  def _rule_06_time(self, event):
+    if type(event) not in [HbPacketHandle]:
+      return
+    packet_match = ofp_match.from_packet(event.packet, event.in_port)
+    operations = []
+    # Get all the read operations in the event
+    # For OF 1.0 should be only one op, but more for OF1.3
+    for op in event.operations:
+      if type(op) ==  TraceSwitchFlowTableRead:
+        operations.append(op)
+    for e in self.events:
+      if type(e) != HbMessageHandle:
+        continue
+      for op in e.operations:
+        if type(op) != TraceSwitchFlowTableWrite:
+          continue
+        if not op.flow_mod.match.matches_with_wildcards(packet_match, consider_other_wildcards=False):
+          continue
+        delta = abs(op.t - operations[0].t)
+        if (delta > self.rw_delta):
+          self._time_hb_edges_counter += 1
+          self._add_edge(e, event, sanity_check=False)
+        break
+
   def _update_edges(self, event):
     self._rule_01_pid(event)
     self._rule_02_mid(event)
     self._rule_03_barrier_pre(event)
     self._rule_04_barrier_post(event)
     self._rule_05_flow_removed(event)
+    if self.add_hb_time:
+      self._rule_06_time(event)
   
   def _add_transitive_edges(self, event):
     """
@@ -278,6 +309,13 @@ class HappensBeforeGraph(object):
         self.add_line(line, online_update=False)
     print "Read in " + str(len(list(self.events))) + " events."
     #self.events.sort(key=lambda i: i.eid)
+    self.add_time_hb()
+
+  def add_time_hb(self):
+    for event in self.events:
+      if type(event) in [HbMessageHandle, HbPacketHandle]:
+        print "EVENT", event.eid, getattr(event, 'msg_type_str', None), event.operations
+
 
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
@@ -387,17 +425,22 @@ class HappensBeforeGraph(object):
   
 class Main(object):
   
-  def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful):
+  def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
+               add_hb_time=True, rw_delta=5):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
     self.print_pkt = print_pkt
     self.print_only_racing = print_only_racing
     self.print_only_harmful = print_only_harmful
-    
+    self.add_hb_time = add_hb_time
+    self.rw_delta = rw_delta
+
   def run(self):
     import time
-    self.graph = HappensBeforeGraph(results_dir=self.results_dir)
+    self.graph = HappensBeforeGraph(results_dir=self.results_dir,
+                                    add_hb_time=self.add_hb_time,
+                                    rw_delta=self.rw_delta)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
@@ -413,6 +456,7 @@ class Main(object):
     print "detect_races: "+(str(t2-t1))+"s"
     print "print_races: "+(str(t3-t2))+"s"
     print "store_graph: "+(str(t4-t3))+"s"
+    print "HB edges based on time", self.graph._time_hb_edges_counter
     
     
 if __name__ == '__main__':
@@ -424,6 +468,11 @@ if __name__ == '__main__':
                       help="Print only races in the graph")
   parser.add_argument('--harmful', dest='print_only_harmful', action='store_true', default=False,
                       help="Print only harmful races (lines) in the graph")
+  parser.add_argument('--hbt', dest='hbt', action='store_true', default=False,
+                      help="Add HB edges based on time")
+  parser.add_argument('--rw_delta', dest='rw_delta', default=5,
+                      help="delta time (in secs) for adding HB edges based on time")
   args = parser.parse_args()
-  main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful)
+  main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
+              add_hb_time=args.hbt, rw_delta=args.rw_delta)
   main.run()
