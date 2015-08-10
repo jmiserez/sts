@@ -26,7 +26,8 @@ from hb_sts_events import *
 
 class HappensBeforeGraph(object):
  
-  def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5):
+  def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
+               filter_rw=False):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -51,7 +52,7 @@ class HappensBeforeGraph(object):
     self.most_recent_barrier = defaultdict()
     
     # for races
-    self.race_detector = RaceDetector(self)
+    self.race_detector = RaceDetector(self, filter_rw=filter_rw)
 
     self.rw_delta = rw_delta
     self.add_hb_time = add_hb_time
@@ -426,7 +427,7 @@ class HappensBeforeGraph(object):
 class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
-               add_hb_time=True, rw_delta=5):
+               add_hb_time=True, rw_delta=5, filter_rw=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -435,12 +436,14 @@ class Main(object):
     self.print_only_harmful = print_only_harmful
     self.add_hb_time = add_hb_time
     self.rw_delta = rw_delta
+    self.filter_rw = filter_rw
 
   def run(self):
     import time
     self.graph = HappensBeforeGraph(results_dir=self.results_dir,
                                     add_hb_time=self.add_hb_time,
-                                    rw_delta=self.rw_delta)
+                                    rw_delta=self.rw_delta,
+                                    filter_rw=self.filter_rw)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
@@ -472,7 +475,10 @@ if __name__ == '__main__':
                       help="Add HB edges based on time")
   parser.add_argument('--rw_delta', dest='rw_delta', default=5,
                       help="delta time (in secs) for adding HB edges based on time")
+  parser.add_argument('--filter_rw', dest='filter_rw', action='store_true', default=False,
+                      help="Filter Read/Write operations with HB relations")
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
-              add_hb_time=args.hbt, rw_delta=args.rw_delta)
+              add_hb_time=args.hbt, rw_delta=args.rw_delta,
+              filter_rw=args.filter_rw)
   main.run()
