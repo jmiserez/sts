@@ -354,13 +354,6 @@ class HappensBeforeGraph(object):
         self.add_line(line, online_update=False)
     print "Read in " + str(len(list(self.events))) + " events."
     #self.events.sort(key=lambda i: i.eid)
-    self.add_time_hb()
-
-  def add_time_hb(self):
-    for event in self.events:
-      if type(event) in [HbMessageHandle, HbPacketHandle]:
-        print "EVENT", event.eid, getattr(event, 'msg_type_str', None), event.operations
-
 
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
