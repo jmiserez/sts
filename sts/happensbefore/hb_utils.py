@@ -236,6 +236,8 @@ def op_to_str(op):
   if op.flow_mod:
     opstr += ofp_flow_mod_command_to_str(op.flow_mod.command)
     opstr += " => " + TableEntry.from_flow_mod(op.flow_mod).show()
+  elif hasattr(op, 'packet'):
+    opstr += str(op.packet)
   else:
     opstr += "None"
   return opstr
