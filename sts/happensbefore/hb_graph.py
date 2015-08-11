@@ -8,6 +8,8 @@ import argparse
 from collections import defaultdict
 import networkx as nx
 
+from pox.lib.packet.ethernet import ethernet
+
 from hb_utils import pkt_info
 
 from hb_race_detector import RaceDetector
@@ -27,7 +29,7 @@ from hb_sts_events import *
 class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
-               ww_delta=1, filter_rw=False):
+               ww_delta=1, filter_rw=False, ignore_ethertypes=None):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -60,6 +62,8 @@ class HappensBeforeGraph(object):
     # Just to keep track of how many HB edges where added based on time
     self._time_hb_rw_edges_counter = 0
     self._time_hb_ww_edges_counter = 0
+
+    self.ignore_ethertypes = check_list(ignore_ethertypes)
 
   @property
   def events(self):
@@ -309,6 +313,15 @@ class HappensBeforeGraph(object):
   def add_event(self, event):
     #self.events.append(event)
     assert event.eid not in self.events_by_id
+    if self.ignore_ethertypes:
+      packet = None
+      if hasattr(event, 'packet'):
+        packet = event.packet
+      if type(event) == HbMessageHandle and getattr(event.msg, 'data', None):
+        packet = ethernet(event.msg.data)
+      if packet and packet.type in self.ignore_ethertypes:
+        return
+
     self.g.add_node(event.eid, event=event)
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
@@ -464,7 +477,8 @@ class HappensBeforeGraph(object):
 class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
-               add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False):
+               add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
+               ignore_ethertypes=None):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -475,6 +489,7 @@ class Main(object):
     self.rw_delta = rw_delta
     self.ww_delta = ww_delta
     self.filter_rw = filter_rw
+    self.ignore_ethertypes = ignore_ethertypes
 
   def run(self):
     import time
@@ -482,7 +497,8 @@ class Main(object):
                                     add_hb_time=self.add_hb_time,
                                     rw_delta=self.rw_delta,
                                     ww_delta=self.ww_delta,
-                                    filter_rw=self.filter_rw)
+                                    filter_rw=self.filter_rw,
+                                    ignore_ethertypes=self.ignore_ethertypes)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
@@ -501,7 +517,11 @@ class Main(object):
     print "HB RW edges based on time", self.graph._time_hb_rw_edges_counter
     print "HB WW edges based on time", self.graph._time_hb_ww_edges_counter
 
-    
+
+def auto_int(x):
+  return int(x, 0)
+
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('trace_file')
@@ -519,8 +539,13 @@ if __name__ == '__main__':
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--filter_rw', dest='filter_rw', action='store_true', default=False,
                       help="Filter Read/Write operations with HB relations")
+  parser.add_argument('--ignore_ethertypes', dest='ignore_ethertypes', nargs='*',
+                      type=auto_int, default=[ethernet.LLDP_TYPE, 0x8942],
+                      help='Ether types to ignore from the graph')
+
+
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
-              filter_rw=args.filter_rw)
+              filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes)
   main.run()
