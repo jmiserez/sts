@@ -48,7 +48,7 @@ class HbEvent(JsonEvent):
     'dpid': lambda x: x,  # The unique per switch datapath ID
     'controller_id': lambda x: x, # socket.getpeername(), NOT the STS cid (#NOTE (AH):  why not?)
     'hid': lambda x: x,  # Host ID
-    'packet': decode_packet,  # The content of the packet
+    'packet': lambda x: decode_packet(x) if x else None,  # The content of the packet
     'in_port': lambda x: x,  # The ingress port number
     'out_port': lambda x: x,  # The egress port number
     'msg': base64_decode_openflow,  # The content of the openflow message
@@ -128,7 +128,8 @@ class HbMessageHandle(HbEvent):
   #NOTE (AH): is buffer_in used?
   def __init__(self, mid_in, msg_type, operations=None, pid_in=None,
                pid_out=None, mid_out=None, dpid=None, controller_id=None,
-               msg=None, buffer_in=None, msg_flowmod=None, eid=None):
+               msg=None, buffer_in=None, msg_flowmod=None, packet=None,
+               in_port=None, eid=None):
     HbEvent.__init__(self, eid=eid)
     self.pid_in = pid_in # to be filled in when a read from buffer occurs
     self.mid_in = mid_in # filled in, but never matches a mid_out. This link will be filled in by controller instrumentation. 
@@ -144,6 +145,8 @@ class HbMessageHandle(HbEvent):
     self.dpid = dpid # possibly needed to match with controller instrumentation
     self.controller_id = controller_id # possibly needed to match with controller instrumentation
     self.msg = msg
+    self.packet = packet
+    self.in_port = in_port
     if msg_flowmod is not None:
       self.msg_flowmod = msg_flowmod # needed for rule 3
 
