@@ -528,10 +528,10 @@ class HappensBeforeLogger(EventMixin):
     """
     temporary_tag = self.mids.generate_unused_tag()
     event = HbControllerHandle(mid_out, temporary_tag)
-    first = str(event.id)
+    first = str(event.eid)
     self.write_event_to_trace(event)
     event = HbControllerSend(temporary_tag, mid_in)
-    second = str(event.id)
+    second = str(event.eid)
     self.write_event_to_trace(event)
     self.log.info("Adding controller edge ("+first+" -> "+second+"): mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
 
