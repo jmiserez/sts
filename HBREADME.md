@@ -212,7 +212,9 @@ protected final static boolean USE_BARRIER = true;
 $ ant
 ```
 
-Then, rerun the above steps (dpp 1 2) and take a look at the resulting output. The result should be 1 commuting, 1 harmful (dpp 1 2), and 5 commuting, 3 harmful (dpp 2 1, dpp 1 2). Looking at the graph it can be seen that the race described in the paper has disappeared. Currently this is due to insufficient filtering of r/w races: Using the (very crude) filter_rw commandline option gets rid of these:
+Then, rerun the above steps (dpp 1 2) and take a look at the resulting output. The result should be 1 commuting, 1 harmful (dpp 1 2), and 5 commuting, 3 harmful (dpp 2 1, dpp 1 2). Looking at the graph it can be seen that the race described in the paper has disappeared. 
+
+The remaining races are due to insufficient filtering of r/w races: Using the (very crude) filter_rw commandline option gets rid of these:
 
 ```
 $ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_flawedfw/hb.json --filter_rw
