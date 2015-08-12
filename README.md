@@ -1,3 +1,6 @@
+For SDNRacer usage, view [HBREADME.md](https://github.com/jmiserez/sts/blob/hb/HBREADME.md).
+
+-----
 See http://ucb-sts.github.com/sts/ for an HTML version of this file.
 
 Ever had to manually dig through logs to find the one or two inputs that lead your controller software to break? STS seeks to eliminate this need, freeing you to debug the problematic code itself.
