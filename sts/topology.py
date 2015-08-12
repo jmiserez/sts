@@ -1303,6 +1303,11 @@ class BinaryLeafTreeTopology(Topology):
     h1-s2  s3-h3
     h2-      -h4
     
+    num_levels:
+     0 -> 1 switch, 2 hosts
+     1 -> 1+2 switches, 2*2 hosts
+     2 -> 1+2+4 switches, 4*2 hosts
+     3 -> 1+2+4+8 switches, 8*2 hosts
     
     '''
     Topology.__init__(self, create_io_worker=create_io_worker, gui=gui)
