@@ -55,7 +55,7 @@ topology_class = StarTopology
 topology_params = "num_hosts=2"
 
 # Where should the output files be written to
-results_dir = "experiments/demo_floodlight_fw"
+results_dir = "experiments/demo_floodlight_flawedfw"
 
 # include all defaults
 simulation_config = SimulationConfig(controller_configs=controllers,
