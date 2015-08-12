@@ -18,13 +18,13 @@ These instructions were tested on a fresh install of Ubuntu 14.04.3 LTS 64bit in
 $ sudo apt-get install git build-essential python-dev ant openjdk-7-jdk python-docutils python-networkx xdot graphviz
 ```
 
-Dependencies:
+Dependencies due to:
 - General: git, build-essential
 - Hassel: python-dev
 - Floodlight: ant, openjdk-7-jdk
 - STS: python-docutils
 - SDNRacer: python-networkx
-- Viewing .dot files: xdot graphviz
+- Viewing .dot files: xdot, graphviz
 
 ### Installation
 
@@ -61,8 +61,6 @@ Fuzzer:
 
 Interactive (specific scenarios/races from the paper):
 - demo_floodlight_flawedfw.py
-- demo_pox_lb3.py
-- demo_pox_te.py
 
 The first scenario is described in detail, the following ones only where the procedure is different.
 
