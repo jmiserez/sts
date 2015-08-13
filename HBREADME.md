@@ -61,6 +61,8 @@ Fuzzer:
 
 Interactive (specific scenarios/races from the paper):
 - demo_floodlight_flawedfw.py
+- demo_pox_lb3.py
+- demo_pox_te.py
 
 The first scenario is described in detail, the following ones only where the procedure is different.
 
