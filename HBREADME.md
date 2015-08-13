@@ -278,6 +278,76 @@ $ ./sts/happensbefore/hb_graph.py experiments/demo_pox_lb3/hb.json --filter-rw
 $ xdot experiments/demo_pox_lb3/hb.dot
 ```
 
+#### Scenario #5: Interactively running the traffic engineering scenario
+
+This runs through the traffic engineering scenario described in the Google Docs document "More race conditions in SDN networks".
+
+Recall the topology (connection s1-s5 is unused)
+```
+ h1 --- s1 - s2 - s3
+         | \  | \  |
+         |  \ |  \ |
+        s4 - s5 - s6 --- h6
+
+```
+
+- Start the simulator:
+```
+$ cd ~/sts
+$ ./simulator.py -L logging.cfg -c config/demo_pox_te.py
+```
+
+Press ENTER a few times. This will install the GREEN path (h1-1-2-3-6-h6, in both directions).
+
+```
+ h1 --- s1 - s2 - s3
+                   |
+                   |
+        s4   s5   s6 --- h6
+
+```
+
+- Bring down switch s3
+```
+STS [next] > ks 3
+```
+
+Now, the GREEN path will be removed, and the RED (h1-1-4-5-2-6-h6) will be installed. 
+
+```
+ h1 --- s1   s2   X
+         |    ^ \  
+         |    |  \ 
+        s4 - s5   s6 --- h6
+
+```
+
+This is immediately followed by a removal of the RED path and installation of the ORANGE (h1-1-2-5-6-h6) paths:
+
+```
+ h1 --- s1 - s2   X
+              |    
+              v    
+        s4   s5 - s6 --- h6
+
+```
+
+A write/write race takes place on s1, s2 and s5 if the controller issues all of these changes without waiting for them to have taken effect.
+
+- Run the race detection:
+```
+$ ./sts/happensbefore/hb_graph.py experiments/demo_pox_lb3/hb.json
+```
+
+There should be 154 commuting, 3 harmful races. The 3 harmful races are on s1, s2 and s5, as expected. Note that the '--filter-rw' flag will have no effect here, as no reads occur.
+
+- The graph is rather large and not easy to look at:
+
+```
+$ xdot experiments/demo_pox_te/hb.dot
+```
+
+
 ### More: Flags supported by the race detector
 
 The analyzer supports a few arguments that can be passed to create smaller .dot files for viewing. The complete list is defined at the very bottom of the hb_graph.py file, a few useful ones are:
