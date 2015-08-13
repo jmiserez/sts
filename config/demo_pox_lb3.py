@@ -1,4 +1,3 @@
-
 from config.experiment_config_lib import ControllerConfig
 from sts.topology import MeshTopology
 from sts.topology import GridTopology
@@ -45,7 +44,7 @@ controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 topology_class = MeshTopology
 topology_params = "num_switches=3"
 
-# Where should he output files be written to
+# Where should the output files be written to
 results_dir = "experiments/demo_pox_lb3"
 
 simulation_config = SimulationConfig(controller_configs=controllers,
