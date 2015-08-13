@@ -30,7 +30,6 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 #
 # For a better idea of the topology, take a look at the source code of lb3.py
 #
-#
 # Note:
 #  - cwd should be set to the POX root path.
 #
@@ -40,11 +39,7 @@ start_cmd = ('''./pox.py --verbose '''
              '''forwarding.lb3 '''
              '''openflow.of_01 --address=__address__ --port=__port__''')
 
-# Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
-# start_cmd = ('''echo "no-op"''')
-
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
-
 
 # Each host is connected to a switch, which is connected to each other switch
 topology_class = MeshTopology

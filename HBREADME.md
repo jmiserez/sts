@@ -122,7 +122,12 @@ $ xdot experiments/demo_pox_l2_learning/hb.dot
 
 #### Scenario #3: Interactively running the flawed firewall described in the paper.
 
-This runs through the scenario described in the paper interactively. Thus, in order to reproduce the races described in the paper, the following steps must be followed precisely.
+Topology:
+```
+h1 -- s1 -- h2
+```
+
+This runs through the scenario described in the paper interactively. Thus, in order to reproduce the races described in the paper, the following steps must be followed.
 
 - Check that the currently checked out version of the FlawedFirewall.java does not make use of barrier requests:
 
@@ -173,7 +178,7 @@ An ALLOW, fwd rule was installed for H1 to H2 and H2 to H1. The Packet-Out was s
 
 Note that it is possible that the echo reply will not be received by H1 due to the race described in the paper, however due to the long delays in interactive mode this never happens. The race can be forced by setting INDUCE_RACE_CONDITION to True in FlawedFirewall.java, but this is not well-tested and does not affect the race detection.
 
-Running the race detection:
+- Running the race detection:
 
 ```
 $ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_flawedfw/hb.json
@@ -223,6 +228,55 @@ $ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_flawedfw/hb.json -
 Now there should be 1 commuting, 0 harmful (dpp 1 2), and 3 commuting, 0 harmful (dpp 2 1, dpp 1 2) races. The filtering method is currently being improved to use a superior method.
 
 Additional note: To get more detailed Floodlight debug output, the use of 'logback-test.xml' in the config file can be replaced with 'logback-test-trace.xml'.
+
+#### Scenario #4: Interactively running the flawed load balancer as described in the paper.
+
+This runs through the load balancing scenario described in the paper interactively.
+
+Recall the topology:
+```
+ h1--s1 ----- s2--replica1
+      \      /
+       \   < > link never used
+        \  /
+         s3--replica2
+```
+
+And the race described in the paper:
+
+1. h1 sends a packet to the VIP address (in this scenario 198.51.100.1)
+2. At s1, the controller installs flows on all switches to replica1
+3. The packet is forwarded from s1 to s2, where the race happens.
+
+- Start the simulator:
+```
+$ cd ~/sts
+$ ./simulator.py -L logging.cfg -c config/demo_pox_lb3.py
+```
+
+- Send a packet from H1 to the VIP address (hardcoded 198.51.100.1). "dpp2" sends a packet to an arbitrary IP address, rather than a specific host.
+```
+STS [next] > dpp2 1 "198.51.100.1"
+```
+
+- Continue pressing ENTER a few times.
+
+- Run the race detection:
+```
+$ ./sts/happensbefore/hb_graph.py experiments/demo_pox_lb3/hb.json
+```
+
+There should be 5 commuting, 4 harmful races. Using the '--filter-rw' parameter, this is reduced to 5 commuting, 1 harmful race:
+
+```
+$ ./sts/happensbefore/hb_graph.py experiments/demo_pox_lb3/hb.json --filter-rw
+```
+
+- The single race described in the paper should be very visible in the visualization, as it is the only red line in the graph.
+
+```
+$ xdot experiments/demo_pox_lb3/hb.dot
+```
 
 ### More: Flags supported by the race detector
 
