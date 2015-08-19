@@ -63,10 +63,11 @@ class TrafficGenerator (object):
     i.srcip = self._choose_ip_addr(src_interface)
     i.dstip = self._choose_ip_addr(dst_interface)
     ping = icmp()
-    if force_request:
-      ping.type = TYPE_ECHO_REQUEST
-    else:
-      ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
+    #if force_request:
+    #  ping.type = TYPE_ECHO_REQUEST
+    #else:
+    #  ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
+    ping.type = TYPE_ECHO_REQUEST
     if payload_content == "" or payload_content is None:
       payload_content = "Ping" * 12
     ping.payload = payload_content
