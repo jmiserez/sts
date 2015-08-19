@@ -91,18 +91,20 @@ class HappensBeforeLogger(EventMixin):
     End a trace
     '''
     # Flush the log
-    self.output.close()
+    if self.output is not None and not self.output.closed:
+      self.output.close()
     self.output = None
+
   
   def write(self,msg):
 #     self.log.info(msg)
-    if not self.output:
-      raise Exception("Not opened -- call HappensBeforeLogger.open()")
-    if not self.output.closed:
+    if self.output is not None and not self.output.closed:
       self.output.write(str(msg) + '\n')
       self.output.flush()
-    if self.hb_graph is not None:
-      self.hb_graph.add_line(str(msg))
+      if self.hb_graph is not None:
+        self.hb_graph.add_line(str(msg))
+    else:
+       raise Exception("Not opened -- call HappensBeforeLogger.open()")
   
   def handle_no_exceptions(self, event):
     """ Handle event, catch exceptions before they go back to STS/POX
