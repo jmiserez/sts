@@ -87,7 +87,7 @@ $ ./simulator.py -L logging.cfg -c config/demo_floodlight_circuitpusher.py
 - Run the race detection: on the hb.json file:
 
 ```
-$ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_circuitpusher/hb.dot
+$ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_circuitpusher/hb.json
 ```
 
 - The console output shows:
@@ -102,7 +102,7 @@ Viewing the graphviz file is possible in several ways:
 - Recommended: view the file directly using 'xdot':
 
 ```
-$ xdot experiments/demo_floodlight_circuitpusher/hb.json
+$ xdot experiments/demo_floodlight_circuitpusher/hb.dot
 ```
 
 - Alternatively: create a PDF using 'dot'. Note that some viewers struggle a bit with large graphs.
