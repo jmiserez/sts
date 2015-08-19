@@ -231,6 +231,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     from pox.openflow.libopenflow_01 import *
     from pox.openflow.software_switch import *
     from pox.openflow.flow_table import *
+    self.remove_expired_entries()
     if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
       raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
     if(flow_mod.out_port != OFPP_NONE and
