@@ -196,17 +196,143 @@ class HappensBeforeGraph(object):
           self._add_edge(other, event)
         
   def _rule_05_flow_removed(self, event):
-    # TODO(jm): This is not correct. Flow removed messages do not necessarily contain the exact same flowmod message as was installed.
-    # TODO(jm): Rather, we should match only on (match, cookie, priority), not also on actions
-    #          and also only consider flow mods where the OFPFF_SEND_FLOW_REM flag was set
-    if event.type == 'HbMessageHandle' and event.msg_type_str == "OFPT_FLOW_REMOVED":
-      search_key = (event.dpid, event.msg_flowmod)
-      # TODO(jm): here: check for all self.events_flowmod_by_dpid_match, generate search_key2 by removing actions and then compare
-      # TODO(jm): better yet, add a new self.events_flowremoved_mcp_by_dpid_match dict  
-      if search_key in self.events_flowmod_by_dpid_match:
-        for other in self.events_flowmod_by_dpid_match[search_key]:
-          self._add_edge(other, event)
-          # do not remove, one flow mod could have installed multiple rules
+    '''
+    ofp_flow_removed messages are issued when:
+    
+    Sequence of events that may trigger a FLOW_REMOVED message:
+    ===========================================================
+    
+    1a. ADD: An ADD flow mod is sent, which has it's OFPFF_SEND_FLOW_REM flag bit set.
+       - bit is set if the 0-th bit (LSB) of fm.flags is set to 1, i.e. if:
+         (fm.flags & (1 << 0)) != 0, or easier
+         (fm.flags & OFPFF_SEND_FLOW_REM) != 0
+    
+    1b. MODIFY: Alternatively, a MODIFY flow_mod is sent (with OFPFF_SEND_FLOW_REM flag bit set),
+        and it does not match any flows already installed. This adds the flow, as
+        the MODIFY acts as an ADD.
+    
+    2.  MODIFY: (Possibly) the flow is modified 1 or more times by a MODIFY flow mod.
+        - This may change the following fields each time:
+          - cookie
+          - actions
+          - idle_timeout (but *not* the timer itself)
+          - hard_timeout (but *not* the timer itself)
+          - flags (this may change the OFPFF_SEND_FLOW_REM bit!)
+        - Note again that none of the counters or idle/hard timeout timers are changed.
+          The duration_sec and duration_nsec fields should continue to count up.
+         
+    3a. DELETE: A DELETE flow mod is sent, and the OFPFF_SEND_FLOW_REM flag is still set.
+    3b. Expiry: One of the timers (hard/idle) reaches the idle_timeout/hard_timeout value,
+        and the OFPFF_SEND_FLOW_REM flag is still set.
+        
+    Structure/Contents of the FLOW_REMOVED message:
+    ===============================================
+    1. match, priority
+       These are identical to the flow mod that installed this flow.
+       - This can *only* be the flow mod that originally added this flow
+         -> So the type is ADD or MODIFY, but only if MODIFY acted as an ADD (because no rules were matched)
+       - Any following flow mods of type MODIFY will not be able to change these fields.
+       
+    2. cookie
+       This is the cookie value set by the last flow mod that touched this flow.
+       - This can be either the flow mod that originally installed this flow
+         (as for match, priority)
+      - But it can also be the latest MODIFY flow mod that modified this flow mod.
+        The spec says that the cookie field is updated in each flow touched/modified
+        by a MODIFY flow mod.
+      - Cookie values need not be unique, so this is not of much value for us.
+        
+    3. reason
+       This is one of the following:
+       - OFPRR_IDLE_TIMEOUT: This flow was removed due to a lack of packet reads that match this flow.
+         -> This timeout starts when the flow is originally added (due to a ADD or a MODIFY that acted as an ADD).
+         -> MODIFY flow mods do *not* reset this timer!
+         -> Packet reads *do* modify this timer.
+       - OFPRR_HARD_TIMEOUT: This flow was removed due to due the fixed timeout.
+         -> This timeout starts when the flow is originally added (due to a ADD or a MODIFY that acted as an ADD).
+         -> MODIFY flow mods do *not* reset this timer!
+       - OFPRR_DELETE: this flow was deleted explicitly
+       
+    4. duration_sec, duration_nsec
+       - The total duration that the flow was installed is duration_sec*10^9 + duration_nsec nanoseconds.
+         (millisecond precision is required by the spec)
+         
+    What should be matched:
+    =======================
+    
+    - If the reason is OFPRR_DELETE, we should just add a link from the DELETE to the FLOW_REMOVED.
+      Linking the DELETE with the ADD should be done in other rules
+    
+    - If the reason is a timeout, we should add all MODIFYs that match (match, priority) and
+      that are sufficient time away. (same as other rules)
+      
+    - If the reason is a timeout, we should *also* try to add the ADD that initially installed
+      it. This ADD does *not* need to be sufficient time away, but it needs to be at least 
+      duration_sec*10^9+duration_nsec nanoseconds away.
+       -> Note: It will always be more than this time away, as the message is logged to the trace before
+                the rule is installed. 
+    
+    '''
+    if type(event) not in [HbAsyncFlowExpiry]:
+      return
+    flow_table = event.flow_table
+    entry = event.entry # the removed entry
+    reason = event.reason # TODO(jm): implement reason, currently None.
+    
+    duration = entry.duration_sec*10^9 + entry.duration_nsec
+
+    # Case 1: Reason: DELETE
+    # TODO(jm): Currently assume reason timeout, as it's not implemented yet.
+    
+    #
+    # code here
+    #
+    
+    
+    # Case 2: Reason: IDLE/HARD_TIMEOUT
+    # Step 2.1: Add all MODIFY that are sufficient time away
+
+    # Find other write events in the graph.
+    for e in self.events:
+      if e == event:
+        continue
+      # Skip none switch event
+      if type(e) != HbMessageHandle:
+        continue
+      k_ops = []
+      # Find the write ops
+      for op in e.operations:
+        if type(op) == TraceSwitchFlowTableWrite:
+          
+          # TODO(jm): Check if it is a MODIFY
+          
+          #
+          # code here
+          #
+          
+          # if is MODIFY, then:
+            #k_ops.append(op)
+          pass
+      
+      if not k_ops:
+        continue
+      # Make the edge
+      for k_op in k_ops:
+        delta = abs(event.t - k_op.t)
+        if delta > self.ww_delta:
+          self._time_hb_ww_edges_counter += 1
+          self._add_edge(e, event, sanity_check=False)
+        break
+      
+    # Step 2.2: Add the ADD that initially installed it, if it is >= duration time away.
+    #TODO(jm): add the ADD, use duration instead of self.ww_delta to check
+    
+    #
+    # code here
+    #
+    
+    
+    
 
   def _rule_06_time_rw(self, event):
     if type(event) not in [HbPacketHandle]:

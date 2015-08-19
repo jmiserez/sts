@@ -67,7 +67,7 @@ class HbAsyncFlowExpiry(HbEvent):
   can also be part of HbMessageHandle operations (specifically FLOW_MOD, DELETE messages).
   '''
   def __init__(self, mid_in=None, mid_out=None, operations=None, dpid=None,
-               eid=None):
+               flow_table=None, entry=None, reason=None, eid=None):
     HbEvent.__init__(self, eid=eid)
     self.mid_in = mid_in # to be filled in later: predecessor is the HbMessageHandle that installed the flow (with the same cookie)
     self.mid_out = check_list(mid_out)
@@ -75,6 +75,9 @@ class HbAsyncFlowExpiry(HbEvent):
     self.operations = check_list(operations)
 
     self.dpid = dpid
+    self.flow_table = flow_table
+    self.entry = entry
+    self.reason = reason #TODO(jm): implement reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
 
 
 class HbPacketHandle(HbEvent):

@@ -206,8 +206,18 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
   def __init__(self, switch, *args, **kw):
     SwitchFlowTable.__init__(self, *args, **kw)
     self.switch = switch
+    
+  def remove_matching_entries(self, match, priority=0, strict=False):
+    #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT) if this is called from a DELETE.
+    remove_flows = self.matching_entries(match, priority, strict)
+    for entry in remove_flows:
+        self.table.remove(entry)
+    self.raiseEvent(FlowTableModification(removed=remove_flows))
+    return remove_flows
   
   def remove_expired_entries(self, now=None):
+    #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
+    #TODO(jm): Check OFPFF_SEND_FLOW_REM flag bit and only raise event if bit was set.
     remove_flows = self.expired_entries(now)
     for entry in remove_flows:
         self.raiseEvent(TraceAsyncSwitchFlowExpirationBegin(self.switch.dpid))

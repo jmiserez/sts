@@ -372,7 +372,10 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_table_entry_expiry(self, event):
-    pass
+    assert self.is_async_switch_event_started(event.dpid)
+    self.started_async_switch_event[event.dpid].flow_table = event.flow_table
+    self.started_async_switch_event[event.dpid].entry = event.entry
+    self.started_async_switch_event[event.dpid].reason = event.reason #TODO(jm): implement reason
     
   def handle_switch_buf_put(self, event):
     assert self.is_regular_switch_event_started(event.dpid)

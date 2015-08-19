@@ -174,6 +174,7 @@ class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
     self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
     self.flow_mod = decode_flow_mod(base64_encode_flow(removed))
     self.removed = decode_flow_mod(base64_encode_flow(removed))
+    self.reason = None #TODO(jm): implement reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
 
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
