@@ -29,7 +29,8 @@ from hb_sts_events import *
 class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
-               ww_delta=1, filter_rw=False, ignore_ethertypes=None):
+               ww_delta=1, filter_rw=False, ignore_ethertypes=None,
+               no_race=False):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -64,6 +65,7 @@ class HappensBeforeGraph(object):
     self._time_hb_ww_edges_counter = 0
 
     self.ignore_ethertypes = check_list(ignore_ethertypes)
+    self.no_race = no_race
 
   @property
   def events(self):
@@ -462,13 +464,14 @@ class HappensBeforeGraph(object):
           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
             dot_lines.append('    {} -> {};\n'.format(i.eid,k.eid))
     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
-    if not print_only_harmful:
-      for race in self.race_detector.races_commute:
+    if not self.no_race:
+      if not print_only_harmful:
+        for race in self.race_detector.races_commute:
+          if race[1] not in pruned_events and race[2] not in pruned_events:
+            dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
+      for race in self.race_detector.races_harmful:
         if race[1] not in pruned_events and race[2] not in pruned_events:
-          dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
-    for race in self.race_detector.races_harmful:
-      if race[1] not in pruned_events and race[2] not in pruned_events:
-          dot_lines.append('    {1} -> {2} [style="bold", color="red"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
+            dot_lines.append('    {1} -> {2} [style="bold", color="red"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
     dot_lines.append("}\n");
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
@@ -478,7 +481,7 @@ class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
-               ignore_ethertypes=None):
+               ignore_ethertypes=None, no_race=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -490,6 +493,7 @@ class Main(object):
     self.ww_delta = ww_delta
     self.filter_rw = filter_rw
     self.ignore_ethertypes = ignore_ethertypes
+    self.no_race = no_race
 
   def run(self):
     import time
@@ -498,7 +502,8 @@ class Main(object):
                                     rw_delta=self.rw_delta,
                                     ww_delta=self.ww_delta,
                                     filter_rw=self.filter_rw,
-                                    ignore_ethertypes=self.ignore_ethertypes)
+                                    ignore_ethertypes=self.ignore_ethertypes,
+                                    no_race=self.no_race)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
@@ -542,10 +547,13 @@ if __name__ == '__main__':
   parser.add_argument('--ignore_ethertypes', dest='ignore_ethertypes', nargs='*',
                       type=auto_int, default=[ethernet.LLDP_TYPE, 0x8942],
                       help='Ether types to ignore from the graph')
+  parser.add_argument('--no-race', dest='no_race', action='store_true', default=False,
+                      help="Don't add edge between racing events in the graph")
 
 
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
-              filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes)
+              filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
+              no_race=args.no_race)
   main.run()
