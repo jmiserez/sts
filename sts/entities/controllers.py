@@ -857,3 +857,37 @@ class ONOSController(VMController):
           username=username, password=password)
     self.welcome_msg = " =====> Starting ONOS Controller <===== "
     self.alive_status_string = "1 instance of onos running"
+
+
+class DummyController(Controller):
+  def __init__(self, controller_config, sync_connection_manager=None,
+               snapshot_service=None):
+    super(DummyController, self).__init__(controller_config,
+                                          sync_connection_manager,
+                                          snapshot_service)
+    self.state = ControllerState.ALIVE
+
+  @property
+  def is_remote(self):
+    return True
+
+  @property
+  def blocked_peers(self):
+    """Return a list of blocked peer controllers (if any)"""
+    return None
+
+  def start(self, multiplex_sockets=False):
+    """Starts the controller"""
+    return True
+
+  def block_peer(self, peer_controller):
+    """Ignore traffic to/from the given peer controller
+    """
+    raise NotImplementedError
+
+  def unblock_peer(self, peer_controller):
+    """Stop ignoring traffic to/from the given peer controller"""
+    raise NotImplementedError()
+
+  def check_status(self, simulation):
+    return (True, 'ok')
