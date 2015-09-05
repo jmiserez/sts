@@ -139,20 +139,20 @@ class HappensBeforeGraph(object):
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
   
-  def _add_edge(self, before, after, sanity_check=True):
+  def _add_edge(self, before, after, sanity_check=True, **attrs):
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
     #self.predecessors[after].add(before)
     #self.successors[before].add(after)
-    self.g.add_edge(before.eid, after.eid)
+    self.g.add_edge(before.eid, after.eid, attrs)
     
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
     if hasattr(event, 'pid_in'):
       if event.pid_in in self.events_by_pid_out:
         for other in self.events_by_pid_out[event.pid_in]: 
-          self._add_edge(other, event)
+          self._add_edge(other, event, rel='pid')
           self._update_event_is_linked_pid_in(event)
     # TODO(jm): remove by reordering first
     # recheck events added in an order different from the trace order
@@ -160,7 +160,7 @@ class HappensBeforeGraph(object):
       for pid_out in event.pid_out:
         if pid_out in self.events_pending_pid_in:
           for other in self.events_pending_pid_in[pid_out][:]: # copy list [:], so we can remove from it
-            self._add_edge(event, other)
+            self._add_edge(event, other, rel='pid')
             self._update_event_is_linked_pid_in(other)
             
   def _rule_02_mid(self, event):
@@ -168,7 +168,7 @@ class HappensBeforeGraph(object):
     if hasattr(event, 'mid_in'):
       if event.mid_in in self.events_by_mid_out:
         for other in self.events_by_mid_out[event.mid_in]:
-          self._add_edge(other, event)
+          self._add_edge(other, event, rel='mid')
           self._update_event_is_linked_mid_in(event)
     # TODO(jm): remove by reordering first
     # recheck events added in an order different from the trace order (mainly controller events as they are asynchronously logged)
@@ -176,14 +176,14 @@ class HappensBeforeGraph(object):
       for mid_out in event.mid_out:
         if mid_out in self.events_pending_mid_in:
           for other in self.events_pending_mid_in[mid_out][:]: # copy list [:], so we can remove from it
-            self._add_edge(event, other)
+            self._add_edge(event, other, rel='mid')
             self._update_event_is_linked_mid_in(other)
   
   def _rule_03_barrier_pre(self, event):
     if event.type == 'HbMessageHandle':
       if event.msg_type_str == "OFPT_BARRIER_REQUEST":
         for other in self.events_before_next_barrier[event.dpid]:
-          self._add_edge(other, event)
+          self._add_edge(other, event, rel='barrier_pre')
         del self.events_before_next_barrier[event.dpid]
       else:
         self.events_before_next_barrier[event.dpid].append(event)
@@ -195,7 +195,7 @@ class HappensBeforeGraph(object):
       else:
         if event.dpid in self.most_recent_barrier:
           other = self.most_recent_barrier[event.dpid]
-          self._add_edge(other, event)
+          self._add_edge(other, event, rel='barrier_post')
         
   def _rule_05_flow_removed(self, event):
     # TODO(jm): This is not correct. Flow removed messages do not necessarily contain the exact same flowmod message as was installed.
@@ -207,7 +207,7 @@ class HappensBeforeGraph(object):
       # TODO(jm): better yet, add a new self.events_flowremoved_mcp_by_dpid_match dict  
       if search_key in self.events_flowmod_by_dpid_match:
         for other in self.events_flowmod_by_dpid_match[search_key]:
-          self._add_edge(other, event)
+          self._add_edge(other, event, rel='flow_removed')
           # do not remove, one flow mod could have installed multiple rules
 
   def _rule_06_time_rw(self, event):
@@ -231,7 +231,7 @@ class HappensBeforeGraph(object):
         delta = abs(op.t - operations[0].t)
         if (delta > self.rw_delta):
           self._time_hb_rw_edges_counter += 1
-          self._add_edge(e, event, sanity_check=False)
+          self._add_edge(e, event, sanity_check=False, rel='time')
         break
 
   def _rule_07_time_ww(self, event):
@@ -272,7 +272,7 @@ class HappensBeforeGraph(object):
           delta = abs(i_op.t - k_op.t)
           if delta > self.ww_delta:
             self._time_hb_ww_edges_counter += 1
-            self._add_edge(e, event, sanity_check=False)
+            self._add_edge(e, event, sanity_check=False, rel='time')
           break
 
   def _update_edges(self, event):
@@ -360,7 +360,7 @@ class HappensBeforeGraph(object):
                 'HbControllerSend':    _handle_HbControllerSend,
                  }
     handlers.get(event.type, _handle_default)(event)
-  
+
   def load_trace(self, filename):
     self.g = nx.DiGraph()
     self.events_by_id = dict()
