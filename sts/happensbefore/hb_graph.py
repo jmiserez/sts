@@ -559,7 +559,7 @@ class HappensBeforeGraph(object):
 
   def store_traces(self, results_dir, print_packets=True):
     subgraphs = HappensBeforeGraph.extract_traces(self.g)
-    for i in range(2): #range(len(subgraphs)):
+    for i in range(len(subgraphs)):
       subg = subgraphs[i]
       HappensBeforeGraph.prep_draw(subg, print_packets)
       nx.write_dot(subg, "%s/trace_%d.dot" % (results_dir, i))
