@@ -540,6 +540,8 @@ class HappensBeforeGraph(object):
       if not isinstance(event, HbHostSend):
         continue
       host_sends.append((eid, event))
+    # Sort host sends by eid, this will make the output follow the trace order
+    host_sends = sorted(host_sends, key=lambda x: x[0])
     for eid, event in host_sends:
       nodes = nx.dfs_preorder_nodes(g, eid)
       traces.append(g.subgraph(nodes).copy())
