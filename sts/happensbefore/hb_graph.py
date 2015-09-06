@@ -476,7 +476,95 @@ class HappensBeforeGraph(object):
     with open(filename, 'w') as f:
       f.writelines(dot_lines)
 
-  
+  @staticmethod
+  def prep_draw(g, print_packets):
+    """
+    Adds proper annotation for the graph to make drawing it more pleasant.
+    """
+    for eid, data in g.nodes_iter(data=True):
+      event = data['event']
+      label = "ID %d \\n %s" % (eid, event.type)
+      shape = "oval"
+      op = None
+      if hasattr(event, 'operations'):
+        for x in event.operations:
+          if x.type == 'TraceSwitchFlowTableWrite':
+            op = "FlowTableWrite"
+            shape = 'box'
+            break
+          if x.type == 'TraceSwitchFlowTableRead':
+            op = "FlowTableRead"
+            shape = 'box'
+            break
+      if op:
+        label += "\\nOp: %s" % op
+      if hasattr(event, 'hid'):
+        label += "\\nHID: " + str(event.hid)
+      if hasattr(event, 'dpid'):
+        label += "\\nDPID: " + str(event.dpid)
+      if (hasattr(event, 'msg_type')):
+        label += "\\nMsgType: " + event.msg_type_str
+      if (hasattr(event, 'in_port')):
+        label += "\\nInPort: " + str(event.in_port)
+      if (hasattr(event, 'buffer_id')):
+        label += "\\nBufferId: " + str(event.buffer_id)
+      if print_packets and hasattr(event, 'packet'):
+        pkt = pkt_info(event.packet)
+        label += "\\nPkt: " + pkt
+      g.node[eid]['label'] = label
+      g.node[eid]['shape'] = shape
+    for src, dst, data in g.edges_iter(data=True):
+      g.edge[src][dst]['label'] = data['rel']
+
+  @staticmethod
+  def extract_traces(g):
+    """
+    Given HB graph g, this method return a list of subgraph starting from
+    a HostSend event and all the subsequent nodes that happened after it.
+
+    This method will exclude all the nodes connected because of time and the
+    nodes connected after HostHandle.
+    """
+    host_sends = []
+    traces = []
+    # Find the HostSendEvents and disconnect all the incomming edges
+    for eid, data in g.nodes_iter(data=True):
+      event = data['event']
+      if not isinstance(event, HbHostSend):
+        continue
+      host_sends.append((eid, event))
+    for eid, event in host_sends:
+      nodes = nx.dfs_preorder_nodes(g, eid)
+      traces.append(g.subgraph(nodes).copy())
+    for subg in traces:
+      # Remove nodes added because of time
+      removed_nodes = []
+      for src, dst, data in subg.edges(data=True):
+        if data['rel'] == 'time':
+          subg.remove_edge(src, dst)
+          if subg.has_node(dst):
+            removed_nodes.append(dst)
+        elif isinstance(subg.node[src]['event'], HbHostHandle):
+          subg.remove_edge(src, dst)
+          if subg.has_node(dst):
+            removed_nodes.append(dst)
+      # Remove disconnected subgraph
+      removed_nodes = list(set(removed_nodes))
+      for eid in removed_nodes:
+        nodes = nx.dfs_preorder_nodes(subg, eid)
+        #print "Nodes", list(nodes)
+        for node in list(nodes):
+          subg.remove_node(node)
+    return traces
+
+  def store_traces(self, results_dir, print_packets=True):
+    subgraphs = HappensBeforeGraph.extract_traces(self.g)
+    for i in range(2): #range(len(subgraphs)):
+      subg = subgraphs[i]
+      HappensBeforeGraph.prep_draw(subg, print_packets)
+      nx.write_dot(subg, "%s/trace_%d.dot" % (results_dir, i))
+
+
 class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
@@ -513,6 +601,7 @@ class Main(object):
     t3 = time.time()
     self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
     t4 = time.time()
+    self.graph.store_traces(self.results_dir)
     
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
@@ -521,7 +610,6 @@ class Main(object):
     print "store_graph: "+(str(t4-t3))+"s"
     print "HB RW edges based on time", self.graph._time_hb_rw_edges_counter
     print "HB WW edges based on time", self.graph._time_hb_ww_edges_counter
-
 
 def auto_int(x):
   return int(x, 0)
