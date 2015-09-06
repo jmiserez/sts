@@ -540,7 +540,7 @@ class HappensBeforeGraph(object):
       # Remove nodes added because of time
       removed_nodes = []
       for src, dst, data in subg.edges(data=True):
-        if data['rel'] == 'time':
+        if data['rel'] in ['time', 'race']:
           subg.remove_edge(src, dst)
           if subg.has_node(dst):
             removed_nodes.append(dst)
@@ -551,10 +551,12 @@ class HappensBeforeGraph(object):
       # Remove disconnected subgraph
       removed_nodes = list(set(removed_nodes))
       for eid in removed_nodes:
-        nodes = nx.dfs_preorder_nodes(subg, eid)
-        #print "Nodes", list(nodes)
-        for node in list(nodes):
-          subg.remove_node(node)
+        if not subg.has_node(eid):
+          continue
+        nodes = list(nx.dfs_preorder_nodes(subg, eid))
+        for node in nodes:
+          if subg.has_node(node):
+            subg.remove_node(node)
     return traces
 
   def store_traces(self, results_dir, print_packets=True):
