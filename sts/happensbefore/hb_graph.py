@@ -491,6 +491,7 @@ class HappensBeforeGraph(object):
           if x.type == 'TraceSwitchFlowTableWrite':
             op = "FlowTableWrite"
             shape = 'box'
+            g.node[eid]['style'] = 'bold'
             break
           if x.type == 'TraceSwitchFlowTableRead':
             op = "FlowTableRead"
@@ -515,6 +516,12 @@ class HappensBeforeGraph(object):
       g.node[eid]['shape'] = shape
     for src, dst, data in g.edges_iter(data=True):
       g.edge[src][dst]['label'] = data['rel']
+      if data['rel'] == 'race':
+        if data['harmful']:
+          g.edge[src][dst]['color'] = 'red'
+          g.edge[src][dst]['style'] = 'bold'
+        else:
+          g.edge[src][dst]['style'] = 'dotted'
 
   @staticmethod
   def extract_traces(g):
@@ -565,6 +572,20 @@ class HappensBeforeGraph(object):
       subg = subgraphs[i]
       HappensBeforeGraph.prep_draw(subg, print_packets)
       nx.write_dot(subg, "%s/trace_%d.dot" % (results_dir, i))
+
+  def add_harmful_edges(self, bidir=False):
+    for race in self.race_detector.races_harmful:
+      props = dict(rel='race', rtype=race.rtype, harmful=True)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+
+  def add_commute_edges(self, bidir=False):
+    for race in self.race_detector.races_commute:
+      props = dict(rel='race', rtype=race.rtype, harmful=False)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
 
 class Main(object):
