@@ -507,11 +507,17 @@ class HappensBeforeGraph(object):
         label += "\\nMsgType: " + event.msg_type_str
       if (hasattr(event, 'in_port')):
         label += "\\nInPort: " + str(event.in_port)
+      if hasattr(event, 'out_port') and not isinstance(event.out_port, basestring):
+        label += "\\nOut Port: " + str(event.out_port)
       if (hasattr(event, 'buffer_id')):
         label += "\\nBufferId: " + str(event.buffer_id)
       if print_packets and hasattr(event, 'packet'):
         pkt = pkt_info(event.packet)
         label += "\\nPkt: " + pkt
+      if print_packets and getattr(event, 'msg', None):
+        if getattr(event.msg, 'data', None):
+          pkt = pkt_info(ethernet(event.msg.data))
+          label += "\\nPkt: " + pkt
       g.node[eid]['label'] = label
       g.node[eid]['shape'] = shape
     for src, dst, data in g.edges_iter(data=True):
