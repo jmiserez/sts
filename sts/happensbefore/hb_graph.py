@@ -503,13 +503,13 @@ class HappensBeforeGraph(object):
         label += "\\nHID: " + str(event.hid)
       if hasattr(event, 'dpid'):
         label += "\\nDPID: " + str(event.dpid)
-      if (hasattr(event, 'msg_type')):
+      if hasattr(event, 'msg_type'):
         label += "\\nMsgType: " + event.msg_type_str
-      if (hasattr(event, 'in_port')):
+      if hasattr(event, 'in_port'):
         label += "\\nInPort: " + str(event.in_port)
       if hasattr(event, 'out_port') and not isinstance(event.out_port, basestring):
         label += "\\nOut Port: " + str(event.out_port)
-      if (hasattr(event, 'buffer_id')):
+      if hasattr(event, 'buffer_id'):
         label += "\\nBufferId: " + str(event.buffer_id)
       if print_packets and hasattr(event, 'packet'):
         pkt = pkt_info(event.packet)
