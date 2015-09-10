@@ -1411,3 +1411,78 @@ class BinaryLeafTreeTopology(Topology):
 
       LinkTracker.__init__(self, dpid2switch, port2access_link,
                            interface2access_link, port2internal_link)
+
+
+class ConsistencyTopology(Topology):
+  def __init__(self, create_io_worker=None,):
+    Topology.__init__(self, create_io_worker=create_io_worker, gui=False)
+
+    # I switch
+    internal = create_switch(1, 7)
+    f1 = create_switch(2, 3, False)
+    f2 = create_switch(3, 3, False)
+    f3 = create_switch(4, 3, False)
+    monitor = create_switch(5, 4, False)
+    internet = create_switch(6, 6, can_connect_to_endhosts=True)
+
+    switches = [internal, f1, f2, f3, monitor, internet]
+    self._populate_dpid2switch(switches)
+    faculty, faculty_link = create_host(internal, mac_or_macs="00:00:00:00:00:02",
+                                        ip_or_ips="10.0.0.2",
+                                        get_switch_port=lambda x: internal.ports[1])
+    student, student_link = create_host(internal, mac_or_macs="00:00:00:00:00:03",
+                                        ip_or_ips="10.0.0.3",
+                                        get_switch_port=lambda x: internal.ports[2])
+    guest, guest_link = create_host(internal, mac_or_macs="00:00:00:00:00:04",
+                                    ip_or_ips="10.0.0.4",
+                                    get_switch_port=lambda x: internal.ports[3])
+    unknown, unknown_link = create_host(internal, mac_or_macs="00:00:00:00:00:05",
+                                        ip_or_ips="10.0.0.5",
+                                        get_switch_port=lambda x: internal.ports[4])
+    service1, service1_link = create_host(internet, mac_or_macs="00:00:00:00:00:06",
+                                        ip_or_ips="128.0.0.2",
+                                        get_switch_port=lambda x: internal.ports[1])
+    service2, service2_link = create_host(internet, mac_or_macs="00:00:00:00:00:07",
+                                        ip_or_ips="128.0.0.3",
+                                        get_switch_port=lambda x: internal.ports[2])
+    hosts = [faculty, student, guest, unknown, service1, service2]
+    self.hid2host = dict([(h.hid, h) for h in hosts])
+    access_links = [faculty_link, student_link, unknown_link, service1_link,
+                    service2_link]
+    # this is python's .flatten:
+    access_links = list(itertools.chain.from_iterable(access_links))
+
+    port2access_link = { access_link.switch_port: access_link
+                         for access_link in access_links }
+    interface2access_link = { access_link.interface: access_link
+                              for access_link in access_links }
+
+    link_internal_f1 = Link(internal, internal.ports[5], f1, f1.ports[1])
+    link_internal_f2 = Link(internal, internal.ports[6], f2, f2.ports[1])
+    link_internal_f3 = Link(internal, internal.ports[7], f3, f3.ports[1])
+
+    link_internet_f1 = Link(internet, internet.ports[3], f1, f1.ports[2])
+    link_internet_f2 = Link(internet, internet.ports[4], f2, f2.ports[2])
+    link_internet_f3 = Link(internet, internet.ports[5], f3, f3.ports[2])
+
+    link_monitor_f1 = Link(monitor, monitor.ports[1], f1, f1.ports[3])
+    link_monitor_f2 = Link(monitor, monitor.ports[2], f2, f2.ports[3])
+    link_monitor_f3 = Link(monitor, monitor.ports[3], f3, f3.ports[3])
+
+    link_monitor_internet = Link(monitor, monitor.ports[4], internet, internet.ports[6])
+
+    links = [link_internal_f1, link_internal_f2, link_internal_f3,
+             link_internet_f1, link_internet_f2, link_internet_f3,
+             link_monitor_f1, link_monitor_f2, link_monitor_f3,
+             link_monitor_internet]
+
+    self.port2internal_link = {}
+    for link in links:
+        l2 = link.reversed_link()
+        self.port2internal_link[link.start_port] = link
+        self.port2internal_link[l2.start_port] = l2
+
+    self.link_tracker = LinkTracker(self.dpid2switch, port2access_link,
+                           interface2access_link, self.port2internal_link)
+
+    self.get_connected_port = self.link_tracker
