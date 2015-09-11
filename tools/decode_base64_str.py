@@ -18,6 +18,14 @@ from pox.lib.packet.icmp import icmp
 from pox.lib.packet.ipv4 import ipv4
 from pox.openflow.flow_table import TableEntry
 
+"""
+Sample usages:
+./decode_base64_str.py -m AQ4AUAAAAA8AAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=
+
+./decode_base64_str.py -t '[\"AQ4AUAAAABkAAAABAAASNFZ4AQESNFZ4AQP//wAACAAAAQAAe3sBAXt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAH//wAAAAAACAADAAA=\", \"AQ4AUAAAABsAAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=\"]'
+
+./decode_base64_str.py -p -d 2 EjRWeAEDEjRWeAEBCABFAABIVVcAAEABLGR7ewEBe3sBAwAADjdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1Bpbmc=
+"""
 
 def recursive_dump(x, depth):
   if depth < 1:
