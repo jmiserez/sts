@@ -145,8 +145,12 @@ class HappensBeforeGraph(object):
       assert False 
     #self.predecessors[after].add(before)
     #self.successors[before].add(after)
+    src, dst = before.eid, after.eid
+    if self.g.has_edge(src, dst):
+      rel = self.g.edge[src][dst]['rel']
+      raise ValueError("Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
-    
+
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
     if hasattr(event, 'pid_in'):
