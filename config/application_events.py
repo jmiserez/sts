@@ -60,13 +60,23 @@ class AppCircuitPusher(ControllerApp):
     with self.reentrantlock:
       circuit_id = event.cmd_id
       if circuit_id in self.pending_install:
-        self.pending_install.remove(circuit_id)
-        self.installed.append(circuit_id)
-        print "Installed circuit: " + str(circuit_id)
+        if event.return_code == 0:
+          self.pending_install.remove(circuit_id)
+          self.installed.append(circuit_id)
+          print "Installed circuit: " + str(circuit_id)
+        else:
+          # error
+          print "Error installing circuit: {}. Stderr: {}, Stdout: {}".format(str(circuit_id), event.return_err, event.return_out)
+          self.pending_install.remove(circuit_id)
       elif circuit_id in self.pending_removal:
-        self.pending_removal.remove(circuit_id)
-        del self.ids[circuit_id]
-        print "Removed circuit: " + str(circuit_id)
+        if event.return_code == 0:
+          self.pending_removal.remove(circuit_id)
+          del self.ids[circuit_id]
+          print "Removed circuit: " + str(circuit_id)
+        else:
+          # error
+          print "Error installing circuit: {}. Stderr: {}, Stdout: {}".format(str(circuit_id), event.return_err, event.return_out)
+          self.pending_install.remove(circuit_id)
         
   def _install_circuits(self, fuzzer, num_circuits):
     with self.reentrantlock:
