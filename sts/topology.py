@@ -1441,14 +1441,14 @@ class ConsistencyTopology(Topology):
                                         get_switch_port=lambda x: internal.ports[4])
     service1, service1_link = create_host(internet, mac_or_macs="00:00:00:00:00:06",
                                         ip_or_ips="128.0.0.2",
-                                        get_switch_port=lambda x: internal.ports[1])
+                                        get_switch_port=lambda x: internet.ports[1])
     service2, service2_link = create_host(internet, mac_or_macs="00:00:00:00:00:07",
                                         ip_or_ips="128.0.0.3",
-                                        get_switch_port=lambda x: internal.ports[2])
+                                        get_switch_port=lambda x: internet.ports[2])
     hosts = [faculty, student, guest, unknown, service1, service2]
     self.hid2host = dict([(h.hid, h) for h in hosts])
-    access_links = [faculty_link, student_link, unknown_link, service1_link,
-                    service2_link]
+    access_links = [faculty_link, student_link, unknown_link, guest_link,
+                    service1_link, service2_link]
     # this is python's .flatten:
     access_links = list(itertools.chain.from_iterable(access_links))
 
