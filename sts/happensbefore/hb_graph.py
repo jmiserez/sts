@@ -70,6 +70,7 @@ class HappensBeforeGraph(object):
     self.ignore_ethertypes = check_list(ignore_ethertypes)
     self.no_race = no_race
     self.packet_traces = None
+    self.host_sends = {}
 
   @property
   def events(self):
@@ -354,6 +355,7 @@ class HappensBeforeGraph(object):
       self._update_edges(event)
     def _handle_HbHostSend(event):
       self._update_edges(event)
+      self.host_sends[event.eid] = event
     def _handle_HbControllerHandle(event):
       self._update_edges(event)
     def _handle_HbControllerSend(event):
@@ -541,8 +543,7 @@ class HappensBeforeGraph(object):
         else:
           g.edge[src][dst]['style'] = 'dotted'
 
-  @staticmethod
-  def extract_traces(g):
+  def extract_traces(self, g):
     """
     Given HB graph g, this method return a list of subgraph starting from
     a HostSend event and all the subsequent nodes that happened after it.
@@ -550,17 +551,11 @@ class HappensBeforeGraph(object):
     This method will exclude all the nodes connected because of time and the
     nodes connected after HostHandle.
     """
-    host_sends = []
     traces = []
-    # Find the HostSendEvents and disconnect all the incomming edges
-    for eid, data in g.nodes_iter(data=True):
-      event = data['event']
-      if not isinstance(event, HbHostSend):
-        continue
-      host_sends.append((eid, event))
     # Sort host sends by eid, this will make the output follow the trace order
-    host_sends = sorted(host_sends, key=lambda x: x[0])
-    for eid, event in host_sends:
+    eids = self.host_sends.keys()
+    eids = sorted(eids)
+    for eid in eids:
       nodes = nx.dfs_preorder_nodes(g, eid)
       traces.append(g.subgraph(nodes).copy())
     for subg in traces:
@@ -587,7 +582,7 @@ class HappensBeforeGraph(object):
     return traces
 
   def store_traces(self, results_dir, print_packets=True):
-    subgraphs = HappensBeforeGraph.extract_traces(self.g)
+    subgraphs = self.extract_traces(self.g)
     self.packet_traces = subgraphs
     for i in range(len(subgraphs)):
       subg = subgraphs[i]
