@@ -69,6 +69,7 @@ class HappensBeforeGraph(object):
 
     self.ignore_ethertypes = check_list(ignore_ethertypes)
     self.no_race = no_race
+    self.packet_traces = None
 
   @property
   def events(self):
@@ -587,6 +588,7 @@ class HappensBeforeGraph(object):
 
   def store_traces(self, results_dir, print_packets=True):
     subgraphs = HappensBeforeGraph.extract_traces(self.g)
+    self.packet_traces = subgraphs
     for i in range(len(subgraphs)):
       subg = subgraphs[i]
       HappensBeforeGraph.prep_draw(subg, print_packets)
@@ -644,12 +646,14 @@ class Main(object):
     self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
     t4 = time.time()
     self.graph.store_traces(self.results_dir)
+    t5 = time.time()
     
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
     print "detect_races: "+(str(t2-t1))+"s"
     print "print_races: "+(str(t3-t2))+"s"
     print "store_graph: "+(str(t4-t3))+"s"
+    print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
 
 
 def auto_int(x):
