@@ -71,6 +71,7 @@ class HappensBeforeGraph(object):
     self.no_race = no_race
     self.packet_traces = None
     self.host_sends = {}
+    self.msg_handles = {}
 
   @property
   def events(self):
@@ -349,6 +350,7 @@ class HappensBeforeGraph(object):
       self._update_edges(event)
     def _handle_HbMessageHandle(event):
       self._update_edges(event)
+      self.msg_handles[event.eid] = event
     def _handle_HbMessageSend(event):
       self._update_edges(event)
     def _handle_HbHostHandle(event):
@@ -603,6 +605,75 @@ class HappensBeforeGraph(object):
       if bidir:
         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
+  def get_racing_events(self, trace):
+    """
+    For a given packet trace, return all the races that races with its events
+    """
+    # Set of all events that are part of a harmful race
+    all_harmful = set([event.eid for event in
+                   self.race_detector.racing_events_harmful])
+    # Set of event ids of a packet trace
+    eids = set(trace.nodes())
+    # All events in packet trace that are also part of a race
+    racing = list(eids.intersection(all_harmful))
+    # Get the actual reported race;
+    # will get us the other event that has been part of the race
+    races = [race for race in self.race_detector.races_harmful
+             if race.i_event.eid in racing or race.k_event.eid in racing]
+    return races
+
+  def find_inconsistent(self):
+    """
+    Finds all the races related each packet trace
+    """
+    races = []
+    for trace in self.packet_traces:
+      tmp = self.get_racing_events(trace)
+      if tmp:
+        races.append((trace, tmp))
+    return races
+
+  def cluster_cmds(self):
+    """
+    Cluster the update commands by time.
+    """
+    # Set of flowMods
+    fmods = []
+    for event in self.msg_handles.itervalues():
+      if event.msg_type_str == 'OFPT_FLOW_MOD':
+        fmods.append(event)
+    # Cluster by time
+    from scipy.cluster.hierarchy import fclusterdata
+    features = [[e.operations[0].t] for e in fmods]
+    result = fclusterdata(features, 1, criterion="distance")
+    clustered = defaultdict(list)
+    for i in range(len(fmods)):
+      clustered[result[i]].append(fmods[i])
+    # just trying to order the versions
+    ordered = sorted(clustered.keys(), key= lambda i: clustered[i][0].operations[0].t)
+    clustered_ordered = dict()
+    for i in range(len(ordered)):
+      clustered_ordered[i] = clustered[ordered[i]]
+    self.clustered_cmds = clustered_ordered
+    return clustered_ordered
+
+  def find_inconsistent_updates(self):
+    """Try to find if two versions race with each other"""
+    ww_races = defaultdict(list)
+    for race in self.race_detector.races_harmful:
+      if race.rtype == 'w/w':
+        ww_races[race.i_event.eid].append(race.k_event.eid)
+        ww_races[race.k_event.eid].append(race.i_event.eid)
+
+    self.cluster_cmds()
+    for version, events in self.clustered_cmds.iteritems():
+      cmds = [e.eid for e in events]
+      for cmd in cmds:
+        if cmd in ww_races:
+          for other in ww_races[cmd]:
+            if other not in cmds:
+              print "RACE version", version, " eid: ", cmd, " other eid", other
+
 
 class Main(object):
   
@@ -642,6 +713,9 @@ class Main(object):
     t4 = time.time()
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
+    self.graph.find_inconsistent()
+    self.graph.find_inconsistent_updates()
+    t6 = time.time()
     
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
@@ -649,6 +723,7 @@ class Main(object):
     print "print_races: "+(str(t3-t2))+"s"
     print "store_graph: "+(str(t4-t3))+"s"
     print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
+    print "Finding inconsistent traces time: "+ (str(t6 - t5)) + "s"
 
 
 def auto_int(x):
