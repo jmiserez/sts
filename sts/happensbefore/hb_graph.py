@@ -557,7 +557,7 @@ class HappensBeforeGraph(object):
     eids = sorted(eids)
     for eid in eids:
       nodes = nx.dfs_preorder_nodes(g, eid)
-      traces.append(g.subgraph(nodes).copy())
+      traces.append(nx.DiGraph(g.subgraph(nodes)))
     for subg in traces:
       # Remove nodes added because of time
       removed_nodes = []
