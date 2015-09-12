@@ -55,11 +55,14 @@ class HappensBeforeGraph(object):
     self.most_recent_barrier = defaultdict()
     
     # for races
-    self.race_detector = RaceDetector(self, filter_rw=filter_rw)
+    self.race_detector = RaceDetector(
+      self, filter_rw=filter_rw, add_hb_time=add_hb_time, ww_delta=ww_delta,
+      rw_delta=rw_delta)
 
     self.ww_delta = ww_delta
     self.rw_delta = rw_delta
-    self.add_hb_time = add_hb_time
+    # Only mark time edges in the RaceDetetcor
+    self.add_hb_time = False
     # Just to keep track of how many HB edges where added based on time
     self._time_hb_rw_edges_counter = 0
     self._time_hb_ww_edges_counter = 0
@@ -148,7 +151,11 @@ class HappensBeforeGraph(object):
     src, dst = before.eid, after.eid
     if self.g.has_edge(src, dst):
       rel = self.g.edge[src][dst]['rel']
-      raise ValueError("Edge already added %d->%d and relation: %s" % (src, dst, rel))
+      # Allow edge to be added multiple times because of the same relation
+      # This is useful for time based edges
+      if rel != attrs['rel']:
+        raise ValueError(
+          "Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
 
   def _rule_01_pid(self, event):
@@ -643,8 +650,7 @@ class Main(object):
     print "detect_races: "+(str(t2-t1))+"s"
     print "print_races: "+(str(t3-t2))+"s"
     print "store_graph: "+(str(t4-t3))+"s"
-    print "HB RW edges based on time", self.graph._time_hb_rw_edges_counter
-    print "HB WW edges based on time", self.graph._time_hb_ww_edges_counter
+
 
 def auto_int(x):
   return int(x, 0)

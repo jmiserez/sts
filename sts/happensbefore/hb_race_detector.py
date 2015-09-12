@@ -80,6 +80,14 @@ class RaceDetector(object):
     self._time_hb_rw_edges_counter = 0
     self._time_hb_ww_edges_counter = 0
 
+  @property
+  def time_hb_rw_edges_counter(self):
+    return self._time_hb_rw_edges_counter
+
+  @property
+  def time_hb_ww_edges_counter(self):
+    return self._time_hb_ww_edges_counter
+
   def is_reachable(self, source, target):
     return nx.has_path(self.graph.g, source.eid, target.eid)
 
@@ -268,6 +276,6 @@ class RaceDetector(object):
     print "| Total commuting races: {:<18} |".format(self.total_commute)
     print "| Total harmful races:   {:<18} |".format(self.total_harmful)
     print "| Total filtered races:  {:<18} |".format(self.total_filtered)
-    print "| Total Time RW  Filtered races:  {:<11} |".format(self._time_hb_rw_edges_counter)
-    print "| Total Time WW  Filtered races:  {:<11} |".format(self._time_hb_ww_edges_counter)
+    print "| Total Time RW  Filtered races:  {:<9} |".format(self.time_hb_rw_edges_counter)
+    print "| Total Time WW  Filtered races:  {:<9} |".format(self.time_hb_ww_edges_counter)
     print "+-------------------------------------------+"
