@@ -652,6 +652,26 @@ class HappensBeforeGraph(object):
         races.append((trace, tmp))
     return races
 
+  def print_racing_packet_trace(self, result_dir, trace, races):
+    """
+    first is the trace
+    second is the list of races
+    """
+    host_send = trace.graph['host_send']
+    g = nx.DiGraph(trace, host_send= host_send)
+    for race in races:
+      if not g.has_node(race.i_event.eid):
+        g.add_node(race.i_event.eid, event=race.i_event)
+      if not g.has_node(race.k_event.eid):
+        g.add_node(race.k_event.eid, event=race.k_event)
+      g.add_edge(race.i_event.eid, race.k_event.eid, rel='race', harmful=True)
+
+    self.prep_draw(g, TraceSwitchPacketUpdateBegin)
+    nx.write_dot(g, "/%s/race_%s_%s_%d.dot" % (result_dir,
+                                               str(host_send.packet.src),
+                                               str(host_send.packet.dst),
+                                               host_send.eid))
+
   def cluster_cmds(self):
     """
     Cluster the update commands by time.
@@ -732,7 +752,9 @@ class Main(object):
     t4 = time.time()
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
-    self.graph.find_inconsistent()
+    packet_races = self.graph.find_inconsistent()
+    for trace, races in packet_races:
+      self.graph.print_racing_packet_trace(self.results_dir, trace, races)
     self.graph.find_inconsistent_updates()
     t6 = time.time()
     
