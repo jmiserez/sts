@@ -9,6 +9,7 @@ from collections import defaultdict
 import networkx as nx
 
 from pox.lib.packet.ethernet import ethernet
+from pox.openflow.libopenflow_01 import ofp_flow_mod_command_rev_map
 
 from hb_utils import pkt_info
 
@@ -24,6 +25,9 @@ from hb_sts_events import *
 # Do not import any STS types! We would like to be able to run this offline
 # from a trace file without having to depend on STS.
 #
+
+
+OFP_COMMANDS = {v: k for k, v in ofp_flow_mod_command_rev_map.iteritems()}
 
 
 class HappensBeforeGraph(object):
@@ -497,6 +501,17 @@ class HappensBeforeGraph(object):
     """
     Adds proper annotation for the graph to make drawing it more pleasant.
     """
+    def pretty_match(match):
+      lines = match.show()
+      output = ''
+      for line in lines.split('\n'):
+        if not line.startswith('wildcards: '):
+          output += line + ' '
+      output = output.rstrip()
+      if output == '':
+        output = '*'
+      return output.rstrip()
+
     for eid, data in g.nodes_iter(data=True):
       event = data['event']
       label = "ID %d \\n %s" % (eid, event.type)
@@ -506,11 +521,15 @@ class HappensBeforeGraph(object):
         for x in event.operations:
           if x.type == 'TraceSwitchFlowTableWrite':
             op = "FlowTableWrite"
+            op += "\\nCMD: " + OFP_COMMANDS[x.flow_mod.command]
+            op += "\\nMatch: " + pretty_match(x.flow_mod.match)
+            label += "\\nt: " + repr(x.t)
             shape = 'box'
             g.node[eid]['style'] = 'bold'
             break
           if x.type == 'TraceSwitchFlowTableRead':
             op = "FlowTableRead"
+            label += "\\nt: " + repr(x.t)
             shape = 'box'
             break
       if op:
