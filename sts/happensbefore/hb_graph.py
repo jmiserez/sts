@@ -585,7 +585,7 @@ class HappensBeforeGraph(object):
       for src, dst, data in subg.edges(data=True):
         if data['rel'] in ['time', 'race']:
           subg.remove_edge(src, dst)
-          if subg.has_node(dst):
+          if subg.has_node(dst) and not subg.neighbors(dst):
             removed_nodes.append(dst)
         elif isinstance(subg.node[src]['event'], HbHostHandle):
           subg.remove_edge(src, dst)
