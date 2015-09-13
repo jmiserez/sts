@@ -677,10 +677,11 @@ class HappensBeforeGraph(object):
       g.add_edge(race.i_event.eid, race.k_event.eid, rel='race', harmful=True)
 
     self.prep_draw(g, TraceSwitchPacketUpdateBegin)
-    nx.write_dot(g, "/%s/race_%s_%s_%d.dot" % (result_dir,
-                                               str(host_send.packet.src),
-                                               str(host_send.packet.dst),
-                                               host_send.eid))
+    src = str(host_send.packet.src)
+    dst = str(host_send.packet.dst)
+    name = "/%s/race_%s_%s_%d.dot" % (result_dir, src, dst, host_send.eid)
+    print "Storing packet inconsistency for %s->%s in %s " % (src, dst, name)
+    nx.write_dot(g, name)
 
   def cluster_cmds(self):
     """
@@ -767,7 +768,9 @@ class Main(object):
       self.graph.print_racing_packet_trace(self.results_dir, trace, races)
     self.graph.find_inconsistent_updates()
     t6 = time.time()
-    
+
+    print "Number of packet inconsistencies: ", len(packet_races)
+
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
     print "detect_races: "+(str(t2-t1))+"s"
