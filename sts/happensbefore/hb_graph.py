@@ -651,8 +651,15 @@ class HappensBeforeGraph(object):
     races = []
     for trace in self.packet_traces:
       tmp = self.get_racing_events(trace)
-      if tmp:
-        races.append((trace, tmp))
+      if not tmp:
+        continue
+      if len(tmp) == 1:
+        send = trace.graph['host_send']
+        if trace.has_edge(send.eid, tmp[0].i_event.eid) or\
+            trace.has_edge(send.eid, tmp[0].k_event.eid):
+          print "Ignoring race for on the first switch: for %s->%s" % (str(send.packet.src), str(send.packet.dst))
+          continue
+      races.append((trace, tmp))
     return races
 
   def print_racing_packet_trace(self, result_dir, trace, races):
