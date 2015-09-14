@@ -168,7 +168,8 @@ class RaceDetector(object):
           else:
             self._time_hb_ww_edges_counter += 1
             first = i_event if i_op.t < k_op.t else k_event
-            second = k_event if i_op.t > k_op.t else i_event
+            second = k_event if first == i_event else i_event
+            assert first != second
             self.graph._add_edge(first, second, sanity_check=False, rel='time')
         self.racing_events.add(i_event)
         self.racing_events.add(k_event)
@@ -209,7 +210,8 @@ class RaceDetector(object):
               else:
                 self._time_hb_rw_edges_counter += 1
                 first = i_event if i_op.t < k_op.t else k_event
-                second = k_event if i_op.t > k_op.t else i_event
+                second = k_event if first == i_event else i_event
+                assert first != second
                 self.graph._add_edge(first, second, sanity_check=False, rel='time')
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)
