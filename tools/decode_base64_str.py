@@ -122,9 +122,15 @@ def main(args):
   def print_event(ev):
     ev = JsonEvent.from_json(json.loads(args.encoded_str))
     print "=========="
-    print "print: ev"
+    print "formatted raw JSON:"
     print "=========="
-    print ev
+    raw_ev = json.loads(args.encoded_str)
+    escaped_ops = [] 
+    for i in raw_ev['operations']:
+      k = json.loads(i)
+      escaped_ops.append(k)
+    raw_ev['operations'] = escaped_ops
+    print json.dumps(raw_ev, indent=4, sort_keys=True)
     print "=========="
     print "recursive print:"
     print "=========="
@@ -150,7 +156,7 @@ if __name__ == '__main__':
   parser.add_argument('-f', dest='is_flowmod', action='store_true', default=False, help="Decode as flow mod")
   parser.add_argument('-t', dest='is_flowtable', action='store_true', default=False, help="Decode as flow table (list of flows mods)")
   parser.add_argument('-e', dest='is_event', action='store_true', default=False, help="Decode as JsonEvent")
-  parser.add_argument('-d', dest='depth', action='store', type=int, default=1, help="Depth for printing")
+  parser.add_argument('-d', dest='depth', action='store', type=int, default=1, help="Depth for printing")  
   
   args = parser.parse_args()
 
