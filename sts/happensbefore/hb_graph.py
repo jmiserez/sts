@@ -578,28 +578,19 @@ class HappensBeforeGraph(object):
     eids = sorted(eids)
     for eid in eids:
       nodes = nx.dfs_preorder_nodes(g, eid)
-      traces.append(nx.DiGraph(g.subgraph(nodes), host_send=g.node[eid]['event']))
-    for subg in traces:
-      # Remove nodes added because of time
-      removed_nodes = []
+      subg = nx.DiGraph(g.subgraph(nodes), host_send=g.node[eid]['event'])
+      traces.append(subg)
+    for i in range(len(traces)):
+      subg = traces[i]
       for src, dst, data in subg.edges(data=True):
         if data['rel'] in ['time', 'race']:
           subg.remove_edge(src, dst)
-          if subg.has_node(dst) and not subg.neighbors(dst):
-            removed_nodes.append(dst)
         elif isinstance(subg.node[src]['event'], HbHostHandle):
           subg.remove_edge(src, dst)
-          if subg.has_node(dst):
-            removed_nodes.append(dst)
       # Remove disconnected subgraph
-      removed_nodes = list(set(removed_nodes))
-      for eid in removed_nodes:
-        if not subg.has_node(eid):
-          continue
-        nodes = list(nx.dfs_preorder_nodes(subg, eid))
-        for node in nodes:
-          if subg.has_node(node):
-            subg.remove_node(node)
+      host_send = subg.graph['host_send']
+      nodes = nx.dfs_preorder_nodes(subg, host_send.eid)
+      traces[i] = nx.DiGraph(subg.subgraph(nodes), host_send=host_send)
     return traces
 
   def store_traces(self, results_dir, print_packets=True):
