@@ -20,11 +20,13 @@ from pox.openflow.flow_table import TableEntry
 
 """
 Sample usages:
-./decode_base64_str.py -m AQ4AUAAAAA8AAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=
+./tools/decode_base64_str.py -m AQ4AUAAAAA8AAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=
 
-./decode_base64_str.py -t '[\"AQ4AUAAAABkAAAABAAASNFZ4AQESNFZ4AQP//wAACAAAAQAAe3sBAXt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAH//wAAAAAACAADAAA=\", \"AQ4AUAAAABsAAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=\"]'
+./tools/decode_base64_str.py -t '[\"AQ4AUAAAABkAAAABAAASNFZ4AQESNFZ4AQP//wAACAAAAQAAe3sBAXt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAH//wAAAAAACAADAAA=\", \"AQ4AUAAAABsAAAABAAASNFZ4AQISNFZ4AQP//wAACAAAAQAAe3sBAnt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAL//wAAAAAACAADAAA=\"]'
 
-./decode_base64_str.py -p -d 2 EjRWeAEDEjRWeAEBCABFAABIVVcAAEABLGR7ewEBe3sBAwAADjdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1Bpbmc=
+./tools/decode_base64_str.py -p -d 2 EjRWeAEDEjRWeAEBCABFAABIVVcAAEABLGR7ewEBe3sBAwAADjdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1Bpbmc=
+
+./tools/decode_base64_str.py -e '{"eid": 87, "type": "HbMessageHandle", "pid_in": 14, "pid_out": [35], "mid_in": 32, "mid_out": [], "msg_type": "OFPT_FLOW_MOD", "operations": ["{\"eid\": 90, \"type\": \"TraceSwitchFlowTableWrite\", \"dpid\": 1, \"flow_table\": [], \"flow_mod\": \"AQ4AUAAAAA0AAAABAAASNFZ4AQESNFZ4AQP//wAACAAAAQAAe3sBAXt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAH//wAAAAAACAADAAA=\", \"t\": \"1441617235.460762\"}", "{\"eid\": 91, \"type\": \"TraceSwitchBufferGet\", \"dpid\": 1, \"packet\": \"EjRWeAEDEjRWeAEBCABFAABIVVcAAEABLGR7ewEBe3sBAwAADjdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1Bpbmc=\", \"in_port\": 1, \"buffer_id\": 1, \"t\": \"1441617235.461237\"}"], "dpid": 1, "controller_id": ["127.0.0.1", 6633], "packet": "EjRWeAEDEjRWeAEBCABFAABIVVcAAEABLGR7ewEBe3sBAwAADjdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1BpbmdQaW5nUGluZ1Bpbmc=", "in_port": 1, "msg": "AQ4AUAAAAA0AAAABAAASNFZ4AQESNFZ4AQP//wAACAAAAQAAe3sBAXt7AQMAAAAAAAAAAAAAAAAAAAAKAB6AAAAAAAH//wAAAAAACAADAAA="}' -d 1
 """
 
 def recursive_dump(x, depth):
@@ -78,7 +80,7 @@ def main(args):
     recursive_print(pkt, depth=args.depth)
     
   def print_msg(msg):
-    msg = hbu.base64_decode_openflow(args.encoded_str)
+    msg = hbu.base64_decode_openflow(msg)
     print "=========="
     print "print:"
     print "=========="
@@ -89,7 +91,7 @@ def main(args):
 #     recursive_print(msg, depth=args.depth)
 
   def print_flowmod(fm):
-    fm = hbu.decode_flow_mod(args.encoded_str)
+    fm = hbu.decode_flow_mod(fm)
     print "=========="
     print "ofp_flow_mod_command_to_str:"
     print "=========="
@@ -103,7 +105,7 @@ def main(args):
     recursive_print(fm, depth=args.depth)
     
   def print_flowtable(t):
-    escaped_str = args.encoded_str.replace('\\"', '"')
+    escaped_str = t.replace('\\"', '"')
     print escaped_str
     flow_list = ast.literal_eval(escaped_str)
     table = hbu.decode_flow_table(flow_list)
@@ -120,21 +122,22 @@ def main(args):
     recursive_print(table, depth=args.depth)
     
   def print_event(ev):
-    ev = JsonEvent.from_json(json.loads(args.encoded_str))
+    event = JsonEvent.from_json(json.loads(ev))
     print "=========="
     print "formatted raw JSON:"
     print "=========="
-    raw_ev = json.loads(args.encoded_str)
-    escaped_ops = [] 
-    for i in raw_ev['operations']:
-      k = json.loads(i)
-      escaped_ops.append(k)
-    raw_ev['operations'] = escaped_ops
+    raw_ev = json.loads(ev)
+    escaped_ops = []
+    if 'operations' in raw_ev:
+      for i in raw_ev['operations']:
+        k = json.loads(i)
+        escaped_ops.append(k)
+      raw_ev['operations'] = escaped_ops
     print json.dumps(raw_ev, indent=4, sort_keys=True)
     print "=========="
     print "recursive print:"
     print "=========="
-    recursive_print(ev, depth=args.depth)
+    recursive_print(event, depth=args.depth)
     
   if args.is_pkt:
     print_pkt(args.encoded_str)
