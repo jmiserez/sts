@@ -10,6 +10,10 @@ import networkx as nx
 
 from pox.lib.packet.ethernet import ethernet
 from pox.openflow.libopenflow_01 import ofp_flow_mod_command_rev_map
+from pox.openflow.libopenflow_01 import OFPT_HELLO
+from pox.openflow.libopenflow_01 import OFPT_FEATURES_REQUEST
+from pox.openflow.libopenflow_01 import OFPT_FEATURES_REPLY
+from pox.openflow.libopenflow_01 import OFPT_SET_CONFIG
 
 from hb_utils import pkt_info
 
@@ -28,6 +32,10 @@ from hb_sts_events import *
 
 
 OFP_COMMANDS = {v: k for k, v in ofp_flow_mod_command_rev_map.iteritems()}
+
+# OF Message types to skip from the trace
+SKIP_MSGS = [OFPT_HELLO, OFPT_FEATURES_REQUEST, OFPT_FEATURES_REPLY,
+             OFPT_SET_CONFIG]
 
 
 class HappensBeforeGraph(object):
@@ -342,6 +350,9 @@ class HappensBeforeGraph(object):
       if packet and packet.type in self.ignore_ethertypes:
         return
 
+    msg_type = getattr(event, 'msg_type', None)
+    if msg_type in SKIP_MSGS:
+      return
     self.g.add_node(event.eid, event=event)
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
