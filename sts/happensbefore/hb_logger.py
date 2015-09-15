@@ -393,29 +393,15 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_buf_get(self, event):
-    pass
-    # TODO(jm): Fix triggering of buffer reads in software_switch.py:_receive_flow_mod to only read the packet when it is actually used! For now just ignore reads.
-    
-#     #TODO(jm): In most (all?) specific cases this is correct. In fact, this can even help to capture
-#     #           packets traversing a switch when the controller instrumentation fails or is not precise enough.
-#     #           E.g. in a distributed controller if one thread processes the PACKET_IN and then another thread
-#     #           creates a PACKET_OUT to send the packet out from the buffer. The current controller instrumentation
-#     #           does not capture this, so adding this edge might help in that specific case.
-#     if self.is_regular_switch_event_started(event.dpid):
-#       assert isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle)
-#       # update the pid_in of the current event using the packet from the buffer
-# #       pid_in = self.pids.get_tag(event.packet)
-#       # NOTE: do NOT use the current tag of the packet, as it might have already been resent. Instead, read
-#       #       the pid_out tag from the HbPacketHandle event.
-#       # For this, we need to check the list of all tags currently stored in buffers.
-#       if not event.buffer_id in self.buffer_pids[event.dpid]:
-#         print event.buffer_id
-#         assert False
-#       self.started_regular_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
-#       
-#       # NOTE: deleting buffer entries is not correct in all cases, so don't do it.
-#       # del self.buffer_pids[event.dpid][event.buffer_id]
-#     self.add_operation_to_switch_event(event)
+    if self.is_regular_switch_event_started(event.dpid):
+      assert isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle)
+      # NOTE: do NOT use the current tag of the packet, as it might have already been resent and gotten a much newer pid.
+      #       Instead, read the pid_out tag from the buffer put event.
+      # For this, we need to check the list of all tags currently stored in buffers.
+      if event.buffer_id in self.buffer_pids[event.dpid]:
+        self.started_regular_switch_event[event.dpid].pid_in = self.buffer_pids[event.dpid][event.buffer_id]
+       
+    self.add_operation_to_switch_event(event)
   
   #
   # Switch bookkeeping operations
