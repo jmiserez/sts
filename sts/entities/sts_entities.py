@@ -392,6 +392,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       buffer_id = len(self.packet_buffer)
     # Note that a buffer_id of -1 would mean that it was sent to the controller rather than being buffered
     self.raiseEvent(TraceSwitchBufferPut(self.dpid, packet, in_port, buffer_id))
+    assert buffer_id > 0 # this is an infinite buffer, there is always space. Numbering begins at 1.
     return buffer_id
   
   def _process_actions_for_packet_from_buffer(self, actions, buffer_id):
