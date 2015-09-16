@@ -697,7 +697,7 @@ class HappensBeforeGraph(object):
       if bidir:
         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
-  def get_racing_events(self, trace):
+  def get_racing_events(self, trace, ignore_other_traces=True):
     """
     For a given packet trace, return all the races that races with its events
     """
@@ -712,6 +712,24 @@ class HappensBeforeGraph(object):
     # will get us the other event that has been part of the race
     races = [race for race in self.race_detector.races_harmful
              if race.i_event.eid in racing or race.k_event.eid in racing]
+    if ignore_other_traces:
+      # We don't care about write on the packet trace that races with reads
+      # on other packet traces. The other traces will be reported anyway.
+      to_remove = []
+      for race in races:
+        if trace.has_node(race.i_event.eid):
+          mine = race.i_event
+          other = race.k_event
+        else:
+          mine = race.k_event
+          other = race.i_event
+        # Mine is write and racing with read from other packet trace
+        # Then don't report it, because it's going to be reported in the other
+        # Packet trace anyway
+        if isinstance(mine, HbMessageHandle) and isinstance(other, HbPacketHandle):
+          to_remove.append(race)
+      for i in to_remove:
+        races.remove(i)
     return races
 
   def find_inconsistent(self):
@@ -719,8 +737,9 @@ class HappensBeforeGraph(object):
     Finds all the races related each packet trace
     """
     races = []
+    just_first = False
     for trace in self.packet_traces:
-      tmp = self.get_racing_events(trace)
+      tmp = self.get_racing_events(trace, True)
       if not tmp:
         continue
       if len(tmp) == 1:
@@ -728,11 +747,12 @@ class HappensBeforeGraph(object):
         if trace.has_edge(send.eid, tmp[0].i_event.eid) or\
             trace.has_edge(send.eid, tmp[0].k_event.eid):
           print "Ignoring race for on the first switch: for %s->%s" % (str(send.packet.src), str(send.packet.dst))
-          continue
-      races.append((trace, tmp))
+          just_first = True
+          #continue
+      races.append((trace, tmp, just_first))
     return races
 
-  def print_racing_packet_trace(self, result_dir, trace, races):
+  def print_racing_packet_trace(self, result_dir, trace, races, just_first=False):
     """
     first is the trace
     second is the list of races
@@ -749,7 +769,11 @@ class HappensBeforeGraph(object):
     self.prep_draw(g, TraceSwitchPacketUpdateBegin)
     src = str(host_send.packet.src)
     dst = str(host_send.packet.dst)
-    name = "/%s/race_%s_%s_%d.dot" % (result_dir, src, dst, host_send.eid)
+    if just_first:
+      rtype = 'ignore'
+    else:
+      rtype = 'race'
+    name = "/%s/%s_%s_%s_%d.dot" % (result_dir, rtype, src, dst, host_send.eid)
     print "Storing packet inconsistency for %s->%s in %s " % (src, dst, name)
     nx.write_dot(g, name)
 
@@ -836,8 +860,8 @@ class Main(object):
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
     packet_races = self.graph.find_inconsistent()
-    for trace, races in packet_races:
-      self.graph.print_racing_packet_trace(self.results_dir, trace, races)
+    for trace, races, just_first in packet_races:
+      self.graph.print_racing_packet_trace(self.results_dir, trace, races, just_first)
     self.graph.find_inconsistent_updates()
     t6 = time.time()
 
