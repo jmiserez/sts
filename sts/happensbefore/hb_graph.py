@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import os
 import sys
-from bonobo._bonobo import event_type
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
 
