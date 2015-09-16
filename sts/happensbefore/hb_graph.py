@@ -42,7 +42,7 @@ class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
                ww_delta=1, filter_rw=False, ignore_ethertypes=None,
-               no_race=False):
+               no_race=False, alt_barr=False):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -84,6 +84,8 @@ class HappensBeforeGraph(object):
     self.packet_traces = None
     self.host_sends = {}
     self.msg_handles = {}
+    
+    self.alt_barr = alt_barr
 
   @property
   def events(self):
@@ -151,9 +153,11 @@ class HappensBeforeGraph(object):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
   def _update_event_has_no_further_successors_pid_out(self, event):
+    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
     if event in self.events_by_pid_out[event.pid_out]:
       self.events_by_pid_out[event.pid_out].remove(event)
   def _update_event_has_no_further_successors_mid_out(self, event):
+    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
   
@@ -222,6 +226,66 @@ class HappensBeforeGraph(object):
         if event.dpid in self.most_recent_barrier:
           other = self.most_recent_barrier[event.dpid]
           self._add_edge(other, event, rel='barrier_post')
+  
+  def _find_triggering_HbControllerHandle_for_alternative_barrier(self, event):
+    """
+    Returns the HbControllerHandle that is responsible for triggering this event
+    
+    event (HbMessageHandle) <- (HbControllerSend) <- trigger (HbControllerHandle)
+    """
+    preds = self.g.predecessors(event.eid)
+    if len(preds) > 0:
+      candidates = filter(lambda x: self.g.node[x]['event'].type == "HbControllerSend", preds)
+      assert len(candidates) <= 1 # at most one HbControllerSend exists
+      if len(candidates) == 1:
+        send_event_eid = candidates[0]
+        assert self.g.node[send_event_eid]['event'].type == "HbControllerSend"
+        preds = self.g.predecessors(send_event_eid)
+        candidates = filter(lambda x: self.g.node[x]['event'].type == "HbControllerHandle", preds)
+        assert len(candidates) <= 1 # at most one HbControllerHandle exists
+        if len(candidates) == 1:
+          handle_event_eid = candidates[0]  
+          assert self.g.node[handle_event_eid]['event'].type == "HbControllerHandle"
+          return handle_event_eid
+    return None
+    
+  def _rule_03b_alternative_barrier_pre(self, event):
+    """
+    Instead of using the dpid for barriers, this uses the eid of the predecessor HbControllerSend (if it exists).
+    """
+    if event.type == 'HbMessageHandle':
+      ctrl_handle_eid = self._find_triggering_HbControllerHandle_for_alternative_barrier(event)
+      if ctrl_handle_eid is not None:
+        if event.msg_type_str == "OFPT_BARRIER_REQUEST":
+          for other in self.events_before_next_barrier[ctrl_handle_eid]:
+            self._add_edge(other, event, rel='barrier_pre')
+          del self.events_before_next_barrier[ctrl_handle_eid]
+        else:
+          self.events_before_next_barrier[ctrl_handle_eid].append(event)
+    elif event.type == 'HbControllerSend':
+      succ = self.g.successors(event.eid)
+      for i in succ:
+        self._rule_03b_alternative_barrier_pre(self.g.node[i]['event'])
+        self._rule_04b_alternative_barrier_post(self.g.node[i]['event'])
+          
+  def _rule_04b_alternative_barrier_post(self, event):
+    """
+    Instead of using the dpid for barriers, this uses the eid of the predecessor HbControllerSend (if it exists).
+    """
+    if event.type == 'HbMessageHandle':
+      ctrl_handle_eid = self._find_triggering_HbControllerHandle_for_alternative_barrier(event)
+      if ctrl_handle_eid is not None:
+        if event.msg_type_str == "OFPT_BARRIER_REQUEST":
+          self.most_recent_barrier[ctrl_handle_eid] = event
+        else:
+          if ctrl_handle_eid in self.most_recent_barrier:
+            other = self.most_recent_barrier[ctrl_handle_eid]
+            self._add_edge(other, event, rel='barrier_post')
+    elif event.type == 'HbControllerSend':
+      succ = self.g.successors(event.eid)
+      for i in succ:
+        self._rule_03b_alternative_barrier_pre(self.g.node[i]['event'])
+        self._rule_04b_alternative_barrier_post(self.g.node[i]['event'])
         
   def _rule_05_flow_removed(self, event):
     # TODO(jm): This is not correct. Flow removed messages do not necessarily contain the exact same flowmod message as was installed.
@@ -304,8 +368,12 @@ class HappensBeforeGraph(object):
   def _update_edges(self, event):
     self._rule_01_pid(event)
     self._rule_02_mid(event)
-    self._rule_03_barrier_pre(event)
-    self._rule_04_barrier_post(event)
+    if self.alt_barr:
+      self._rule_03b_alternative_barrier_pre(event)
+      self._rule_04b_alternative_barrier_post(event)
+    else:
+      self._rule_03_barrier_pre(event)
+      self._rule_04_barrier_post(event)
     self._rule_05_flow_removed(event)
     if self.add_hb_time:
       self._rule_06_time_rw(event)
@@ -731,7 +799,7 @@ class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
-               ignore_ethertypes=None, no_race=False):
+               ignore_ethertypes=None, no_race=False, alt_barr=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -744,6 +812,7 @@ class Main(object):
     self.filter_rw = filter_rw
     self.ignore_ethertypes = ignore_ethertypes
     self.no_race = no_race
+    self.alt_barr = alt_barr
 
   def run(self):
     import time
@@ -753,7 +822,8 @@ class Main(object):
                                     ww_delta=self.ww_delta,
                                     filter_rw=self.filter_rw,
                                     ignore_ethertypes=self.ignore_ethertypes,
-                                    no_race=self.no_race)
+                                    no_race=self.no_race,
+                                    alt_barr=self.alt_barr)
     t0 = time.time()    
     self.graph.load_trace(self.filename)
     t1 = time.time()
@@ -808,11 +878,13 @@ if __name__ == '__main__':
                       help='Ether types to ignore from the graph')
   parser.add_argument('--no-race', dest='no_race', action='store_true', default=False,
                       help="Don't add edge between racing events in the graph")
+  parser.add_argument('--alt-barr', dest='alt_barr', action='store_true', default=False,
+                      help="Use alternative barrier rules for purely reactive controllers")
 
 
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
-              no_race=args.no_race)
+              no_race=args.no_race, alt_barr=args.alt_barr)
   main.run()
