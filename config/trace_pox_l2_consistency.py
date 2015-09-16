@@ -9,16 +9,16 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 
 
 
-consistent = False
+consistent = True
 # Use POX as our controller
 start_cmd = ('''./pox.py --verbose '''
              ''' forwarding.consistency --consistent=%s --deny=False '''
-             ''' --update_wait=10 --update_once=True --consistent_sleep=5 '''
+             ''' --update_wait=10 --update_once=True --consistent_sleep=10 '''
              ''' openflow.of_01 --address=__address__ --port=__port__ ''' % consistent)
 
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
-steps = 200
+steps = 300
 topology_class = ConsistencyTopology
 topology_params = ""
 
