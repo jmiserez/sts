@@ -68,6 +68,8 @@ class HappensBeforeLogger(EventMixin):
     
     self.unmatched_controller_lines = [] # lines
     self.controller_packetin_to_mid_out = dict() # (swid, b64msg) -> mid_out
+    self.controller_packetin_mid_out_to_HbControllerHandle = dict() # mid_out -> HbControllerHandle
+    self.controller_packetin_mid_out_to_temporary_tag = dict() # mid_out -> HbControllerHandle
     
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
@@ -513,19 +515,6 @@ class HappensBeforeLogger(EventMixin):
         self.unmatched_controller_lines.append((time.time(), in_swid, in_b64msg, out_swid, out_b64msg))
       self.rematch_unmatched_lines()
     
-  def add_controller_hb_edge(self, mid_out, mid_in):
-    """
-    Add an edge derived from controller instrumentation
-    """
-    temporary_tag = self.mids.generate_unused_tag()
-    event = HbControllerHandle(mid_out, temporary_tag)
-    first = str(event.eid)
-    self.write_event_to_trace(event)
-    event = HbControllerSend(temporary_tag, mid_in)
-    second = str(event.eid)
-    self.write_event_to_trace(event)
-    self.log.info("Adding controller edge ("+first+" -> "+second+"): mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
-
   # TODO(jm): rename this function to start with _
   def swid_to_dpid(self, swid):
     try:
@@ -547,6 +536,13 @@ class HappensBeforeLogger(EventMixin):
     # TODO(jm): performance: do not decode every time we do the comparison, only decode once
     if self.compare_msg(msg, base64_decode_openflow(line_msg)):
       self.controller_packetin_to_mid_out[(dpid,line_msg)] = mid_out
+      temporary_tag = self.mids.generate_unused_tag()
+      event = HbControllerHandle(mid_out, temporary_tag)
+      first = str(event.eid)
+      self.write_event_to_trace(event)
+      self.log.info("Adding controller handle ("+first+" -> *): mid_out:"+str(mid_out)+".")
+      self.controller_packetin_mid_out_to_HbControllerHandle[mid_out] = event
+      self.controller_packetin_mid_out_to_temporary_tag[mid_out] = temporary_tag
       return True
     return False
   
@@ -559,7 +555,13 @@ class HappensBeforeLogger(EventMixin):
     # TODO(jm): performance: do not decode every time we do the comparison, only decode once
     # TODO(jm): performance: do not fetch rxbase64 every time, only do it once
     if self.compare_msg(base64_decode_openflow(self._get_rxbase64(msg)), base64_decode_openflow(line_msg)):
-      self.add_controller_hb_edge(mid_out, mid_in)
+      first_event = self.controller_packetin_mid_out_to_HbControllerHandle[mid_out]
+      temporary_tag = self.controller_packetin_mid_out_to_temporary_tag[mid_out]
+      second_event = HbControllerSend(temporary_tag, mid_in)
+      first = str(first_event.eid)
+      second = str(second_event.eid)
+      self.write_event_to_trace(second_event)
+      self.log.info("Adding controller send with edge ("+first+" -> "+second+"): mid_out:"+str(mid_out)+" -> mid_in:"+str(mid_in)+".")
       return True
     return False
   
