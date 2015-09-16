@@ -22,6 +22,10 @@ from util.convenience import random_eth_addr, random_ip_addr
 from sts.dataplane_traces.trace import DataplaneEvent
 import random
 
+from itertools import count
+
+PING_SEQ = count()
+
 class TrafficGenerator (object):
   '''
   Generate sensible randomly generated (openflow) events
@@ -68,9 +72,13 @@ class TrafficGenerator (object):
     #else:
     #  ping.type = random.choice([TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY])
     ping.type = TYPE_ECHO_REQUEST
+    payload = echo()
+    payload.seq = PING_SEQ.next()
     if payload_content == "" or payload_content is None:
       payload_content = "Ping" * 12
-    ping.payload = payload_content
+    #ping.payload = payload_content
+    payload.content = payload_content
+    ping.payload = payload
     i.payload = ping
     e.payload = i
     return e
