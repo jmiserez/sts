@@ -472,7 +472,10 @@ class HappensBeforeGraph(object):
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
-    
+
+    self.prep_draw(self.g, print_packets)
+    nx.write_dot(self.g, os.path.join(self.results_dir, "g.dot"))
+
     interesting_msg_types = ['OFPT_PACKET_IN',
                             'OFPT_FLOW_REMOVED',
                             'OFPT_PACKET_OUT',
