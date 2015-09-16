@@ -525,6 +525,12 @@ class HappensBeforeLogger(EventMixin):
   # TODO(jm): rename this function to start with _
   def compare_msg(self, m1, m2):
     # TODO(jm): Normalize messages for comparison where necessary (check).
+    # TODO(jm): Move this into POX
+    if m1 != m2:
+      if hasattr(m1, 'buffer_id') and m1.buffer_id == 4294967295:
+        m1.buffer_id = -1
+      if hasattr(m2, 'buffer_id') and m2.buffer_id == 4294967295:
+        m2.buffer_id = -1
     return m1 == m2
   
   # TODO(jm): rename this function to start with _
