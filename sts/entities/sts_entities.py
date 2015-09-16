@@ -386,7 +386,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         self.packet_buffer[i] = (packet, in_port)
         buffer_id = i + 1
         break
-    if buffer_id is not None:
+    if buffer_id is None:
       # alloc new buffer
       self.packet_buffer.append( (packet, in_port) )
       buffer_id = len(self.packet_buffer)
