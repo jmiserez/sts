@@ -656,15 +656,17 @@ class HappensBeforeGraph(object):
     eids = self.host_sends.keys()
     eids = sorted(eids)
     for eid in eids:
-      nodes = nx.dfs_preorder_nodes(g, eid)
+      nodes = list(nx.dfs_preorder_nodes(g, eid))
+      # Remove other HostSends
+      for node in nodes:
+        if eid != node and isinstance(g.node[node]['event'], HbHostSend):
+          nodes.remove(node)
       subg = nx.DiGraph(g.subgraph(nodes), host_send=g.node[eid]['event'])
       traces.append(subg)
     for i in range(len(traces)):
       subg = traces[i]
       for src, dst, data in subg.edges(data=True):
         if data['rel'] in ['time', 'race']:
-          subg.remove_edge(src, dst)
-        elif isinstance(subg.node[src]['event'], HbHostHandle):
           subg.remove_edge(src, dst)
       # Remove disconnected subgraph
       host_send = subg.graph['host_send']
