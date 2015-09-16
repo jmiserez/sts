@@ -143,9 +143,11 @@ class HappensBeforeGraph(object):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
   def _update_event_has_no_further_successors_pid_out(self, event):
+    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
     if event in self.events_by_pid_out[event.pid_out]:
       self.events_by_pid_out[event.pid_out].remove(event)
   def _update_event_has_no_further_successors_mid_out(self, event):
+    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
     if event in self.events_by_mid_out[event.mid_out]:
       self.events_by_mid_out[event.mid_out].remove(event)
   
