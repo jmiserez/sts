@@ -61,6 +61,8 @@ class AppCircuitPusher(ControllerApp):
     The process was terminated, we get a PopenTerminationEvent
     """
     with self.reentrantlock:
+#       print event.return_out
+#       print event.return_err
       circuit_id = event.cmd_id
       if circuit_id in self.pending_install:
         if event.return_code == 0:
