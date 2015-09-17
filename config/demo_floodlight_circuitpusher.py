@@ -40,10 +40,10 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
                       initialization_rounds=20,
-                      send_all_to_all=False,
+                      send_all_to_all=True, # needs to be True otherwise circuitpusher will throw errors.
                       check_interval=1,
                       delay=0.1,
-                      steps=100, # uncomment this line to let the simulation run indefinitely
+                      steps=400, # if no circuits are installed, increase this number.
                       halt_on_violation=True,
                       invariant_check_name="InvariantChecker.check_liveness",
                       apps=apps)
