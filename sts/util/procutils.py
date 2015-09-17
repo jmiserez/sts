@@ -183,7 +183,7 @@ def popen_filtered(name, args, cwd=None, env=None, redirect_output=True,
     cmd._stderr_thread = _prefix_thread(cmd.stderr, partial(color_error, label=name))
   return cmd
 
-class PopenTermination(Event):
+class PopenTerminationEvent(Event):
   def __init__ (self, cmd_id, cmd, return_code, return_out, return_err):
     Event.__init__(self)
     self.cmd_id = cmd_id
@@ -193,7 +193,7 @@ class PopenTermination(Event):
     self.return_err = return_err # the returned output from stderr
     
 class PopenTerminationPublisher(EventMixin):
-  _eventMixin_events = set([PopenTermination])
+  _eventMixin_events = set([PopenTerminationEvent])
   
   def __init__(self):
     pass
@@ -210,7 +210,7 @@ def _popen_background_exec_thread(cmd_id, cmd, piped_input=None):
     else:
       ret_out, ret_err = cmd.communicate()
     ret_code = cmd.wait()
-    event = PopenTermination(cmd_id, cmd, ret_code, ret_out, ret_err)
+    event = PopenTerminationEvent(cmd_id, cmd, ret_code, ret_out, ret_err)
     popenTerminationPublisher.publish(event)
 
   t = threading.Thread(target=run)
@@ -234,7 +234,7 @@ def popen_simple(args, cwd=None, env=None,
 def popen_background(cmd_id, args, cwd=None, env=None,
                      shell=False, piped_input=None):
   '''
-  Execute an external command and raise a PopenTermination event once
+  Execute an external command and raise a PopenTerminationEvent event once
   the command has terminated. The contents of piped_input will be piped
   into the stdin of the process.
   '''
@@ -250,7 +250,7 @@ def popen_blocking(cmd_id, args, cwd=None, env=None,
   '''
   Execute an external command and wait until
   the command has terminated. The contents of piped_input will be piped
-  into the stdin of the process. Returns a PopenTermination event.
+  into the stdin of the process. Returns a PopenTerminationEvent event.
   '''
   try:
     cmd = popen_simple(args,cwd,env,shell)
@@ -261,7 +261,7 @@ def popen_blocking(cmd_id, args, cwd=None, env=None,
   else:
     ret_out, ret_err = cmd.communicate()
   ret_code = cmd.wait()
-  event = PopenTermination(cmd_id, cmd, ret_code, ret_out, ret_err)
+  event = PopenTerminationEvent(cmd_id, cmd, ret_code, ret_out, ret_err)
   return event
 
 def cmdline_to_args(cmdline):

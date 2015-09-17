@@ -5,7 +5,7 @@ import logging
 import pox.openflow.libopenflow_01 as of_01
 
 import sts.replay_event
-from sts.util.procutils import PopenTermination, popenTerminationPublisher, popen_background, cmdline_to_args,\
+from sts.util.procutils import PopenTerminationEvent, popenTerminationPublisher, popen_background, cmdline_to_args,\
   popen_simple, popen_blocking
 
 # TODO(jm): Figure out how to get logging working from here? logging.getLogger doesn't work.
@@ -48,7 +48,7 @@ class AppCircuitPusher(ControllerApp):
     self.ids = dict() # ids -> tuples
     
     self.reentrantlock = RLock()    
-    popenTerminationPublisher.addListener(PopenTermination, self._process_terminated)
+    popenTerminationPublisher.addListener(PopenTerminationEvent, self._process_terminated)
     
     self.clean_up()
     
@@ -57,6 +57,9 @@ class AppCircuitPusher(ControllerApp):
     cmd = popen_simple(args, self.cwd)
     
   def _process_terminated(self, event):
+    """
+    The process was terminated, we get a PopenTerminationEvent
+    """
     with self.reentrantlock:
       circuit_id = event.cmd_id
       if circuit_id in self.pending_install:
