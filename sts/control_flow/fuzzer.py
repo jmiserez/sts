@@ -61,7 +61,7 @@ class Fuzzer(ControlFlow):
                mock_link_discovery=False,
                never_drop_whitelisted_packets=True,
                initialization_rounds=0, send_all_to_all=False,
-               apps=None):
+               apps=None, send_init_packets=True):
     '''
     Options:
       - fuzzer_params: path to event probabilities
@@ -141,7 +141,7 @@ class Fuzzer(ControlFlow):
     # Determine whether to use delayed and randomized flow mod processing
     # (Set by fuzzer_params, not by an optional __init__ argument)
     self.delay_flow_mods = False
-    
+    self.send_init_packets = send_init_packets
     # add apps
     if apps is None:
       apps = []
@@ -265,7 +265,8 @@ class Fuzzer(ControlFlow):
             if self.logical_time > self.initialization_rounds:
               if self._pending_self_packets:
                 # Only need to send self packets once
-                self._send_initialization_packets(send_to_self=True)
+                if self.send_init_packets:
+                  self._send_initialization_packets(send_to_self=True)
                 self._pending_self_packets = False
               elif self._pending_all_to_all and (self.logical_time % self._all_to_all_interval) == 0: # All-to-all mode
                 self._send_initialization_packets(send_to_self=False)

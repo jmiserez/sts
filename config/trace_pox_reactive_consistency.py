@@ -1,26 +1,33 @@
 from config.experiment_config_lib import ControllerConfig
-from sts.topology import StarTopology, BufferedPatchPanel, MeshTopology, GridTopology, BinaryLeafTreeTopology
+from sts.topology import BufferedPatchPanel
+from sts.topology import MeshTopology
 from sts.controller_manager import UserSpaceControllerPatchPanel
 from sts.control_flow.fuzzer import Fuzzer
-from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
-from config.application_events import AppCircuitPusher
 
-start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
-             '''./target/floodlight.jar '''
-              '''-cf ./src/main/resources/hb_circuitpusher.properties''')
 
-controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
-topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=3"
+consistent = False
+barrier = True
+# Use POX as our controller
+start_cmd = ('''./pox.py --verbose '''
+             ''' forwarding.l2_fwd --consistent=%s --use_barrier=%s '''
+             ''' openflow.of_01 --address=__address__ --port=__port__ ''' % (consistent, barrier))
 
-results_dir = "experiments/demo_floodlight_circuitpusher"
+controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
-apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
+steps = 50
+topology_class = MeshTopology
+topology_params = "num_switches=2"
 
+# Where should the output files be written to
+results_dir = "traces/trace_pox_hb_reactive-consistency%s-%s-%s-steps%d" % (topology_class.__name__, consistent, barrier, steps)
+
+apps = None
+
+# include all defaults
 simulation_config = SimulationConfig(controller_configs=controllers,
                                      topology_class=topology_class,
                                      topology_params=topology_params,
@@ -37,13 +44,18 @@ simulation_config = SimulationConfig(controller_configs=controllers,
                                      hb_logger_params=results_dir,
                                      apps=apps)
 
+# Manual, interactive mode
+# control_flow = Interactive(simulation_config, input_logger=InputLogger())
+
 control_flow = Fuzzer(simulation_config,
                       input_logger=InputLogger(),
                       initialization_rounds=20,
-                      send_all_to_all=True, # needs to be True otherwise circuitpusher will throw errors.
-                      check_interval=1,
+                      send_all_to_all=False,
+                      check_interval=10,
                       delay=0.1,
-                      steps=400, # if no circuits are installed, increase this number.
                       halt_on_violation=True,
+                      steps=steps,
+                      send_init_packets=False,
+#                       invariant_check_name="check_everything",
                       invariant_check_name="InvariantChecker.check_liveness",
                       apps=apps)

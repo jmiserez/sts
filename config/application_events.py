@@ -5,7 +5,7 @@ import logging
 import pox.openflow.libopenflow_01 as of_01
 
 import sts.replay_event
-from sts.util.procutils import PopenTermination, popenTerminationPublisher, popen_background, cmdline_to_args,\
+from sts.util.procutils import PopenTerminationEvent, popenTerminationPublisher, popen_background, cmdline_to_args,\
   popen_simple, popen_blocking
 
 # TODO(jm): Figure out how to get logging working from here? logging.getLogger doesn't work.
@@ -48,7 +48,7 @@ class AppCircuitPusher(ControllerApp):
     self.ids = dict() # ids -> tuples
     
     self.reentrantlock = RLock()    
-    popenTerminationPublisher.addListener(PopenTermination, self._process_terminated)
+    popenTerminationPublisher.addListener(PopenTerminationEvent, self._process_terminated)
     
     self.clean_up()
     
@@ -57,16 +57,31 @@ class AppCircuitPusher(ControllerApp):
     cmd = popen_simple(args, self.cwd)
     
   def _process_terminated(self, event):
+    """
+    The process was terminated, we get a PopenTerminationEvent
+    """
     with self.reentrantlock:
+#       print event.return_out
+#       print event.return_err
       circuit_id = event.cmd_id
       if circuit_id in self.pending_install:
-        self.pending_install.remove(circuit_id)
-        self.installed.append(circuit_id)
-        print "Installed circuit: " + str(circuit_id)
+        if event.return_code == 0:
+          self.pending_install.remove(circuit_id)
+          self.installed.append(circuit_id)
+          print "Installed circuit: " + str(circuit_id)
+        else:
+          # error
+          print "Error installing circuit: {}. Stderr: {}, Stdout: {}".format(str(circuit_id), event.return_err, event.return_out)
+          self.pending_install.remove(circuit_id)
       elif circuit_id in self.pending_removal:
-        self.pending_removal.remove(circuit_id)
-        del self.ids[circuit_id]
-        print "Removed circuit: " + str(circuit_id)
+        if event.return_code == 0:
+          self.pending_removal.remove(circuit_id)
+          del self.ids[circuit_id]
+          print "Removed circuit: " + str(circuit_id)
+        else:
+          # error
+          print "Error installing circuit: {}. Stderr: {}, Stdout: {}".format(str(circuit_id), event.return_err, event.return_out)
+          self.pending_install.remove(circuit_id)
         
   def _install_circuits(self, fuzzer, num_circuits):
     with self.reentrantlock:

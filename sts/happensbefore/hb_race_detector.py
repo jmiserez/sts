@@ -54,7 +54,8 @@ Race = namedtuple('Race', ['rtype', 'i_event', 'i_op', 'k_event', 'k_op'])
 class RaceDetector(object):
 
   # TODO(jm): make filter_rw a config option
-  def __init__(self, graph, filter_rw=False):
+  def __init__(self, graph, filter_rw=False, add_hb_time=False, rw_delta=5,
+               ww_delta=1):
     self.graph = graph
 
     self.read_operations = []
@@ -72,6 +73,20 @@ class RaceDetector(object):
     self.commutativity_checker = CommutativityChecker()
 
     self.filter_rw = filter_rw # Filter events with no common ancestor if True.
+    self.ww_delta = ww_delta
+    self.rw_delta = rw_delta
+    self.add_hb_time = add_hb_time
+    # Just to keep track of how many HB edges where added based on time
+    self._time_hb_rw_edges_counter = 0
+    self._time_hb_ww_edges_counter = 0
+
+  @property
+  def time_hb_rw_edges_counter(self):
+    return self._time_hb_rw_edges_counter
+
+  @property
+  def time_hb_ww_edges_counter(self):
+    return self._time_hb_ww_edges_counter
 
   def is_reachable(self, source, target):
     return nx.has_path(self.graph.g, source.eid, target.eid)
@@ -145,9 +160,17 @@ class RaceDetector(object):
                                                              k_event, k_op):
           self.races_commute.append(Race('w/w', i_event, i_op, k_event, k_op))
         else:
-          self.races_harmful.append(Race('w/w',i_event, i_op, k_event, k_op))
-          self.racing_events_harmful.add(i_event)
-          self.racing_events_harmful.add(k_event)
+          delta = abs(i_op.t - k_op.t)
+          if delta < self.ww_delta or not self.add_hb_time:
+            self.races_harmful.append(Race('w/w', i_event, i_op, k_event, k_op))
+            self.racing_events_harmful.add(i_event)
+            self.racing_events_harmful.add(k_event)
+          else:
+            self._time_hb_ww_edges_counter += 1
+            first = i_event if i_op.t < k_op.t else k_event
+            second = k_event if first == i_event else i_event
+            assert first != second
+            self.graph._add_edge(first, second, sanity_check=False, rel='time')
         self.racing_events.add(i_event)
         self.racing_events.add(k_event)
 
@@ -179,9 +202,17 @@ class RaceDetector(object):
                                                                  k_event, k_op):
               self.races_commute.append(Race('r/w',i_event, i_op, k_event, k_op))
             else:
-              self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
-              self.racing_events_harmful.add(i_event)
-              self.racing_events_harmful.add(k_event)
+              delta = abs(i_op.t - k_op.t)
+              if delta < self.rw_delta or not self.add_hb_time:
+                self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
+                self.racing_events_harmful.add(i_event)
+                self.racing_events_harmful.add(k_event)
+              else:
+                self._time_hb_rw_edges_counter += 1
+                first = i_event if i_op.t < k_op.t else k_event
+                second = k_event if first == i_event else i_event
+                assert first != second
+                self.graph._add_edge(first, second, sanity_check=False, rel='time')
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)
 
@@ -247,4 +278,6 @@ class RaceDetector(object):
     print "| Total commuting races: {:<18} |".format(self.total_commute)
     print "| Total harmful races:   {:<18} |".format(self.total_harmful)
     print "| Total filtered races:  {:<18} |".format(self.total_filtered)
+    print "| Total Time RW  Filtered races:  {:<9} |".format(self.time_hb_rw_edges_counter)
+    print "| Total Time WW  Filtered races:  {:<9} |".format(self.time_hb_ww_edges_counter)
     print "+-------------------------------------------+"

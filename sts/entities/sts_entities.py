@@ -390,14 +390,19 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
 
   def _buffer_packet(self, packet, in_port=None):
     """ Find a free buffer slot to buffer the packet in. """
+    buffer_id = None
     for (i, value) in enumerate(self.packet_buffer):
       if(value==None):
         self.packet_buffer[i] = (packet, in_port)
-        return i + 1
-    self.packet_buffer.append( (packet, in_port) )
-    buffer_id = len(self.packet_buffer)
+        buffer_id = i + 1
+        break
+    if buffer_id is None:
+      # alloc new buffer
+      self.packet_buffer.append( (packet, in_port) )
+      buffer_id = len(self.packet_buffer)
     # Note that a buffer_id of -1 would mean that it was sent to the controller rather than being buffered
     self.raiseEvent(TraceSwitchBufferPut(self.dpid, packet, in_port, buffer_id))
+    assert buffer_id > 0 # this is an infinite buffer, there is always space. Numbering begins at 1.
     return buffer_id
   
   def _process_actions_for_packet_from_buffer(self, actions, buffer_id):
