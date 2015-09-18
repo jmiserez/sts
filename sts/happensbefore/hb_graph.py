@@ -776,10 +776,12 @@ class HappensBeforeGraph(object):
     dst = str(host_send.packet.dst)
     if just_first:
       rtype = 'ignore'
+      msg = "ignore_inconsistent"
     else:
       rtype = 'race'
+      msg = "race"
     name = "/%s/%s_%s_%s_%d.dot" % (result_dir, rtype, src, dst, host_send.eid)
-    print "Storing packet inconsistency for %s->%s in %s " % (src, dst, name)
+    print "Storing packet %s for %s->%s in %s " % (msg, src, dst, name)
     nx.write_dot(g, name)
 
   def cluster_cmds(self):
@@ -865,12 +867,15 @@ class Main(object):
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
     packet_races = self.graph.find_inconsistent()
+    inconsistent_packet_traces = []
     for trace, races, just_first in packet_races:
       self.graph.print_racing_packet_trace(self.results_dir, trace, races, just_first)
+      if not just_first:
+        inconsistent_packet_traces.append((trace, races, just_first))
     self.graph.find_inconsistent_updates()
     t6 = time.time()
 
-    print "Number of packet inconsistencies: ", len(packet_races)
+    print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
 
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
