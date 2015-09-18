@@ -14,6 +14,7 @@ from pox.openflow.libopenflow_01 import OFPT_HELLO
 from pox.openflow.libopenflow_01 import OFPT_FEATURES_REQUEST
 from pox.openflow.libopenflow_01 import OFPT_FEATURES_REPLY
 from pox.openflow.libopenflow_01 import OFPT_SET_CONFIG
+from pox.openflow.libopenflow_01 import OFPFC_DELETE_STRICT
 
 from hb_utils import pkt_info
 
@@ -348,80 +349,127 @@ class HappensBeforeGraph(object):
     4. duration_sec, duration_nsec
        - The total duration that the flow was installed is duration_sec*10^9 + duration_nsec nanoseconds.
          (millisecond precision is required by the spec)
-         
-    What should be matched:
+    
+    When are flow_removed messages actually sent and counters updated:
+    ==================================================================
+    see: http://openvswitch.org/support/dist-docs/DESIGN.md.txt
+    
+    OpenFlow 1.0
+    ------------
+                                              MODIFY          DELETE
+                                 ADD  MODIFY  STRICT  DELETE  STRICT
+                                 ===  ======  ======  ======  ======
+    match on priority            yes    ---     yes     ---     yes
+    match on out_port            ---    ---     ---     yes     yes
+    match on flow_cookie         ---    ---     ---     ---     ---
+    match on table_id            ---    ---     ---     ---     ---
+    controller chooses table_id  ---    ---     ---
+    updates flow_cookie          yes    yes     yes
+    updates OFPFF_SEND_FLOW_REM  yes     +       +
+    honors OFPFF_CHECK_OVERLAP   yes     +       +
+    updates idle_timeout         yes     +       +
+    updates hard_timeout         yes     +       +
+    resets idle timer            yes     +       +
+    resets hard timer            yes    yes     yes
+    zeros counters               yes     +       +
+    may add a new flow           yes    yes     yes
+    sends flow_removed message   ---    ---     ---      %       %
+    
+    What edges to add:
     =======================
     
-    - If the reason is OFPRR_DELETE, we should just add a link from the DELETE to the FLOW_REMOVED.
-      Linking the DELETE with the ADD should be done in other rules
-    
-    - If the reason is a timeout, we should add all MODIFYs that match (match, priority) and
-      that are sufficient time away. (same as other rules)
-      
-    - If the reason is a timeout, we should *also* try to add the ADD that initially installed
-      it. This ADD does *not* need to be sufficient time away, but it needs to be at least 
-      duration_sec*10^9+duration_nsec nanoseconds away.
-       -> Note: It will always be more than this time away, as the message is logged to the trace before
-                the rule is installed. 
+    Reason OFPRR_DELETE:
+      Events: PACKET_IN --> ADD(1), DELETE --> FLOW_REMOVED --> ADD(2)
+      - Edges above are already added by controller instrumentation or switch instrumentation.
+      - No additional edges should be added!
+        -> E.g. ADD(1) and DELETE can be reordered.
+               
+    Reason OFPRR_*_TIMEOUT:
+      Events: PACKET_IN --> ADD(1), EXPIRY --> FLOW_REMOVED --> ADD(2)
+      - Edges above are already added by controller instrumentation or switch instrumentation.
+      - Should we add additional edges?
+        Should we add an edge "flow installation happens-before flow expiry"?
+        -> Adding ADD(1) --> EXPIRY implies ADD(1) --> ADD(2), which is okay in this case.
+        But:
+          Events: PACKET_IN --> [MOD(1), MOD(2)], EXPIRY --> FLOW_REMOVED --> ADD(3)
+          - Here, MOD(1) and MOD(2) are unordered, and the first one installs the rule (either MOD(1) or MOD(2))
+          So this would also be possible:
+                  PACKET_IN --> MOD(1), EXPIRY --> FLOW_REMOVED --> ADD(3), MOD(2) 
+                            \-------------------------------------------> 
+          Or this:
+                  PACKET_IN --> MOD(2), EXPIRY --> FLOW_REMOVED --> ADD(3), MOD(1)
+                            \--------------------------------------------->
+          Or:
+                  PACKET_IN --> MOD(1), MOD(2), EXPIRY --> FLOW_REMOVED --> ADD(3)
+                            \---------->
+          Or:
+                  PACKET_IN --> MOD(2), MOD(1), EXPIRY --> FLOW_REMOVED --> ADD(3)
+                            \---------->                            
+          -> Adding MOD(2) --> EXPIRY would imply MOD(2) --> ADD(3), which is wrong in the first case.
+          -> Adding MOD(1) --> EXPIRY would imply MOD(1) --> ADD(3), which is wrong in the second case.
+          We cannot be sure which one installs/modifies the flow.
     
     '''
-    if type(event) not in [HbAsyncFlowExpiry]:
-      return
-    flow_table = event.flow_table
-    entry = event.entry # the removed entry
-    reason = event.reason # TODO(jm): implement reason, currently None.
-    
-    duration = entry.duration_sec*10^9 + entry.duration_nsec
-
-    # Case 1: Reason: DELETE
-    # TODO(jm): Currently assume reason timeout, as it's not implemented yet.
-    
-    #
-    # code here
-    #
-    
-    
-    # Case 2: Reason: IDLE/HARD_TIMEOUT
-    # Step 2.1: Add all MODIFY that are sufficient time away
-
-    # Find other write events in the graph.
-    for e in self.events:
-      if e == event:
-        continue
-      # Skip none switch event
-      if type(e) != HbMessageHandle:
-        continue
-      k_ops = []
-      # Find the write ops
-      for op in e.operations:
-        if type(op) == TraceSwitchFlowTableWrite:
-          
-          # TODO(jm): Check if it is a MODIFY
-          
-          #
-          # code here
-          #
-          
-          # if is MODIFY, then:
-            #k_ops.append(op)
-          pass
+    # TODO(JM): Remove the long description above.
+    if isinstance(event, HbAsyncFlowExpiry):
+      assert len(event.operations) == 1
+      expiry = event.operations[0]
+      flow_table = expiry.flow_table # the flow table before the removal
+      flow_mod = expiry.flow_mod # the removed entry
+      reason = expiry.reason # Either idle or hard timeout. Deletes are not handled
+      duration = expiry.duration_sec*10^9 + expiry.duration_nsec      
       
-      if not k_ops:
-        continue
-      # Make the edge
-      for k_op in k_ops:
-        delta = abs(event.t - k_op.t)
-        if delta > self.ww_delta:
-          self._time_hb_ww_edges_counter += 1
-          self._add_edge(e, event, sanity_check=False)
-        break
+      # create "dummy" operation that acts as a strict delete 
+      del_event = ofp_flow_mod(match=flow_mod.match,priority=flow_mod.priority,command=OFPFC_DELETE_STRICT)
       
-    # Step 2.2: Add the ADD that initially installed it, if it is >= duration time away.
-    #TODO(jm): add the ADD, use duration instead of self.ww_delta to check
-    
-    #
-    # code here
-    #
+      i_ops = [expiry]
+  
+      # Find other write events in the graph.
+      for e in self.events:
+        if e == del_event:
+          continue
+        # Skip none switch event
+        if type(e) != HbMessageHandle:
+          continue
+        kw_ops = []
+        kr_ops = []
+        # Find the write ops
+        for op in e.operations:
+          if type(op) == TraceSwitchFlowTableWrite:
+            kw_ops.append(op)
+          elif type(op) == TraceSwitchFlowTableRead:
+            kr_ops.append(op)
+        if (not kw_ops) and (not kr_ops):
+          continue
+        # Make the edge
+        done = False
+        for i_op in i_ops:
+          if done:
+            break
+          for kw_op in kw_ops:
+            # Skip if events commute anyway
+            if self.race_detector.commutativity_checker.check_commutativity_ww(
+                    del_event, i_op, e, kw_op):
+              continue
+            delta = abs(i_op.t - kw_op.t)
+            if delta > self.ww_delta:
+              self._time_hb_ww_edges_counter += 1
+              self._add_edge(e, event, sanity_check=False, rel='time')
+              done = True
+              break
+          if done:
+            break
+          for kr_op in kr_ops:
+            # Skip if events commute anyway
+            if self.race_detector.commutativity_checker.check_commutativity_rw(
+                    del_event, i_op, e, kr_op):
+              continue
+            delta = abs(i_op.t - kr_op.t)
+            if delta > self.ww_delta:
+              self._time_hb_rw_edges_counter += 1
+              self._add_edge(e, event, sanity_check=False, rel='time')
+              done = True
+              break
     
   def _rule_06_time_rw(self, event):
     if type(event) not in [HbPacketHandle]:

@@ -16,6 +16,7 @@ from pox.openflow.software_switch import OFConnection
 from pox.openflow.libopenflow_01 import ofp_flow_mod
 from pox.openflow.libopenflow_01 import ofp_type_rev_map
 from pox.openflow.libopenflow_01 import ofp_flow_mod_command_rev_map
+from pox.openflow.libopenflow_01 import ofp_flow_removed_reason_rev_map
 
 
 def enum(*sequential, **named):
@@ -114,17 +115,28 @@ def decode_flow_table(data):
   return table
 
 
-def base64_encode_flow(flow):
-  tmp = flow if not hasattr(flow, 'to_flow_mod') else flow.to_flow_mod()
-  return None if flow is None else base64_encode(tmp)
+def base64_encode_flow(flow, set_zero_XID=False):
+  """
+  Optionally set the xid to 0 right before encoding, to enable comparisons on the base64 string.
+  """
+  if not hasattr(flow, 'to_flow_mod'):
+    tmp = flow
+  else:
+    tmp = flow.to_flow_mod()
+  if flow is None:
+    return None
+  else:
+    if set_zero_XID:
+      tmp.xid = 0
+    return base64_encode(tmp)
 
 
-def base64_encode_flow_list(flows):
-  return None if flows is None else [base64_encode_flow(entry) for entry in flows]
+def base64_encode_flow_list(flows, set_zero_XID=False):
+  return None if flows is None else [base64_encode_flow(entry, set_zero_XID) for entry in flows]
 
 
-def base64_encode_flow_table(flow_table):
-  return None if flow_table is None else base64_encode_flow_list(flow_table.table)
+def base64_encode_flow_table(flow_table, set_zero_XID=False):
+  return None if flow_table is None else base64_encode_flow_list(flow_table.table, set_zero_XID)
 
 
 def compare_flow_table(table, other):
@@ -173,6 +185,11 @@ def nCr(n,r):
 def ofp_type_to_str(t):
   return ofp_type_rev_map.keys()[ofp_type_rev_map.values().index(t)]
 
+def ofp_flow_removed_reason_to_str(r):
+  return ofp_flow_removed_reason_rev_map.keys()[ofp_flow_removed_reason_rev_map.values().index(r)]
+
+def str_to_ofp_flow_removed_reason(r):
+  return ofp_flow_removed_reason_rev_map[r]
 
 def ofp_flow_mod_command_to_str(t):
   return ofp_flow_mod_command_rev_map.keys()[ofp_flow_mod_command_rev_map.values().index(t)]

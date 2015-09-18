@@ -118,8 +118,8 @@ class HappensBeforeLogger(EventMixin):
               TraceHostPacketHandleBegin: self.handle_host_ph_begin,
               TraceHostPacketHandleEnd: self.handle_host_ph_end,
               TraceHostPacketSend: self.handle_host_ps,
-              TraceAsyncSwitchFlowExpirationBegin: self.handle_async_switch_fexp_begin,
-              TraceAsyncSwitchFlowExpirationEnd: self.handle_async_switch_fexp_end,
+              TraceAsyncSwitchFlowExpiryBegin: self.handle_async_switch_fexp_begin,
+              TraceAsyncSwitchFlowExpiryEnd: self.handle_async_switch_fexp_end,
               TraceSwitchPacketHandleBegin: self.handle_switch_ph_begin,
               TraceSwitchPacketHandleEnd: self.handle_switch_ph_end,
               TraceSwitchMessageHandleBegin: self.handle_switch_mh_begin,
@@ -158,6 +158,8 @@ class HappensBeforeLogger(EventMixin):
       host.addListener(TraceHostPacketSend, self.handle_no_exceptions)
     
     for s in patch_panel.switches:
+      s.addListener(TraceAsyncSwitchFlowExpiryBegin, self.handle_no_exceptions)
+      s.addListener(TraceAsyncSwitchFlowExpiryEnd, self.handle_no_exceptions)
       s.addListener(TraceSwitchPacketHandleBegin, self.handle_no_exceptions)
       s.addListener(TraceSwitchPacketHandleEnd, self.handle_no_exceptions)
       s.addListener(TraceSwitchMessageHandleBegin, self.handle_no_exceptions)
@@ -191,8 +193,9 @@ class HappensBeforeLogger(EventMixin):
   def finish_async_switch_event(self, dpid):
     # sanity check
     assert self.is_async_switch_event_started(dpid)
-    # implementation detail check: HbAsyncFlowExpiry should have exactly one removed flow
+    # implementation detail check: HbAsyncFlowExpiry should have exactly one TraceSwitchFlowTableEntryExpiry operation
     assert len(self.started_async_switch_event[dpid].operations) == 1
+    assert isinstance(self.started_async_switch_event[dpid].operations[0], TraceSwitchFlowTableEntryExpiry)
     self.write_event_to_trace(self.started_async_switch_event[dpid])
     del self.started_async_switch_event[dpid]
     for successor_event in self.explicit_successors_async_switch_event[dpid]:
@@ -230,8 +233,8 @@ class HappensBeforeLogger(EventMixin):
     assert self.is_async_switch_event_started(event.dpid) or self.is_regular_switch_event_started(event.dpid)
     if self.is_async_switch_event_started(event.dpid):
       # implementation detail check: no HbAsyncFlowExpiry should have more than one removed flow
-      assert len(self.started_regular_switch_event[event.dpid].operations) == 0
-      self.started_regular_switch_event[event.dpid].operations.append(event)
+      assert len(self.started_async_switch_event[event.dpid].operations) == 0
+      self.started_async_switch_event[event.dpid].operations.append(event)
     elif self.is_regular_switch_event_started(event.dpid):
       self.started_regular_switch_event[event.dpid].operations.append(event)
       if isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle):
@@ -250,7 +253,7 @@ class HappensBeforeLogger(EventMixin):
     if self.is_async_switch_event_started(event.dpid):
       assert (pid_in == None)
       assert (mid_in is not None)
-      self.started_regular_switch_event[event.dpid].mid_out.append(mid_in) # link with latest event
+      self.started_async_switch_event[event.dpid].mid_out.append(mid_in) # link with expiry event
       self.explicit_successors_async_switch_event[event.dpid].append(event)
     elif self.is_regular_switch_event_started(event.dpid):
       assert (mid_in is not None) or (pid_in is not None)
@@ -375,9 +378,7 @@ class HappensBeforeLogger(EventMixin):
     
   def handle_switch_table_entry_expiry(self, event):
     assert self.is_async_switch_event_started(event.dpid)
-    self.started_async_switch_event[event.dpid].flow_table = event.flow_table
-    self.started_async_switch_event[event.dpid].entry = event.entry
-    self.started_async_switch_event[event.dpid].reason = event.reason #TODO(jm): implement reason
+    self.add_operation_to_switch_event(event)
     
   def handle_switch_buf_put(self, event):
     assert self.is_regular_switch_event_started(event.dpid)

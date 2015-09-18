@@ -10,6 +10,7 @@ from pox.openflow.libopenflow_01 import OFPFC_DELETE_STRICT
 from pox.openflow.libopenflow_01 import OFPFC_MODIFY
 from pox.openflow.libopenflow_01 import OFPFC_MODIFY_STRICT
 from pox.openflow.libopenflow_01 import OFPP_NONE
+from pox.openflow.libopenflow_01 import OFPFF_CHECK_OVERLAP
 
 from hb_utils import compare_flow_table
 from hb_utils import read_flow_table

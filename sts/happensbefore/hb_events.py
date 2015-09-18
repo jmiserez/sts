@@ -63,8 +63,7 @@ class HbEvent(JsonEvent):
 class HbAsyncFlowExpiry(HbEvent):
   '''
   "Async", as flows expire due to a timer running out. As this can happen even during another event, it needs to be handled separately.
-  Note that a single TraceSwitchFlowTableEntryExpiry operation is always part of this event once finished, but operations of this type
-  can also be part of HbMessageHandle operations (specifically FLOW_MOD, DELETE messages).
+  Note that a single TraceSwitchFlowTableEntryExpiry operation is always part of this event once finished..
   '''
   def __init__(self, mid_in=None, mid_out=None, operations=None, dpid=None,
                flow_table=None, entry=None, reason=None, eid=None):
@@ -75,9 +74,6 @@ class HbAsyncFlowExpiry(HbEvent):
     self.operations = check_list(operations)
 
     self.dpid = dpid
-    self.flow_table = flow_table
-    self.entry = entry
-    self.reason = reason #TODO(jm): implement reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
 
 
 class HbPacketHandle(HbEvent):

@@ -15,6 +15,8 @@ from hb_utils import decode_flow_mod
 from hb_utils import decode_packet
 from hb_utils import get_port_no
 from hb_utils import ofp_type_to_str
+from hb_utils import ofp_flow_removed_reason_to_str
+from hb_utils import str_to_ofp_flow_removed_reason
 
 
 class TraceSwitchEvent(JsonEvent):
@@ -38,6 +40,9 @@ class TraceSwitchEvent(JsonEvent):
                     ('touched_flow', base64_encode),
                     'touched_flow_bytes',
                     ('t', lambda fp: repr(fp)), # str() is not precise for floating point numbers in Python < v3.2
+                    'duration_sec',
+                    'duration_nsec',
+                    ('reason', ofp_flow_removed_reason_to_str),
                     ]
 
   _from_json_attrs = {
@@ -58,6 +63,9 @@ class TraceSwitchEvent(JsonEvent):
     'touched_flow': decode_flow_mod,
     'touched_flow_bytes': lambda x: x,
     't': lambda x: float(x),
+    'duration_sec': lambda x: x,
+    'duration_nsec': lambda x: x,
+    'reason': str_to_ofp_flow_removed_reason,
   }
 
   def __init__(self, t, eid=None):
@@ -65,13 +73,13 @@ class TraceSwitchEvent(JsonEvent):
     self.t = t or time.time()
 
 
-class TraceAsyncSwitchFlowExpirationBegin(TraceSwitchEvent):
+class TraceAsyncSwitchFlowExpiryBegin(TraceSwitchEvent):
   def __init__(self, dpid, t=None, eid=None):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
 
 
-class TraceAsyncSwitchFlowExpirationEnd(TraceSwitchEvent):
+class TraceAsyncSwitchFlowExpiryEnd(TraceSwitchEvent):
   def __init__(self, dpid, t=None, eid=None):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
@@ -153,9 +161,9 @@ class TraceSwitchFlowTableRead(TraceSwitchEvent):
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
-    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
-    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod))
-    self.entry = decode_flow_mod(base64_encode_flow(flow_mod))
+    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
+    self.entry = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True)) #TODO(jm): unused
     self.touched_flow_bytes = touched_flow_bytes
     self.touched_flow_now = touched_flow_now
 
@@ -164,18 +172,18 @@ class TraceSwitchFlowTableWrite(TraceSwitchEvent):
   def __init__(self, dpid, flow_table, flow_mod, t=None, eid=None):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
-    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
+    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
     self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod))
     
 class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
-  def __init__(self, dpid, flow_table, removed, t=None, eid=None):
+  def __init__(self, dpid, flow_table, flow_mod, duration_sec, duration_nsec, reason, t=None, eid=None):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
-    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
-    self.flow_mod = decode_flow_mod(base64_encode_flow(removed))
-    self.removed = decode_flow_mod(base64_encode_flow(removed))
-    self.reason = None #TODO(jm): implement reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
-
+    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
+    self.duration_sec = duration_sec
+    self.duration_nsec = duration_nsec
+    self.reason = reason
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
@@ -256,8 +264,8 @@ class TraceHostPacketSend(TraceHostEvent):
     self.out_port = out_port
     
 
-JsonEvent.register_type(TraceAsyncSwitchFlowExpirationBegin)
-JsonEvent.register_type(TraceAsyncSwitchFlowExpirationEnd)
+JsonEvent.register_type(TraceAsyncSwitchFlowExpiryBegin)
+JsonEvent.register_type(TraceAsyncSwitchFlowExpiryEnd)
 JsonEvent.register_type(TraceSwitchPacketHandleBegin)
 JsonEvent.register_type(TraceSwitchPacketHandleEnd)
 JsonEvent.register_type(TraceSwitchMessageRx)

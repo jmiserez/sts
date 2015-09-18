@@ -22,7 +22,7 @@ links.
 
 from pox.openflow.software_switch import DpPacketOut, OFConnection
 from pox.openflow.nx_software_switch import NXSoftwareSwitch
-from pox.openflow.flow_table import FlowTableModification, SwitchFlowTable
+from pox.openflow.flow_table import FlowTableModification, SwitchFlowTable, TableEntry
 from pox.openflow.libopenflow_01 import *
 from pox.lib.revent import EventMixin
 import pox.lib.packet.ethernet as ethernet
@@ -201,31 +201,51 @@ class ConnectionlessOFConnection(object):
 
 class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceAsyncSwitchFlowExpirationBegin, TraceAsyncSwitchFlowExpirationEnd, TraceSwitchFlowTableEntryExpiry, TraceSwitchFlowTableWrite])
+  _eventMixin_events = set([FlowTableModification, TraceAsyncSwitchFlowExpiryBegin, TraceAsyncSwitchFlowExpiryEnd, TraceSwitchFlowTableEntryExpiry, TraceSwitchFlowTableWrite])
   
   def __init__(self, switch, *args, **kw):
     SwitchFlowTable.__init__(self, *args, **kw)
     self.switch = switch
-    
-  def remove_matching_entries(self, match, priority=0, strict=False):
-    #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT) if this is called from a DELETE.
-    remove_flows = self.matching_entries(match, priority, strict)
-    for entry in remove_flows:
-        self.table.remove(entry)
-    self.raiseEvent(FlowTableModification(removed=remove_flows))
-    return remove_flows
   
-  def remove_expired_entries(self, now=None):
-    #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
-    #TODO(jm): Check OFPFF_SEND_FLOW_REM flag bit and only raise event if bit was set.
-    remove_flows = self.expired_entries(now)
-    for entry in remove_flows:
-        self.raiseEvent(TraceAsyncSwitchFlowExpirationBegin(self.switch.dpid))
+  def remove_entries(self, entries=[], reason=None, now=None):
+    """
+    Overrides the corresponding function from FlowTable, but raises events.
+    """
+    if reason in (OFPRR_HARD_TIMEOUT, OFPRR_IDLE_TIMEOUT):
+      # only raise events for expiry, not deletes. 
+      for entry in entries:
+        if not isinstance(entry, TableEntry):
+          raise "Not an Entry type"
+        self.raiseEvent(TraceAsyncSwitchFlowExpiryBegin(self.switch.dpid))
+        duration_sec, duration_nsec = entry.duration_sec_nsec(now)
+        flow_mod = entry.to_flow_mod()
+        self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, self, flow_mod, duration_sec, duration_nsec, reason))
         self.table.remove(entry)
-        self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, self, entry))
-        self.raiseEvent(FlowTableModification(removed=[entry]))
-        self.raiseEvent(TraceAsyncSwitchFlowExpirationEnd(self.switch.dpid))
-    return remove_flows
+        # NOTE(jm): We send one event for *each* removal, instead of grouping them together.
+        self.raiseEvent(FlowTableModification(removed=[entry], reason=reason, now=now))
+        self.raiseEvent(TraceAsyncSwitchFlowExpiryEnd(self.switch.dpid))
+    else:
+      for entry in entries:
+        if not isinstance(entry, TableEntry):
+          raise "Not an Entry type"
+        self.table.remove(entry)
+      # NOTE(jm): We group all removals together.
+      self.raiseEvent(FlowTableModification(removed=entries, reason=reason, now=now))
+
+  def remove_expired_entries(self, now=None):
+    """
+    Overrides the corresponding function from FlowTable, but raises events.
+    """
+    if now==None: now = time.time()
+    removed_flows = []
+    # only start event if we are actually going to remove some entries
+    if len(self.expired_entries_hard(now)) + len(self.expired_entries_idle(now)) > 0:
+      remove_flows_hard = self.expired_entries_hard(now)
+      self.remove_entries(remove_flows_hard, reason=OFPRR_HARD_TIMEOUT, now=now)
+      remove_flows_idle = self.expired_entries_idle(now)
+      self.remove_entries(remove_flows_idle, reason=OFPRR_IDLE_TIMEOUT, now=now)
+      removed_flows = remove_flows_hard + remove_flows_idle
+    return removed_flows
   
   def process_flow_mod(self, flow_mod):
     """ Process a flow mod sent to the switch
@@ -240,7 +260,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
   """
   # use metaclass to add new events
   __metaclass__ = CombiningEventMixinMetaclass
-  _eventMixin_events = set([TraceAsyncSwitchFlowExpirationBegin, TraceAsyncSwitchFlowExpirationEnd,
+  _eventMixin_events = set([TraceAsyncSwitchFlowExpiryBegin, TraceAsyncSwitchFlowExpiryEnd,
      TraceSwitchPacketHandleBegin, TraceSwitchPacketHandleEnd,
      TraceSwitchMessageHandleBegin, TraceSwitchMessageHandleEnd,
      TraceSwitchMessageSend, TraceSwitchPacketSend, TraceSwitchMessageRx,
@@ -256,10 +276,14 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     NXSoftwareSwitch.__init__(self, *args, **kw)
     self.table = TracingSwitchFlowTable(self) # overwrite SwitchFlowTable
     
+    # re-add handlers from SoftwareSwitch/SwitchFlowTable
+    self.table.addListener(FlowTableModification, self.on_FlowTableModification)
+    
     self.table.addListener(TraceSwitchFlowTableWrite, self.reraise_event)
-    self.table.addListener(TraceAsyncSwitchFlowExpirationBegin, self.reraise_event)
-    self.table.addListener(TraceAsyncSwitchFlowExpirationEnd, self.reraise_event)
+    self.table.addListener(TraceAsyncSwitchFlowExpiryBegin, self.reraise_event)
+    self.table.addListener(TraceAsyncSwitchFlowExpiryEnd, self.reraise_event)
     self.table.addListener(TraceSwitchFlowTableEntryExpiry, self.reraise_event)
+    
         
   def set_connection(self, connection):
     NXSoftwareSwitch.set_connection(self,connection)
@@ -318,6 +342,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     assert_type("packet", packet, ethernet, none_ok=False)
     assert_type("in_port", in_port, int, none_ok=False)
     
+    self.table.remove_expired_entries()
     entry = self.table.entry_for_packet(packet, in_port)
     if(entry != None):
       now = time.time()
@@ -573,7 +598,6 @@ class FuzzSoftwareSwitch (TracingNXSoftwareSwitch):
       def _print_entry_remove(table_mod):
         if table_mod.removed != []:
           self.log.debug("Table entry removed %s" % str(table_mod.removed))
-      # TODO(jm): Send OpenFlow message to controller if necessary instead of just printing out the removed flows. Do this in TracingNXSoftwareSwitch
       self.table.addListener(FlowTableModification, _print_entry_remove)
 
     def error_handler(e):
