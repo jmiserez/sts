@@ -134,6 +134,15 @@ def main(args):
         escaped_ops.append(k)
       raw_ev['operations'] = escaped_ops
     print json.dumps(raw_ev, indent=4, sort_keys=True)
+    if 'msg_type' in raw_ev and raw_ev['msg_type'] == 'OFPT_FLOW_MOD':
+      fm = hbu.decode_flow_mod(raw_ev['msg'])
+      print "=========="
+      print "ofp_flow_mod_command_to_str:"
+      print "=========="
+      opstr = ""
+      opstr += hbu.ofp_flow_mod_command_to_str(fm.command)
+      opstr += " => " + TableEntry.from_flow_mod(fm).show()
+      print opstr
     print "=========="
     print "recursive print:"
     print "=========="
