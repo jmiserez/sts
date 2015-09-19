@@ -1081,39 +1081,40 @@ class Main(object):
 
     with open(file_name, 'w') as f:
       # General info
-      f.write('rw_delta, %s\n' % rw_delta)
-      f.write('ww_delta, %s\n' % ww_delta)
-      f.write('alt_barrier, %s\n' % self.alt_barr)
+      f.write('key,value\n')
+      f.write('rw_delta,%s\n' % rw_delta)
+      f.write('ww_delta,%s\n' % ww_delta)
+      f.write('alt_barrier,%s\n' % self.alt_barr)
 
       # Operataions
-      f.write('num_read, %d\n' % num_read)
-      f.write('num_writes, %d\n' % num_writes)
-      f.write('num_ops, %d\n' % num_ops)
+      f.write('num_read,%d\n' % num_read)
+      f.write('num_writes,%d\n' % num_writes)
+      f.write('num_ops,%d\n' % num_ops)
 
       # HB time edges
-      f.write('num_rw_time_edges, %d\n' % num_rw_time_edges)
-      f.write('num_ww_time_edges, %d\n' % num_ww_time_edges)
-      f.write('num_time_edges, %d\n' % num_time_edges)
+      f.write('num_rw_time_edges,%d\n' % num_rw_time_edges)
+      f.write('num_ww_time_edges,%d\n' % num_ww_time_edges)
+      f.write('num_time_edges,%d\n' % num_time_edges)
 
       # Races info
-      f.write('num_harmful, %d\n' % num_harmful)
-      f.write('num_commute, %d\n' % num_commute)
-      f.write('num_races, %d\n' % num_races)
+      f.write('num_harmful,%d\n' % num_harmful)
+      f.write('num_commute,%d\n' % num_commute)
+      f.write('num_races,%d\n' % num_races)
 
       # Inconsistency
-      f.write('num_per_pkt_inconsistent_no_repeat, %d\n' % num_per_pkt_inconsistent_no_repeat)
-      f.write('num_per_pkt_ignored_first, %d\n' % num_per_pkt_ignored_first)
-      f.write('num_per_pkt_inconsistent, %d\n' % num_per_pkt_inconsistent)
+      f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
+      f.write('num_per_pkt_ignored_first,%d\n' % num_per_pkt_ignored_first)
+      f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
 
       # Times
-      f.write('total_time_sec, %d\n'% total_time)
-      f.write('load_time_sec, %d\n' % load_time )
-      f.write('detect_races_time_sec, %d\n' % detect_races_time )
-      f.write('extract_traces_time_sec, %d\n' % extract_traces_time )
-      f.write('per_packet_inconsistent_time_sec, %d\n' % per_packet_inconsistent_time )
-      f.write('find_reactive_cmds_time_sec, %d\n' % find_reactive_cmds_time )
-      f.write('find_proactive_cmds_time_sec, %d\n' % find_proactive_cmds_time )
-      f.write('find_inconsistent_update_time_sec, %d\n' % find_inconsistent_update_time )
+      f.write('total_time_sec,%f\n'% total_time)
+      f.write('load_time_sec,%f\n' % load_time )
+      f.write('detect_races_time_sec,%f\n' % detect_races_time )
+      f.write('extract_traces_time_sec,%f\n' % extract_traces_time )
+      f.write('per_packet_inconsistent_time_sec,%f\n' % per_packet_inconsistent_time )
+      f.write('find_reactive_cmds_time_sec,%f\n' % find_reactive_cmds_time )
+      f.write('find_proactive_cmds_time_sec,%f\n' % find_proactive_cmds_time )
+      f.write('find_inconsistent_update_time_sec,%f\n' % find_inconsistent_update_time )
 
 
 
