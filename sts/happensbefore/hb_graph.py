@@ -829,6 +829,23 @@ class HappensBeforeGraph(object):
             if other not in cmds:
               print "RACE version", version, " eid: ", cmd, " other eid", other
 
+  def races_graph(self):
+    races = self.race_detector.races_harmful
+    races_graph = nx.DiGraph()
+    for rtype, i_event, i_op, k_event, k_op in races:
+      races_graph.add_node(i_event.eid, event=i_event)
+      races_graph.add_node(k_event.eid, event=k_event)
+      races_graph.add_edge(i_event.eid, k_event.eid, rel='race', harmful=True)
+    return races_graph
+
+  def save_races_graph(self, print_pkts=True, name=None):
+    if not name:
+      name = "just_races.dot"
+    graph = self.races_graph()
+    self.prep_draw(graph, print_pkts)
+    print "Saving all races graph in", name
+    nx.write_dot(graph, os.path.join(self.results_dir, name))
+
 
 class Main(object):
   
@@ -881,6 +898,8 @@ class Main(object):
         inconsistent_packet_traces.append((trace, races, just_first))
     self.graph.find_inconsistent_updates()
     t6 = time.time()
+
+    self.graph.save_races_graph(self.print_pkt)
 
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
 
