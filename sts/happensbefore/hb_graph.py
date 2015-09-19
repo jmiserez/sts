@@ -737,7 +737,7 @@ class HappensBeforeGraph(object):
         races.remove(i)
     return races
 
-  def find_inconsistent(self, ignore_first=True):
+  def get_all_packet_traces_with_races(self):
     """
     Finds all the races related each packet trace
     """
@@ -749,16 +749,38 @@ class HappensBeforeGraph(object):
         continue
       if len(tmp) == 1:
         send = trace.graph['host_send']
-        if ignore_first and (trace.has_edge(send.eid, tmp[0].i_event.eid) or
-                               trace.has_edge(send.eid, tmp[0].k_event.eid)):
-          print "Ignoring race for on the first switch: for %s->%s" % (str(send.packet.src), str(send.packet.dst))
+        if trace.has_edge(send.eid, tmp[0].i_event.eid) or\
+          trace.has_edge(send.eid, tmp[0].k_event.eid):
           just_first = True
-          #continue
       races.append((trace, tmp, just_first))
     return races
 
+  def summarize_per_packet_inconsistent(self, traces_races, add_just_first=True):
+    """
+    If two packets are inconsistent, but they race with the same set of writes,
+    then only one will be reported
+    """
+    result = {}
+    removed = defaultdict(list)
+    for trace, races, just_first in traces_races:
+      if just_first and not add_just_first:
+        continue
+      # First get the writes
+      writes = []
+      for race in races:
+        if isinstance(race.i_op, TraceSwitchFlowTableWrite):
+          writes.append(race.i_op.eid)
+        if isinstance(race.k_op, TraceSwitchFlowTableWrite):
+          writes.append(race.k_op.eid)
+      key = (tuple(sorted(writes)), just_first)
+      if key in result:
+        removed[key].append((trace, races, just_first))
+        self.print_racing_packet_trace(trace, races, just_first, label="trimmed")
+      else:
+        result[key] = (trace, races, just_first)
+    return result.values()
 
-  def print_racing_packet_trace(self, result_dir, trace, races, just_first=False, name=None):
+  def print_racing_packet_trace(self, trace, races, just_first, label):
     """
     first is the trace
     second is the list of races
@@ -775,17 +797,9 @@ class HappensBeforeGraph(object):
     self.prep_draw(g, TraceSwitchPacketUpdateBegin)
     src = str(host_send.packet.src)
     dst = str(host_send.packet.dst)
-    if just_first:
-      rtype = 'ignore'
-      msg = "ignore_inconsistent"
-    else:
-      rtype = 'race'
-      msg = "race"
-    if name:
-      name = "/%s/%s_%s_%s_%d.dot" % (result_dir, name, src, dst, host_send.eid)
-    else:
-      name = "/%s/%s_%s_%s_%d.dot" % (result_dir, rtype, src, dst, host_send.eid)
-    print "Storing packet %s for %s->%s in %s " % (msg, src, dst, name)
+    name = "%s_%s_%s_%s.dot" %(label, src, dst, host_send.eid)
+    name = os.path.join(self.results_dir, name)
+    print "Storing packet %s for %s->%s in %s " % (label, src, dst, name)
     nx.write_dot(g, name)
 
   def cluster_cmds(self):
@@ -846,6 +860,36 @@ class HappensBeforeGraph(object):
     print "Saving all races graph in", name
     nx.write_dot(graph, os.path.join(self.results_dir, name))
 
+  def find_per_packet_inconsistent(self, ignore_first=False, summarize=True):
+    """
+    Returns 3 sets of packet traces. 1) all per-packet inconsistent traces
+    2) traces ignored because they just race on the first switch
+    3) summarized traces after removing traces that races with the same writes
+    :param ignore_first:
+    :param summarize:
+    :return:
+    """
+    packet_races = self.get_all_packet_traces_with_races()
+    inconsistent_packet_traces = []
+    ignored_packet_traces = []
+
+    if ignore_first:
+      for data in packet_races:
+        just_first = data[2]
+        if not just_first:
+          inconsistent_packet_traces.append(data)
+        else:
+          ignored_packet_traces.append(data)
+    else:
+      inconsistent_packet_traces = packet_races
+
+    summarized = []
+    if summarize:
+      summarized = self.summarize_per_packet_inconsistent(
+        inconsistent_packet_traces, add_just_first=not ignore_first)
+
+    return inconsistent_packet_traces, ignored_packet_traces, summarized
+
 
 class Main(object):
   
@@ -890,18 +934,21 @@ class Main(object):
     t4 = time.time()
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
-    packet_races = self.graph.find_inconsistent(self.ignore_first)
-    inconsistent_packet_traces = []
-    for trace, races, just_first in packet_races:
-      self.graph.print_racing_packet_trace(self.results_dir, trace, races, just_first)
-      if not just_first:
-        inconsistent_packet_traces.append((trace, races, just_first))
-    self.graph.find_inconsistent_updates()
+    inconsistent_packet_traces, ignored_packet_traces, summarized = self.graph.find_per_packet_inconsistent(self.ignore_first, True)
     t6 = time.time()
+    self.graph.find_inconsistent_updates()
 
+    # Print traces
+    for data in inconsistent_packet_traces:
+      self.graph.print_racing_packet_trace(*data, label='race')
+    for data in summarized:
+      self.graph.print_racing_packet_trace(*data, label='trimmed')
+    for data in ignored_packet_traces:
+      self.graph.print_racing_packet_trace(*data, label='ignored')
     self.graph.save_races_graph(self.print_pkt)
 
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
+    print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
 
     print "Done. Time elapsed: "+(str(t4-t0))+"s"
     print "load_trace: "+(str(t1-t0))+"s"
