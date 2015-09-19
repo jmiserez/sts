@@ -737,7 +737,7 @@ class HappensBeforeGraph(object):
         races.remove(i)
     return races
 
-  def find_inconsistent(self):
+  def find_inconsistent(self, ignore_first=True):
     """
     Finds all the races related each packet trace
     """
@@ -749,15 +749,16 @@ class HappensBeforeGraph(object):
         continue
       if len(tmp) == 1:
         send = trace.graph['host_send']
-        if trace.has_edge(send.eid, tmp[0].i_event.eid) or\
-            trace.has_edge(send.eid, tmp[0].k_event.eid):
+        if ignore_first and (trace.has_edge(send.eid, tmp[0].i_event.eid) or
+                               trace.has_edge(send.eid, tmp[0].k_event.eid)):
           print "Ignoring race for on the first switch: for %s->%s" % (str(send.packet.src), str(send.packet.dst))
           just_first = True
           #continue
       races.append((trace, tmp, just_first))
     return races
 
-  def print_racing_packet_trace(self, result_dir, trace, races, just_first=False):
+
+  def print_racing_packet_trace(self, result_dir, trace, races, just_first=False, name=None):
     """
     first is the trace
     second is the list of races
@@ -780,7 +781,10 @@ class HappensBeforeGraph(object):
     else:
       rtype = 'race'
       msg = "race"
-    name = "/%s/%s_%s_%s_%d.dot" % (result_dir, rtype, src, dst, host_send.eid)
+    if name:
+      name = "/%s/%s_%s_%s_%d.dot" % (result_dir, name, src, dst, host_send.eid)
+    else:
+      name = "/%s/%s_%s_%s_%d.dot" % (result_dir, rtype, src, dst, host_send.eid)
     print "Storing packet %s for %s->%s in %s " % (msg, src, dst, name)
     nx.write_dot(g, name)
 
@@ -830,7 +834,8 @@ class Main(object):
   
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
-               ignore_ethertypes=None, no_race=False, alt_barr=False):
+               ignore_ethertypes=None, no_race=False, alt_barr=False,
+               verbose=True, ignore_first=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -844,6 +849,8 @@ class Main(object):
     self.ignore_ethertypes = ignore_ethertypes
     self.no_race = no_race
     self.alt_barr = alt_barr
+    self.verbose = verbose
+    self.ignore_first = ignore_first
 
   def run(self):
     import time
@@ -860,13 +867,13 @@ class Main(object):
     t1 = time.time()
     self.graph.race_detector.detect_races(verbose=True)
     t2 = time.time()
-    self.graph.race_detector.print_races()
+    self.graph.race_detector.print_races(self.verbose)
     t3 = time.time()
     self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
     t4 = time.time()
     self.graph.store_traces(self.results_dir)
     t5 = time.time()
-    packet_races = self.graph.find_inconsistent()
+    packet_races = self.graph.find_inconsistent(self.ignore_first)
     inconsistent_packet_traces = []
     for trace, races, just_first in packet_races:
       self.graph.print_racing_packet_trace(self.results_dir, trace, races, just_first)
@@ -914,11 +921,15 @@ if __name__ == '__main__':
                       help="Don't add edge between racing events in the graph")
   parser.add_argument('--alt-barr', dest='alt_barr', action='store_true', default=False,
                       help="Use alternative barrier rules for purely reactive controllers")
-
+  parser.add_argument('-v', dest='verbose', action='store_true', default=False,
+                      help="Print all commute and harmful races")
+  parser.add_argument('--ignore-first', dest='ignore_first', action='store_true',
+                      default=False, help="Ignore the first race for per-packet consistency check")
 
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
-              no_race=args.no_race, alt_barr=args.alt_barr)
+              no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
+              ignore_first=args.ignore_first)
   main.run()

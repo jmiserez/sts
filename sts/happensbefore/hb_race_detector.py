@@ -243,38 +243,42 @@ class RaceDetector(object):
     self.total_commute = len(self.races_commute)
     self.total_races = self.total_harmful + self.total_commute
 
-  def print_races(self):
-    for race in self.races_commute:
+  def print_races(self, verbose=False):
+    if verbose:
+      for race in self.races_commute:
+        print "+-------------------------------------------+"
+        print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
+        print "+-------------------------------------------+"
+        print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
+        print "+-------------------------------------------+"
+        print "| " + op_to_str(race.i_op)
+        print "+-------------------------------------------+"
+        print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
+        print "+-------------------------------------------+"
+        print "| " + op_to_str(race.k_op)
+        print "+-------------------------------------------+"
+      for race in self.races_harmful:
+        print "+-------------------------------------------+"
+        print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
+        print "+-------------------------------------------+"
+        print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
+        print "+-------------------------------------------+"
+        print "| " + op_to_str(race.i_op)
+        print "+-------------------------------------------+"
+        print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
+        print "+-------------------------------------------+"
+        print "| " + op_to_str(race.k_op)
+        print "+-------------------------------------------+"
       print "+-------------------------------------------+"
-      print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
-      print "+-------------------------------------------+"
-      print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
-      print "+-------------------------------------------+"
-      print "| " + op_to_str(race.i_op)
-      print "+-------------------------------------------+"
-      print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
-      print "+-------------------------------------------+"
-      print "| " + op_to_str(race.k_op)
-      print "+-------------------------------------------+"
-    for race in self.races_harmful:
-      print "+-------------------------------------------+"
-      print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
-      print "+-------------------------------------------+"
-      print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
-      print "+-------------------------------------------+"
-      print "| " + op_to_str(race.i_op)
-      print "+-------------------------------------------+"
-      print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
-      print "+-------------------------------------------+"
-      print "| " + op_to_str(race.k_op)
-      print "+-------------------------------------------+"
+      for ev in self.read_operations:
+        print "| {:>4}: {:28} (read) |".format(ev[0].eid, ev[0].type)
+      for ev in self.write_operations:
+        print "| {:>4}: {:27} (write) |".format(ev[0].eid, ev[0].type)
     print "+-------------------------------------------+"
-    for ev in self.read_operations:
-      print "| {:>4}: {:28} (read) |".format(ev[0].eid, ev[0].type)
-    for ev in self.write_operations:
-      print "| {:>4}: {:27} (write) |".format(ev[0].eid, ev[0].type)
     print "| Total operations:      {:<18} |".format(self.total_operations)
-    print "|-------------------------------------------|"
+    print "| Total write operations: {:<17} |".format(len(self.write_operations))
+    print "| Total read operations:  {:<17} |".format(len(self.read_operations))
+    print "+-------------------------------------------+"
     print "| Total commuting races: {:<18} |".format(self.total_commute)
     print "| Total harmful races:   {:<18} |".format(self.total_harmful)
     print "| Total filtered races:  {:<18} |".format(self.total_filtered)
