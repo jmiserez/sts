@@ -174,7 +174,11 @@ class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
     self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table))
     self.flow_mod = decode_flow_mod(base64_encode_flow(removed))
     self.removed = decode_flow_mod(base64_encode_flow(removed))
-
+    
+class TraceSwitchBarrier(TraceSwitchEvent):
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
+    self.dpid = dpid
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
