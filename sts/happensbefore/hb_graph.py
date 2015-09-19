@@ -24,6 +24,8 @@ from hb_race_detector import predecessor_types
 from hb_json_event import *
 from hb_events import *
 from hb_sts_events import *
+from hb_utils import dfs_edge_filter
+from hb_utils import just_mid_iter
 
 #
 # Do not import any STS types! We would like to be able to run this offline
@@ -83,8 +85,11 @@ class HappensBeforeGraph(object):
     self.no_race = no_race
     self.packet_traces = None
     self.host_sends = {}
+    # Handled messages from the controller to the switch
     self.msg_handles = {}
-    
+    # Messages from the switch to the controller
+    self.msgs = {}
+
     self.alt_barr = alt_barr
 
   @property
@@ -436,6 +441,7 @@ class HappensBeforeGraph(object):
       self.msg_handles[event.eid] = event
     def _handle_HbMessageSend(event):
       self._update_edges(event)
+      self.msgs[event.eid] = event
     def _handle_HbHostHandle(event):
       self._update_edges(event)
     def _handle_HbHostSend(event):
@@ -614,6 +620,9 @@ class HappensBeforeGraph(object):
             label += "\\nt: " + repr(x.t)
             shape = 'box'
             break
+      cmd_type = data.get('cmd_type')
+      if cmd_type:
+        label += "\\n%s" % cmd_type
       if op:
         label += "\\nOp: %s" % op
       if hasattr(event, 'hid'):
@@ -889,6 +898,45 @@ class HappensBeforeGraph(object):
         inconsistent_packet_traces, add_just_first=not ignore_first)
 
     return inconsistent_packet_traces, ignored_packet_traces, summarized
+
+  def find_reactive_versions(self):
+    cmds = []
+    for eid in self.msgs:
+      nodes = []
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      for src, dst in edges:
+        src_event = self.g.node[src]['event']
+        dst_event = self.g.node[dst]['event']
+        if isinstance(src_event, HbMessageHandle):
+          nodes.append(src_event)
+          self.g.node[src]['cmd_type'] = "Reactive to %d" % eid
+        if isinstance(dst_event, HbMessageHandle):
+          nodes.append(dst_event)
+          self.g.node[dst]['cmd_type'] = "Reactive to %d" % eid
+      # Get unique and sort by time
+      nodes = sorted(list(set(nodes)),
+                     key=lambda n: n.operations[0].t if n.operations else 0)
+      cmds.append((self.msgs[eid], nodes))
+    return cmds
+
+  def find_proactive_cmds(self, reactive_versions=None):
+    """
+    Proactive is all the cmds that were not in the reactive set
+    """
+    if not reactive_versions:
+      reactive_versions = self.find_reactive_versions()
+    reactive_cmds = []
+    for msgs, cmds in reactive_versions:
+      for cmd in cmds:
+        reactive_cmds.append(cmd.eid)
+    proactive_eid = set(self.msg_handles.keys()).difference(set(reactive_cmds))
+    proactive = [self.g.node[eid]['event'] for eid in list(proactive_eid)]
+    for cmd in proactive:
+      self.g.node[cmd.eid]['cmd_type'] = 'Proactive'
+    for cmd in proactive:
+      print cmd.eid, cmd, cmd.to_json()
+    proactive.sort(key=lambda n: n.operations[0].t if n.operations else 0)
+    return proactive
 
 
 class Main(object):
