@@ -811,47 +811,6 @@ class HappensBeforeGraph(object):
     print "Storing packet %s for %s->%s in %s " % (label, src, dst, name)
     nx.write_dot(g, name)
 
-  def cluster_cmds(self):
-    """
-    Cluster the update commands by time.
-    """
-    # Set of flowMods
-    fmods = []
-    for event in self.msg_handles.itervalues():
-      if event.msg_type_str == 'OFPT_FLOW_MOD':
-        fmods.append(event)
-    # Cluster by time
-    from scipy.cluster.hierarchy import fclusterdata
-    features = [[e.operations[0].t] for e in fmods]
-    result = fclusterdata(features, 1, criterion="distance")
-    clustered = defaultdict(list)
-    for i in range(len(fmods)):
-      clustered[result[i]].append(fmods[i])
-    # just trying to order the versions
-    ordered = sorted(clustered.keys(), key= lambda i: clustered[i][0].operations[0].t)
-    clustered_ordered = dict()
-    for i in range(len(ordered)):
-      clustered_ordered[i] = clustered[ordered[i]]
-    self.clustered_cmds = clustered_ordered
-    return clustered_ordered
-
-  def find_inconsistent_updates(self):
-    """Try to find if two versions race with each other"""
-    ww_races = defaultdict(list)
-    for race in self.race_detector.races_harmful:
-      if race.rtype == 'w/w':
-        ww_races[race.i_event.eid].append(race.k_event.eid)
-        ww_races[race.k_event.eid].append(race.i_event.eid)
-
-    self.cluster_cmds()
-    for version, events in self.clustered_cmds.iteritems():
-      cmds = [e.eid for e in events]
-      for cmd in cmds:
-        if cmd in ww_races:
-          for other in ww_races[cmd]:
-            if other not in cmds:
-              print "RACE version", version, " eid: ", cmd, " other eid", other
-
   def races_graph(self):
     races = self.race_detector.races_harmful
     races_graph = nx.DiGraph()
@@ -936,6 +895,63 @@ class HappensBeforeGraph(object):
     proactive.sort(key=lambda n: n.operations[0].t)
     return proactive
 
+  def cluster_cmds(self, cmds):
+    """
+    Cluster the update commands by time.
+    """
+    # Cluster by time
+    from scipy.cluster.hierarchy import fclusterdata
+    features = [[e.operations[0].t] for e in cmds]
+    result = fclusterdata(features, 1, criterion="distance")
+    clustered = defaultdict(list)
+    for i in range(len(cmds)):
+      clustered[result[i]].append(cmds[i])
+    # just trying to order the versions
+    ordered = sorted(clustered.keys(), key= lambda i: clustered[i][0].operations[0].t)
+    clustered_ordered = dict()
+    for i in range(len(ordered)):
+      clustered_ordered[i] = clustered[ordered[i]]
+    self.clustered_cmds = clustered_ordered
+    return clustered_ordered
+
+  def find_inconsistent_updates(self):
+    """Try to find if two versions race with each other"""
+    reactive = self.find_reactive_versions()
+    proactive = self.find_proactive_cmds(reactive)
+    self.cluster_cmds(proactive)
+
+    ww_races = defaultdict(list)
+    for race in self.race_detector.races_harmful:
+      if race.rtype == 'w/w':
+        ww_races[race.i_event.eid].append(race.k_event.eid)
+        ww_races[race.k_event.eid].append(race.i_event.eid)
+
+    # Consider all proactive and reactive versions
+    versions = {}
+    for version, events in self.clustered_cmds.iteritems():
+      versions[version] = set([event.eid for event in events])
+    for pktin, events in reactive:
+      versions[pktin] = set([event.eid for event in events])
+
+    racing_events = []
+    for version, cmds in versions.iteritems():
+      for cmd in cmds:
+        if cmd in ww_races:
+          for other in ww_races[cmd]:
+            if other not in cmds:
+              racing_events.append((cmd, other))
+    racing_versions = []
+    for eid1, eid2 in racing_events:
+      v1 = None
+      v2 = None
+      for version, cmds in versions.iteritems():
+        if eid1 in cmds:
+          v1 = version
+        if eid2 in cmds:
+          v2 = version
+      racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
+    return racing_versions
+
 
 class Main(object):
   
@@ -989,7 +1005,7 @@ class Main(object):
     proactive_cmds = self.graph.find_proactive_cmds(reactive_cmds)
     t6 = time.time()
 
-    self.graph.find_inconsistent_updates()
+    racing_versions = self.graph.find_inconsistent_updates()
     t7 = time.time()
 
 
@@ -1010,6 +1026,8 @@ class Main(object):
 
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
+    print "Number of packet inconsistent updates: ", len(racing_versions)
+    print "INCONSISENT updates", racing_versions
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
