@@ -662,61 +662,7 @@ class HappensBeforeLogger(EventMixin):
   def rematch_unmatched_lines(self):
     # self.unmatched_controller_lines[:] modifies the list slice instead of assigning a new list
     self.unmatched_controller_lines = list(itertools.ifilterfalse(self.match_controller_line, self.unmatched_controller_lines))
-    
-    # TODO(jm): remove the following debug code
-    # debugging
-    have_old_events = False
-    # TODO(jm): Only print out warning if something went wrong
     print "Controller log: {} log lines, {} STS events not matched.".format(len(self.unmatched_controller_lines), len(self.unmatched_HbMessageHandle) + len(self.unmatched_HbMessageSend))
-    now = time.time()
-    threshold = 30 # time in seconds
-    
-    # check the events written to stdout by the controller. These events should definitely be matched!
-    for line in self.unmatched_controller_lines:
-      age = now - line[0]
-      if age > threshold:
-        have_old_events = True
-    
-    # print everything out
-    if have_old_events:
-      print "=================================================================================================="
-      print "=================================================================================================="
-      for line in self.unmatched_controller_lines:
-        age = now - line[0]
-        if len(line) == 3:
-          timestamp, in_swid, in_msg = line
-          print " "
-          print "  -> Unmatched line: age: {} - MessageIn: {} ({}: {})".format(age, str(timestamp), str(in_swid), str(base64_decode_openflow(in_msg)))
-        elif len(line) == 5:
-          timestamp, in_swid, in_msg, out_swid, out_msg = line
-          print " "
-          print "  -> Unmatched line: age: {} - MessageOut: {} ({}: {} --> {}: {})".format(age, str(timestamp), str(in_swid), str(base64_decode_openflow(in_msg)), str(out_swid), str(base64_decode_openflow(out_msg)))
-      print "=================================================================================================="
-      for dpid, events in self.unmatched_HbMessageSend.iteritems():
-        for evt in events:
-          age = now - evt[0]
-          if age > threshold:
-            print " "
-            if evt[2].header_type not in (ofp_type_rev_map['OFPT_BARRIER_REPLY'], 
-                                          ofp_type_rev_map['OFPT_VENDOR'], 
-                                          ofp_type_rev_map['OFPT_STATS_REPLY'], 
-                                          ofp_type_rev_map['OFPT_GET_CONFIG_REPLY'], 
-                                          ofp_type_rev_map['OFPT_FEATURES_REPLY'], 
-                                          ofp_type_rev_map['OFPT_HELLO']):
-              print "  -> unmatched HbMessageSend: age: {} - {}: {}".format(age, dpid, str(evt[2]))
-      print "=================================================================================================="
-      print "=================================================================================================="
-      import pdb
-      pdb.set_trace()
-
-    
-    # TODO(jm): remove the following note
-          
-    # NOTE(jm): If this message is seen often, this might indicate a problem with the controller
-    #           instrumentation: The controller instrumentation might not be writing out the raw
-    #           Openflow message bytes as they are received on the wire.
-    #           This can happen e.g. in Floodlight if the message object is modified via
-    #           references after the write is issued but before the queue is flushed.
 
 
   # TODO(jm): Remove this function
