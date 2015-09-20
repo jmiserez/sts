@@ -267,7 +267,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
      TraceSwitchFlowTableRead,
      TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry,
      TraceSwitchBufferPut, TraceSwitchBufferGet, TraceSwitchPacketUpdateBegin,
-     TraceSwitchPacketUpdateEnd])
+     TraceSwitchPacketUpdateEnd,
+     TraceSwitchPacketDrop])
   
   def reraise_event(self, event):
       self.raiseEvent(event)
@@ -527,8 +528,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         OFPAT_DEC_MPLS_TTL: dec_mpls_ttl,
     }
     if len(actions) == 0:
-      #TODO(jm): This packet is being explicitly DROPPED. Maybe we should add an event for this!
-      pass
+      # This packet is being explicitly DROPPED.
+      self.raiseEvent(TraceSwitchPacketDrop(self.dpid, packet, in_port, self.table))
     else:
       for action in actions:
         if action.type is OFPAT_RESUBMIT:

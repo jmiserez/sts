@@ -131,6 +131,7 @@ class HappensBeforeLogger(EventMixin):
               TraceSwitchFlowTableRead: self.handle_switch_table_read,
               TraceSwitchFlowTableWrite: self.handle_switch_table_write,
               TraceSwitchFlowTableEntryExpiry: self.handle_switch_table_entry_expiry,
+              TraceSwitchPacketDrop: self.handle_switch_packet_drop,
               TraceSwitchBufferPut: self.handle_switch_buf_put,
               TraceSwitchBufferGet: self.handle_switch_buf_get,
               TraceSwitchPacketUpdateBegin: self.handle_switch_pu_begin,
@@ -169,6 +170,7 @@ class HappensBeforeLogger(EventMixin):
       s.addListener(TraceSwitchFlowTableRead, self.handle_no_exceptions)
       s.addListener(TraceSwitchFlowTableWrite, self.handle_no_exceptions)
       s.addListener(TraceSwitchFlowTableEntryExpiry, self.handle_no_exceptions)
+      s.addListener(TraceSwitchPacketDrop, self.handle_no_exceptions)
       s.addListener(TraceSwitchBufferPut, self.handle_no_exceptions)
       s.addListener(TraceSwitchBufferGet, self.handle_no_exceptions)
       s.addListener(TraceSwitchPacketUpdateBegin, self.handle_no_exceptions)
@@ -372,7 +374,7 @@ class HappensBeforeLogger(EventMixin):
     
     new_event = HbPacketSend(pid_in, pid_out, dpid=event.dpid, packet=event.packet, out_port=event.out_port)
     self.try_add_successor_to_switch_event(new_event, pid_in=pid_in)
-    
+  
   #
   # Switch operation events
   #
@@ -386,6 +388,10 @@ class HappensBeforeLogger(EventMixin):
   def handle_switch_table_entry_expiry(self, event):
     assert self.is_async_switch_event_started(event.dpid)
     self.add_operation_to_switch_event(event)
+    
+  def handle_switch_packet_drop(self, event):
+    self.add_operation_to_switch_event(event)
+    
     
   def handle_switch_buf_put(self, event):
     assert self.is_regular_switch_event_started(event.dpid)
