@@ -353,6 +353,10 @@ class HappensBeforeLogger(EventMixin):
     # event.msg goes to the controller, and we cannot match it there. So we remove it from the ObjectRegistry.
     self.mids.remove_obj(event.msg)
     
+    # it is possible that the message does not have an XID yet. Add one if necessary.
+    if event.msg.xid is None:
+      event.msg.xid = generateXID()
+      
     new_event = HbMessageSend(mid_in, mid_out, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg)   
     self.try_add_successor_to_switch_event(new_event, mid_in=mid_in)
     
@@ -531,7 +535,28 @@ class HappensBeforeLogger(EventMixin):
   
   # TODO(jm): rename this function to start with _
   def compare_msg(self, m1, m2):
-    # TODO(jm): Normalize messages for comparison where necessary (check).
+    def norm (m):
+      m = m.clone()
+      m.wildcards = m._unwire_wildcards(m.wildcards)
+      m.wildcards = m._normalize_wildcards(m.wildcards)
+      return m
+    if hasattr(m1, 'match') and hasattr(m2, 'match'):
+       m1.match = norm(m1.match)
+       m2.match = norm(m2.match)
+       
+    if m1.header_type == OFPT_FLOW_REMOVED and m2.header_type == OFPT_FLOW_REMOVED:
+      # TODO(jm): something is seriously wrong with the match fields returned from the controller
+      # instrumentation. For now just compare on all other fields. 
+      return (m1.xid == m2.xid and 
+              m1.cookie == m2.cookie and 
+              m1.priority == m2.priority and
+              m1.reason == m2.reason and
+              m1.duration_sec == m2.duration_sec and
+              m1.duration_nsec == m2.duration_nsec and
+              m1.duration_nsec == m2.duration_nsec and
+              m1.idle_timeout == m2.idle_timeout and
+              m1.packet_count == m2.packet_count and
+              m1.byte_count == m2.byte_count)
     return m1 == m2
   
   # TODO(jm): rename this function to start with _
@@ -637,7 +662,7 @@ class HappensBeforeLogger(EventMixin):
     # TODO(jm): Only print out warning if something went wrong
     print "Controller log: {} log lines, {} STS events not matched.".format(len(self.unmatched_controller_lines), len(self.unmatched_HbMessageHandle) + len(self.unmatched_HbMessageSend))
     now = time.time()
-    threshold = 30 # time in seconds
+    threshold = 10 # time in seconds
     
     # check the events written to stdout by the controller. These events should definitely be matched!
     for line in self.unmatched_controller_lines:
