@@ -669,7 +669,7 @@ class HappensBeforeLogger(EventMixin):
     # TODO(jm): Only print out warning if something went wrong
     print "Controller log: {} log lines, {} STS events not matched.".format(len(self.unmatched_controller_lines), len(self.unmatched_HbMessageHandle) + len(self.unmatched_HbMessageSend))
     now = time.time()
-    threshold = 10 # time in seconds
+    threshold = 30 # time in seconds
     
     # check the events written to stdout by the controller. These events should definitely be matched!
     for line in self.unmatched_controller_lines:
