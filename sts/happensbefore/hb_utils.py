@@ -2,6 +2,7 @@
 Various utils functions, some are copied from STS.
 """
 import base64
+from functools import partial
 
 
 from pox.lib.addresses import EthAddr
@@ -259,3 +260,41 @@ def op_to_str(op):
     opstr += "None"
   return opstr
 
+
+def dfs_edge_filter(G, source, edges_iter_func=lambda g, start: iter(g[start])):
+  """
+  Do DFS over graph G starting from optional source.
+  edges_iter_func is a function that takes two arguments (graph and a node) then
+  it returns iterator over nodes connected to the start. This gives us the
+  ability to interpose and filter certain edges.
+  """
+  if source is None:
+    # produce edges for all components
+    nodes = G
+  else:
+    # produce edges for components with source
+    nodes = [source]
+  visited=set()
+  for start in nodes:
+    if start in visited:
+      continue
+    visited.add(start)
+    stack = [(start, edges_iter_func(G, start))]
+    while stack:
+      parent,children = stack[-1]
+      try:
+        child = next(children)
+        if child not in visited:
+          yield parent,child
+          visited.add(child)
+          stack.append((child, edges_iter_func(G, child)))
+      except StopIteration:
+          stack.pop()
+
+def rel_filter(G, source, rel):
+  for eid, attrs in G[source].iteritems():
+    if attrs['rel'] == rel:
+      yield eid
+
+
+just_mid_iter = partial(rel_filter, rel='mid')

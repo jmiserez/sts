@@ -184,6 +184,11 @@ class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
     self.duration_sec = duration_sec
     self.duration_nsec = duration_nsec
     self.reason = reason
+    
+class TraceSwitchBarrier(TraceSwitchEvent):
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
+    self.dpid = dpid
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
@@ -285,3 +290,4 @@ JsonEvent.register_type(TraceHostEvent)
 JsonEvent.register_type(TraceHostPacketHandleBegin)
 JsonEvent.register_type(TraceHostPacketHandleEnd)
 JsonEvent.register_type(TraceHostPacketSend)
+JsonEvent.register_type(TraceSwitchBarrier)

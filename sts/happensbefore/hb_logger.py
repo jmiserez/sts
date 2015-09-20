@@ -335,6 +335,9 @@ class HappensBeforeLogger(EventMixin):
       begin_event = HbMessageHandle(mid_in, msg_type, dpid=event.dpid, controller_id=event.controller_id, msg=event.msg, msg_flowmod=msg_flowmod)
       self.start_regular_switch_event(event.dpid, begin_event)
       
+      if msg_type == OFPT_BARRIER_REQUEST:
+        self.add_operation_to_switch_event(TraceSwitchBarrier(event.dpid))
+      
       # match with controller instrumentation
       self.unmatched_HbMessageHandle[event.dpid].append((time.time(), mid_in, event.msg))
       self.rematch_unmatched_lines()
