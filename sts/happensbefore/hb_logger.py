@@ -546,7 +546,8 @@ class HappensBeforeLogger(EventMixin):
        
     if m1.header_type == OFPT_FLOW_REMOVED and m2.header_type == OFPT_FLOW_REMOVED:
       # TODO(jm): something is seriously wrong with the match fields returned from the controller
-      # instrumentation. For now just compare on all other fields. 
+      # instrumentation in Floodlight 0.91. For now just compare on all other fields, due to the 
+      # duration_nsec field and the xid it is very unlikely that there are collisions.
       return (m1.xid == m2.xid and 
               m1.cookie == m2.cookie and 
               m1.priority == m2.priority and
