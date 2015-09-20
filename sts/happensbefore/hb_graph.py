@@ -696,7 +696,7 @@ class HappensBeforeGraph(object):
       HappensBeforeGraph.prep_draw(subg, print_packets)
       nx.write_dot(subg, "%s/trace_%s_%s_%04d.dot" % (results_dir,
                                                       str(send.packet.src),
-                                                      str(send.packet.dst), i))
+                                                      str(send.packet.dst), send.eid))
 
   def add_harmful_edges(self, bidir=False):
     for race in self.race_detector.races_harmful:
