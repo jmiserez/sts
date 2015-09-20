@@ -15,6 +15,11 @@ from pox.openflow.libopenflow_01 import OFPT_FEATURES_REQUEST
 from pox.openflow.libopenflow_01 import OFPT_FEATURES_REPLY
 from pox.openflow.libopenflow_01 import OFPT_SET_CONFIG
 from pox.openflow.libopenflow_01 import OFPFC_DELETE_STRICT
+from pox.openflow.libopenflow_01 import OFPT_STATS_REQUEST
+from pox.openflow.libopenflow_01 import OFPT_VENDOR
+from pox.openflow.libopenflow_01 import OFPT_GET_CONFIG_REQUEST
+from pox.openflow.libopenflow_01 import OFPT_GET_CONFIG_REPLY
+from pox.openflow.libopenflow_01 import OFPT_STATS_REPLY
 
 from hb_utils import pkt_info
 
@@ -37,8 +42,9 @@ from hb_utils import just_mid_iter
 OFP_COMMANDS = {v: k for k, v in ofp_flow_mod_command_rev_map.iteritems()}
 
 # OF Message types to skip from the trace
-SKIP_MSGS = [OFPT_HELLO, OFPT_FEATURES_REQUEST, OFPT_FEATURES_REPLY,
-             OFPT_SET_CONFIG]
+SKIP_MSGS = [OFPT_HELLO, OFPT_VENDOR, OFPT_FEATURES_REQUEST, OFPT_FEATURES_REPLY,
+             OFPT_SET_CONFIG, OFPT_GET_CONFIG_REQUEST, OFPT_GET_CONFIG_REPLY,
+             OFPT_STATS_REQUEST, OFPT_STATS_REPLY]
 
 
 class HappensBeforeGraph(object):
