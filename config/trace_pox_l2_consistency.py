@@ -10,20 +10,22 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 
 
 consistent = True
+barriers= True
+
 # Use POX as our controller
 start_cmd = ('''./pox.py --verbose '''
              ''' forwarding.consistency --consistent=%s --deny=False '''
-             ''' --update_wait=10 --update_once=True --consistent_sleep=10 '''
-             ''' openflow.of_01 --address=__address__ --port=__port__ ''' % consistent)
+             ''' --update_wait=10 --update_once=True --consistent_sleep=10 --barriers=%s '''
+             ''' openflow.of_01 --address=__address__ --port=__port__ ''' % (consistent, barriers))
 
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
-steps = 300
+steps = 200
 topology_class = ConsistencyTopology
 topology_params = ""
 
 # Where should the output files be written to
-results_dir = "traces/trace_pox_hb_%s-%s-steps%d" % (topology_class.__name__, consistent, steps)
+results_dir = "traces/trace_pox_%s-%s-%s-steps%d" % (topology_class.__name__, consistent, barriers, steps)
 
 apps = None
 
