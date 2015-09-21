@@ -802,29 +802,21 @@ class HappensBeforeGraph(object):
     Finds all the races related each packet trace
     """
     races = []
-    just_first = False
     for trace in self.packet_traces:
       tmp = self.get_racing_events(trace, True)
       if not tmp:
         continue
-      if len(tmp) == 1:
-        send = trace.graph['host_send']
-        if trace.has_edge(send.eid, tmp[0].i_event.eid) or\
-          trace.has_edge(send.eid, tmp[0].k_event.eid):
-          just_first = True
-      races.append((trace, tmp, just_first))
+      races.append((trace, tmp,))
     return races
 
-  def summarize_per_packet_inconsistent(self, traces_races, add_just_first=True):
+  def summarize_per_packet_inconsistent(self, traces_races):
     """
     If two packets are inconsistent, but they race with the same set of writes,
     then only one will be reported
     """
     result = {}
     removed = defaultdict(list)
-    for trace, races, just_first in traces_races:
-      if just_first and not add_just_first:
-        continue
+    for trace, races, versions in traces_races:
       # First get the writes
       writes = []
       for race in races:
@@ -832,14 +824,14 @@ class HappensBeforeGraph(object):
           writes.append(race.i_op.eid)
         if isinstance(race.k_op, TraceSwitchFlowTableWrite):
           writes.append(race.k_op.eid)
-      key = (tuple(sorted(writes)), just_first)
+      key = (tuple(sorted(writes)))
       if key in result:
-        removed[key].append((trace, races, just_first))
+        removed[key].append((trace, races, versions))
       else:
-        result[key] = (trace, races, just_first)
+        result[key] = (trace, races, versions)
     return result.values()
 
-  def print_racing_packet_trace(self, trace, races, just_first, label):
+  def print_racing_packet_trace(self, trace, races, label):
     """
     first is the trace
     second is the list of races
@@ -878,35 +870,119 @@ class HappensBeforeGraph(object):
     print "Saving all races graph in", name
     nx.write_dot(graph, os.path.join(self.results_dir, name))
 
-  def find_per_packet_inconsistent(self, ignore_first=False, summarize=True):
+  def check_covered(self, ordered_trace_events, races):
+    # Cannot be covered if there is only one race
+    if len(races) <= 1:
+      return False
+
+    # Collect reads and writes
+    by_writes = {}
+    by_reads = {}
+    for race in races:
+      if isinstance(race.i_op, TraceSwitchFlowTableWrite):
+        wr = race.i_event.eid
+        rd = race.k_event.eid
+      else:
+        rd = race.i_event.eid
+        wr = race.k_event.eid
+      if wr not in by_writes:
+        by_writes[wr] = []
+      if rd not in by_reads:
+        by_reads[rd] = []
+      by_writes[wr].append(rd)
+      by_reads[rd].append(wr)
+
+    ordered_racing_reads = []
+    for eid in ordered_trace_events:
+      if eid in by_reads:
+        ordered_racing_reads.append(eid)
+
+    # Try to find if the two writes have HB relations between them
+    found_paths = []
+    for i in range(1, len(ordered_racing_reads)):
+      r1 = ordered_racing_reads[i-1]
+      r2 = ordered_racing_reads[i]
+
+      for wr1 in by_reads[r1]:
+        for wr2 in by_reads[r2]:
+          if not nx.has_path(self.g, wr2, wr1):
+            found_paths.append((wr2, wr1))
+    for wr2, wr1 in found_paths:
+      write1 = self.g.node[wr1]['event']
+      write2 = self.g.node[wr2]['event']
+      delta = write1.operations[0].t - write2.operations[0].t
+      if self.race_detector.add_hb_time and delta >= self.race_detector.ww_delta:
+        continue # Covered because of time
+      # TODO(AH): Now match the tables and check the network forwarding behaviour before w1
+      return False
+    return True
+
+  def find_per_packet_inconsistent(self, check_covered=False, summarize=True):
     """
-    Returns 3 sets of packet traces. 1) all per-packet inconsistent traces
-    2) traces ignored because they just race on the first switch
-    3) summarized traces after removing traces that races with the same writes
-    :param ignore_first:
-    :param summarize:
-    :return:
+    Returns the following sets of packet traces.
+      1) all packet traces that race with a write event
+      2) all per-packet inconsistent traces (covered and uncovered)
+      3) Covered packet traces (trace with races cannot happen because of HB)
+      4) Packet traces with races with first switch on version update
+      5) Summarize traces after removing covered and trimming traces that races with the same writes
+
+    all packet traces = all per-packet inconsistent traces +  Packet traces with races with first switch on version update
+    summazied = all per-packet inconsistent traces - repeatd all per-packet inconsistent traces
     """
     packet_races = self.get_all_packet_traces_with_races()
+    all_inconsistent_packet_traces = []
     inconsistent_packet_traces = []
-    ignored_packet_traces = []
-
-    if ignore_first:
-      for data in packet_races:
-        just_first = data[2]
-        if not just_first:
-          inconsistent_packet_traces.append(data)
-        else:
-          ignored_packet_traces.append(data)
-    else:
-      inconsistent_packet_traces = packet_races
-
+    inconsistent_packet_traces_covered = []
+    inconsistent_packet_entry_version = []
     summarized = []
-    if summarize:
-      summarized = self.summarize_per_packet_inconsistent(
-        inconsistent_packet_traces, add_just_first=not ignore_first)
 
-    return inconsistent_packet_traces, ignored_packet_traces, summarized
+    versions_by_dpid = {}
+    for version, cmds in self.versions.iteritems():
+      versions_by_dpid[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
+
+
+    def get_racing_versions(races):
+      racing_versions = []
+      for race in races:
+        for version, cmds in self.versions.iteritems():
+          if race.i_event.eid in cmds or race.k_event.eid in cmds:
+            racing_versions.append(version)
+      return list(set(racing_versions))
+
+    for trace, races in packet_races:
+      # Then for sure this is a true inconsistent packet
+      racing_versions = get_racing_versions(races)
+      if len(races) > 1:
+        all_inconsistent_packet_traces.append((trace, races, racing_versions))
+        continue
+
+      race = races[0]
+      trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
+      trace_dpids = [getattr(self.g.node[node]['event'], 'dpid', None) for node in trace_nodes]
+      racing_dpid = race.i_event.dpid
+      none_racing_dpids = trace_dpids[:trace_dpids.index(racing_dpid)]
+      racing_version = racing_versions[0]
+      # Check with the race on the first switch of the update
+      if versions_by_dpid[racing_version].intersection(none_racing_dpids):
+        all_inconsistent_packet_traces.append((trace, races, racing_versions))
+      else:
+        inconsistent_packet_entry_version.append((trace, races, racing_versions))
+
+    if check_covered:
+      for trace, races, versions in all_inconsistent_packet_traces:
+        ordered = list(nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid))
+        if self.check_covered(ordered, races):
+          inconsistent_packet_traces_covered.append((trace, races, versions))
+        else:
+          inconsistent_packet_traces.append((trace, races, versions))
+    else:
+      inconsistent_packet_traces = all_inconsistent_packet_traces
+
+    if summarize:
+      summarized = self.summarize_per_packet_inconsistent(inconsistent_packet_traces)
+    return packet_races, inconsistent_packet_traces, \
+           inconsistent_packet_traces_covered, \
+           inconsistent_packet_entry_version, summarized
 
   def find_barrier_replies(self):
     barrier_replies = []
@@ -1141,13 +1217,17 @@ class Main(object):
     packet_traces = self.graph.extract_traces(self.graph.g)
     t3 = time.time()
 
-    inconsistent_packet_traces, ignored_packet_traces, summarized = self.graph.find_per_packet_inconsistent(self.ignore_first, True)
+    reactive_cmds = self.graph.find_reactive_versions()
     t4 = time.time()
 
-    reactive_cmds = self.graph.find_reactive_versions()
+    proactive_cmds = self.graph.find_proactive_cmds(reactive_cmds)
+    versions = self.graph.find_versions()
     t5 = time.time()
 
-    proactive_cmds = self.graph.find_proactive_cmds(reactive_cmds)
+    packet_races, inconsistent_packet_traces, \
+           inconsistent_packet_traces_covered, \
+           inconsistent_packet_entry_version, summarized = \
+      self.graph.find_per_packet_inconsistent(True, True)
     t6 = time.time()
 
     racing_versions = self.graph.find_inconsistent_updates()
@@ -1160,18 +1240,26 @@ class Main(object):
 
 
     # Print traces
-    for data in inconsistent_packet_traces:
-      self.graph.print_racing_packet_trace(*data, label='race')
-    for data in summarized:
-      self.graph.print_racing_packet_trace(*data, label='trimmed')
-    for data in ignored_packet_traces:
-      self.graph.print_racing_packet_trace(*data, label='ignored')
+    for trace, races in packet_races:
+      self.graph.print_racing_packet_trace(trace, races, label='race')
+    for trace, races, _ in inconsistent_packet_traces:
+      self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
+    for trace, races, _ in inconsistent_packet_traces_covered:
+      self.graph.print_racing_packet_trace(trace, races, label='covered')
+    for trace, races, _ in inconsistent_packet_entry_version:
+      self.graph.print_racing_packet_trace(trace, races, label='entry')
+    for trace, races, _ in summarized:
+      self.graph.print_racing_packet_trace(trace, races, label='summarized')
     self.graph.save_races_graph(self.print_pkt)
 
-    versions = self.graph.find_versions()
+
     self.graph.print_versions(versions)
 
+
+    print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
+    print "Number of packet inconsistencies that are covered by HB: ", len(inconsistent_packet_traces_covered)
+    print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
     print "INCONSISENT updates", racing_versions
@@ -1179,9 +1267,9 @@ class Main(object):
     load_time = t1 - t0
     detect_races_time = t2 - t1
     extract_traces_time = t3 - t2
-    per_packet_inconsistent_time = t4 - t3
-    find_reactive_cmds_time = t5 - t4
-    find_proactive_cmds_time = t6 - t5
+    find_reactive_cmds_time = t4 - t3
+    find_proactive_cmds_time = t5 - t4
+    per_packet_inconsistent_time = t6 - t5
     find_inconsistent_update_time = t7 - t6
 
 
@@ -1222,9 +1310,18 @@ class Main(object):
     num_ww_time_edges = self.graph.race_detector.time_hb_ww_edges_counter
     num_time_edges = num_rw_time_edges + num_ww_time_edges
 
+    print "Number of packet traces with races:", len(packet_races)
+    print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
+    print "Number of packet inconsistencies that are covered by HB: ", len(inconsistent_packet_traces_covered)
+    print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
+    print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
+
+
+    num_per_pkt_races = len(packet_races)
     num_per_pkt_inconsistent = len(inconsistent_packet_traces)
+    num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
+    num_per_pkt_race_version = len(inconsistent_packet_entry_version)
     num_per_pkt_inconsistent_no_repeat = len(summarized)
-    num_per_pkt_ignored_first = len(ignored_packet_traces)
 
     with open(file_name, 'w') as f:
       # General info
@@ -1249,9 +1346,11 @@ class Main(object):
       f.write('num_races,%d\n' % num_races)
 
       # Inconsistency
-      f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
-      f.write('num_per_pkt_ignored_first,%d\n' % num_per_pkt_ignored_first)
+      f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
       f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
+      f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
+      f.write('num_per_pkt_race_version,%d\n' % num_per_pkt_race_version)
+      f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
 
       # Times
       f.write('total_time_sec,%f\n'% total_time)
