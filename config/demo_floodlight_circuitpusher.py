@@ -8,9 +8,13 @@ from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 from config.application_events import AppCircuitPusher
 
+#
+# see sts/HBREADME.md for usage
+#
+
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
              '''./target/floodlight.jar '''
-              '''-cf ./src/main/resources/hb_circuitpusher.properties''')
+              '''-cf ./src/main/resources/demo_circuitpusher.properties''')
 
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 

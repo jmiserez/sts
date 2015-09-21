@@ -47,7 +47,7 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 #
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
              '''./target/floodlight.jar '''
-              '''-cf ./src/main/resources/hb_minimal_flawedfw.properties''')
+              '''-cf ./src/main/resources/demo_flawedfw.properties''')
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
 # start_cmd = '''echo "no-op"'''
