@@ -32,6 +32,7 @@ from hb_events import *
 from hb_sts_events import *
 from hb_utils import dfs_edge_filter
 from hb_utils import just_mid_iter
+from hb_utils import pretty_match
 
 #
 # Do not import any STS types! We would like to be able to run this offline
@@ -98,6 +99,7 @@ class HappensBeforeGraph(object):
     self.msgs = {}
 
     self.alt_barr = alt_barr
+    self.versions = {}
 
   @property
   def events(self):
@@ -644,20 +646,14 @@ class HappensBeforeGraph(object):
     """
     Adds proper annotation for the graph to make drawing it more pleasant.
     """
-    def pretty_match(match):
-      lines = match.show()
-      output = ''
-      for line in lines.split('\n'):
-        if not line.startswith('wildcards: '):
-          output += line + ' '
-      output = output.rstrip()
-      if output == '':
-        output = '*'
-      return output.rstrip()
-
     for eid, data in g.nodes_iter(data=True):
       event = data['event']
       label = "ID %d \\n %s" % (eid, event.type)
+      if hasattr(event, 'hid'):
+        label += "\\nHID: " + str(event.hid)
+      if hasattr(event, 'dpid'):
+        label += "\\nDPID: " + str(event.dpid)
+
       shape = "oval"
       op = None
       if hasattr(event, 'operations'):
@@ -666,6 +662,7 @@ class HappensBeforeGraph(object):
             op = "FlowTableWrite"
             op += "\\nCMD: " + OFP_COMMANDS[x.flow_mod.command]
             op += "\\nMatch: " + pretty_match(x.flow_mod.match)
+            op += "\\nActions: " + str(x.flow_mod.actions)
             label += "\\nt: " + repr(x.t)
             shape = 'box'
             g.node[eid]['style'] = 'bold'
@@ -680,12 +677,10 @@ class HappensBeforeGraph(object):
         label += "\\n%s" % cmd_type
       if op:
         label += "\\nOp: %s" % op
-      if hasattr(event, 'hid'):
-        label += "\\nHID: " + str(event.hid)
-      if hasattr(event, 'dpid'):
-        label += "\\nDPID: " + str(event.dpid)
       if hasattr(event, 'msg_type'):
         label += "\\nMsgType: " + event.msg_type_str
+      if getattr(event, 'msg', None):
+        label += "\\nXID: %d" % event.msg.xid
       if hasattr(event, 'in_port'):
         label += "\\nInPort: " + str(event.in_port)
       if hasattr(event, 'out_port') and not isinstance(event.out_port, basestring):
@@ -913,9 +908,33 @@ class HappensBeforeGraph(object):
 
     return inconsistent_packet_traces, ignored_packet_traces, summarized
 
+  def find_barrier_replies(self):
+    barrier_replies = []
+    for eid in self.msgs:
+      if self.msgs[eid].msg_type_str != 'OFPT_BARRIER_REPLY':
+        continue
+      nodes = []
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      for src, dst in edges:
+        src_event = self.g.node[src]['event']
+        dst_event = self.g.node[dst]['event']
+        if isinstance(src_event, HbMessageHandle):
+          nodes.append(src_event)
+          #self.g.node[src]['cmd_type'] = "Reactive to %d" % eid
+        if isinstance(dst_event, HbMessageHandle):
+          nodes.append(dst_event)
+          #self.g.node[dst]['cmd_type'] = "Reactive to %d" % eid
+      # Get unique and sort by time
+      nodes = sorted(list(set(nodes)),
+                     key=lambda n: n.operations[0].t if n.operations else 0)
+      barrier_replies.append((self.msgs[eid], nodes))
+    return barrier_replies
+
   def find_reactive_versions(self):
     cmds = []
     for eid in self.msgs:
+      if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
+        continue
       nodes = []
       edges = dfs_edge_filter(self.g, eid, just_mid_iter)
       for src, dst in edges:
@@ -969,24 +988,76 @@ class HappensBeforeGraph(object):
     self.clustered_cmds = clustered_ordered
     return clustered_ordered
 
-  def find_inconsistent_updates(self):
-    """Try to find if two versions race with each other"""
+  def find_versions(self):
+    """
+    Find all versions, reactive or proactive
+    """
+    if self.versions:
+      return self.versions
+
     reactive = self.find_reactive_versions()
     proactive = self.find_proactive_cmds(reactive)
     self.cluster_cmds(proactive)
+    # Consider all proactive and reactive versions
+    versions = {}
+    for version, events in self.clustered_cmds.iteritems():
+      versions[version] = list(set([event.eid for event in events]))
+    for pktin, events in reactive:
+      versions[pktin] = list(set([event.eid for event in events]))
+
+    # Now merge versions if one contains a response to a barrier request
+    # from previous version
+    barrier_replies = self.find_barrier_replies()
+    replies_by_xid = {} # (dpid, xid) -> cmds
+    replies_by_xid_versions = {}  # (dpid, xid) -> versions
+    requests_by_xid = {} # (dpid, xid) -> version
+
+    # Sort replies by dpid and xid
+    for rep, cmds in barrier_replies:
+      key = (rep.dpid, rep.msg.xid)
+      replies_by_xid[key] = [event.eid for event in cmds]
+      replies_by_xid_versions[key] = []
+      reactive_cmds = set(replies_by_xid[key])
+      for v, v_cmds in versions.iteritems():
+        if reactive_cmds.intersection(v_cmds):
+          replies_by_xid_versions[key].append(v)
+
+    # Sort requests by dpid and xid
+    for v, v_cmds in versions.iteritems():
+      for v_cmd in v_cmds:
+        event = self.g.node[v_cmd]['event']
+        if event.msg_type_str == 'OFPT_BARRIER_REQUEST':
+          requests_by_xid[(event.dpid, event.msg.xid)] = v
+
+    for key, version in requests_by_xid.iteritems():
+      if version not in versions:
+        continue # already merged
+      if key not in replies_by_xid:
+        continue
+      new_cmds = versions[version]
+      for v in replies_by_xid_versions[key]:
+        if v == version:
+          continue # we already considered the first version
+        if v not in versions:
+          continue # already merged
+        new_cmds += versions[v]
+        del versions[v]
+
+    # Sort cmds by time, just to make it nicer
+    for version in versions:
+      versions[version].sort(key=lambda x: self.g.node[x]['event'].operations[0].t)
+    self.versions = versions
+    return versions
+
+  def find_inconsistent_updates(self):
+    """Try to find if two versions race with each other"""
+    versions = self.find_versions()
 
     ww_races = defaultdict(list)
     for race in self.race_detector.races_harmful:
       if race.rtype == 'w/w':
         ww_races[race.i_event.eid].append(race.k_event.eid)
         ww_races[race.k_event.eid].append(race.i_event.eid)
-
-    # Consider all proactive and reactive versions
-    versions = {}
-    for version, events in self.clustered_cmds.iteritems():
-      versions[version] = set([event.eid for event in events])
-    for pktin, events in reactive:
-      versions[pktin] = set([event.eid for event in events])
 
     racing_events = []
     for version, cmds in versions.iteritems():
@@ -1006,6 +1077,25 @@ class HappensBeforeGraph(object):
           v2 = version
       racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
     return racing_versions
+
+  def print_versions(self, versions):
+    # Printing versions
+    for v, cmds in versions.iteritems():
+      print "IN Version", v
+      if isinstance(v, HbMessageSend):
+        print "React to Msg: ", v.msg_type_str
+      for cmd in cmds:
+        node =  self.graph.g.node[cmd]['event']
+        match = ''
+        if getattr(node.msg, 'match', None):
+          match = node.msg.show().replace('\n', ' ')
+        of_cmd = ''
+        if hasattr(node.msg, 'command'):
+          of_cmd = OFP_COMMANDS[node.msg.command]
+        print "\t eid", node.eid, " dpid:", node.dpid, " xid:", node.msg.xid ,\
+          " cmd:", node.msg_type_str, of_cmd, ' ',\
+          pretty_match(getattr(node.msg, 'match', None)),\
+          getattr(node.msg, 'actions', None)
 
 
 class Main(object):
@@ -1078,6 +1168,8 @@ class Main(object):
       self.graph.print_racing_packet_trace(*data, label='ignored')
     self.graph.save_races_graph(self.print_pkt)
 
+    versions = self.graph.find_versions()
+    self.graph.print_versions(versions)
 
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
@@ -1110,12 +1202,12 @@ class Main(object):
     #print "Finding inconsistent traces time: "+ (str(t6 - t5)) + "s"
 
 
+    # Printing dat file
     hbt = self.add_hb_time
     rw_delta = self.rw_delta if self.add_hb_time else 'inf'
     ww_delta = self.ww_delta if self.add_hb_time else 'inf'
     file_name = "results_hbt_%s_rw_%s_ww_%s.dat" % (hbt, rw_delta, ww_delta)
     file_name = os.path.join(self.results_dir, file_name)
-
 
 
     num_writes = len(self.graph.race_detector.write_operations)
