@@ -298,3 +298,27 @@ def rel_filter(G, source, rel):
 
 
 just_mid_iter = partial(rel_filter, rel='mid')
+
+
+def pretty_match(match):
+  if not match:
+    return ''
+  outstr = ''
+  def append (f, formatter=str):
+    v = match.__getattr__(f)
+    if v is None: return ''
+    return f + ": " + formatter(v) + " "
+  outstr = ''
+  outstr += append('in_port')
+  outstr += append('dl_src')
+  outstr += append('dl_dst')
+  outstr += append('dl_vlan')
+  outstr += append('dl_vlan_pcp')
+  outstr += append('dl_type')
+  outstr += append('nw_tos')
+  outstr += append('nw_proto')
+  outstr += append('nw_src')
+  outstr += append('nw_dst')
+  outstr += append('tp_src')
+  outstr += append('tp_dst')
+  return outstr
