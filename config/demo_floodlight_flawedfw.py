@@ -8,6 +8,10 @@ from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger 
 
 #
+# see sts/HBREADME.md for usage
+#
+
+#
 # Running this demo:
 # 
 # Compile the Floodlight .jar:
@@ -75,3 +79,14 @@ simulation_config = SimulationConfig(controller_configs=controllers,
 
 # Manual, interactive mode
 control_flow = Interactive(simulation_config, input_logger=InputLogger())
+
+# Uncomment this if you want to run a replay (not working 100%)
+# control_flow = Replayer(simulation_config, "experiments/demo_floodlight_flawedfw/events.trace",
+#                         input_logger=InputLogger(),
+#                         wait_on_deterministic_values=False,
+#                         allow_unexpected_messages=False,
+#                         delay_flow_mods=False,
+#                         default_dp_permit=True,
+#                         pass_through_whitelisted_messages=False,
+#                         invariant_check_name="",
+#                         bug_signature="")

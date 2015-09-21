@@ -15,7 +15,9 @@ from sts.control_flow.replayer import Replayer
 
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 
-
+#
+# see sts/HBREADME.md for usage
+#
 
 start_cmd = ('''./pox.py --verbose '''
               '''forwarding.l2_learning '''

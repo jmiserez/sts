@@ -15,6 +15,10 @@ from sts.control_flow.replayer import Replayer
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 
 #
+# see sts/HBREADME.md for usage
+#
+
+#
 # Running this demo:
 # 
 # Run STS with this config:
