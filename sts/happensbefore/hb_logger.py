@@ -238,6 +238,9 @@ class HappensBeforeLogger(EventMixin):
       assert len(self.started_async_switch_event[event.dpid].operations) == 0
       self.started_async_switch_event[event.dpid].operations.append(event)
     elif self.is_regular_switch_event_started(event.dpid):
+      if len(self.started_regular_switch_event[event.dpid].operations) == 1 and type(self.started_regular_switch_event[event.dpid].operations[0]) == TraceSwitchNoOp:
+        # remove no-op, as it is no longer needed.
+        self.started_regular_switch_event[event.dpid].operations.pop()
       self.started_regular_switch_event[event.dpid].operations.append(event)
       if isinstance(self.started_regular_switch_event[event.dpid], HbMessageHandle):
         # TODO(jm): Factor the following step out into a separate step in hb_graph. We can 
@@ -339,7 +342,9 @@ class HappensBeforeLogger(EventMixin):
       
       if msg_type == OFPT_BARRIER_REQUEST:
         self.add_operation_to_switch_event(TraceSwitchBarrier(event.dpid))
-      
+      else:
+        self.add_operation_to_switch_event(TraceSwitchNoOp(event.dpid))
+        
       # match with controller instrumentation
       self.unmatched_HbMessageHandle[event.dpid].append((time.time(), mid_in, event.msg))
       self.rematch_unmatched_lines()

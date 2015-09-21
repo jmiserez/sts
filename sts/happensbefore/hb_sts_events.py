@@ -197,6 +197,11 @@ class TraceSwitchPacketDrop(TraceSwitchEvent):
     self.packet = packet
     self.in_port = in_port
     self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+    
+class TraceSwitchNoOp(TraceSwitchEvent):
+  def __init__(self, dpid, t=None, eid=None):
+    TraceSwitchEvent.__init__(self, t=t, eid=eid)
+    self.dpid = dpid
 
 class TraceSwitchBufferPut(TraceSwitchEvent):
   def __init__(self, dpid, packet, in_port, buffer_id, t=None, eid=None):
@@ -300,3 +305,4 @@ JsonEvent.register_type(TraceHostPacketHandleEnd)
 JsonEvent.register_type(TraceHostPacketSend)
 JsonEvent.register_type(TraceSwitchBarrier)
 JsonEvent.register_type(TraceSwitchPacketDrop)
+JsonEvent.register_type(TraceSwitchNoOp)
