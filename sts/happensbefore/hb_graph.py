@@ -1085,7 +1085,7 @@ class HappensBeforeGraph(object):
       if isinstance(v, HbMessageSend):
         print "React to Msg: ", v.msg_type_str
       for cmd in cmds:
-        node =  self.graph.g.node[cmd]['event']
+        node =  self.g.node[cmd]['event']
         match = ''
         if getattr(node.msg, 'match', None):
           match = node.msg.show().replace('\n', ' ')
