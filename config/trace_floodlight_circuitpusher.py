@@ -18,7 +18,7 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 # start_cmd = '''echo "no-op"'''
 # controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633, controller_type='dummy')]
 
-num = 2
+num = 1
 #topology_class = StarTopology
 #topology_params = "num_hosts=%d" % num
 #topology_class = MeshTopology
@@ -28,7 +28,7 @@ num = 2
 topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
-steps = 200
+steps = 100
 results_dir = "traces/trace_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
