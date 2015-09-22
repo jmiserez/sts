@@ -9,6 +9,7 @@ import argparse
 import csv
 import glob
 import os
+import matplotlib.pyplot as plt
 
 
 # Values we care about
@@ -25,9 +26,11 @@ keys.append('num_harmful')
 keys.append('num_commute')
 keys.append('num_races')
 
-keys.append('num_per_pkt_inconsistent_no_repeat')
-keys.append('num_per_pkt_ignored_first')
+keys.append('num_per_pkt_races')
 keys.append('num_per_pkt_inconsistent')
+keys.append('num_per_pkt_inconsistent_covered')
+keys.append('num_per_pkt_race_version')
+keys.append('num_per_pkt_inconsistent_no_repeat')
 
 keys.append('load_time_sec')
 keys.append('detect_races_time_sec')
