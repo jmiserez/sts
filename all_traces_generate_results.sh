@@ -44,11 +44,12 @@ generate_results() {
   pushd "$SCRIPTPATH" > /dev/null
   echo "./gen.sh $1"
   ./gen.sh "$1"
+  echo "./plot.py $1"
+  ./plot.py "$1"
   popd > /dev/null
 }
 export -f generate_results
 
-# Using GNU Parallel, uses N jobs (N=number of cores) by default
 # -k: keep order of input to output
 parallel -k $ADDITIONAL_PARALLEL_OPTS generate_results ::: "${trace_dirs_array[@]}"
 
