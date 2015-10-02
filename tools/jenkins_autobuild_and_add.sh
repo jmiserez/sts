@@ -7,7 +7,7 @@ fi
 
 SCRIPT=$(readlink -f $0)
 SCRIPTPATH=`dirname $SCRIPT`
-cd "$SCRIPTPATH"
+cd "../$SCRIPTPATH"
 
 WORKSPACE=$1
 echo "WORKSPACE: $WORKSPACE"
