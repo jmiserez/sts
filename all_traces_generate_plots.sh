@@ -14,15 +14,6 @@ SCRIPTPATH=`dirname $SCRIPT`
 WORKSPACE=$1
 echo "WORKSPACE: $WORKSPACE"
 
-generate_plots() {
-#  echo "Generating plots for trace $1"
-  pushd "$SCRIPTPATH" > /dev/null
-  echo "./plots.sh $1"
-  ./plots.sh "$1"
-  popd > /dev/null
-}
-export -f generate_plots
-
 # get trace directories
 trace_dirs_array=()
 while IFS=  read -r -d $'\0'; do
@@ -33,6 +24,15 @@ echo "List of directories to be processed:"
 for i in "${trace_dirs_array[@]}"; do
   echo "  " "$i"
 done;
+
+generate_plots() {
+#  echo "Generating plots for trace $1"
+  pushd "$SCRIPTPATH" > /dev/null
+  echo "./plots.sh $1"
+  ./plots.sh "$1"
+  popd > /dev/null
+}
+export -f generate_plots
 
 # Using GNU Parallel, uses N jobs (N=number of cores) by default
 # -k: keep order of input to output

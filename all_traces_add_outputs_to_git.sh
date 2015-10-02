@@ -14,6 +14,17 @@ SCRIPTPATH=`dirname $SCRIPT`
 WORKSPACE=$1
 echo "WORKSPACE: $WORKSPACE"
 
+# get trace directories
+trace_dirs_array=()
+while IFS=  read -r -d $'\0'; do
+    trace_dirs_array+=("$REPLY")
+done < <(find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz)
+
+echo "List of directories to be processed:"
+for i in "${trace_dirs_array[@]}"; do
+  echo "  " "$i"
+done;
+
 add_results_to_git(){
   echo "Add to git in $1"
   pushd "$1" > /dev/null
@@ -30,13 +41,8 @@ add_results_to_git(){
 }
 export -f add_results_to_git
 
-# get trace directories
-trace_dirs_array=()
-while IFS=  read -r -d $'\0'; do
-    trace_dirs_array+=("$REPLY")
-done < <(find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz)
-
 # Using GNU Parallel, uses N jobs (N=number of cores) by default
 # -k: keep order of input to output
+# --jobs: number of jobs (here we want to disable parallelism)
 parallel -k --jobs 1 add_results_to_git ::: "${trace_dirs_array[@]}"
 
