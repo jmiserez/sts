@@ -1,7 +1,7 @@
 #!/bin/bash
 if [ "$#" -lt 1 ]
 then
-  echo "Usage: ./all_traces_generate_results.sh <sdnracer-traces folder path> {<pattern for matching directories, e.g. \"trace_*\">}"
+  echo "Usage: ./all_traces_generate_results.sh <sdnracer-traces folder path> [<pattern for matching directories, default is \"trace_*\">]"
   exit 1
 fi
 
