@@ -1296,6 +1296,8 @@ class Main(object):
     ww_delta = self.ww_delta if self.add_hb_time else 'inf'
     file_name = "results_hbt_%s_rw_%s_ww_%s.dat" % (hbt, rw_delta, ww_delta)
     file_name = os.path.join(self.results_dir, file_name)
+    timings_file_name = "timings_hbt_%s_rw_%s_ww_%s.dat" % (hbt, rw_delta, ww_delta)
+    timings_file_name = os.path.join(self.results_dir, timings_file_name)
 
 
     num_writes = len(self.graph.race_detector.write_operations)
@@ -1323,12 +1325,15 @@ class Main(object):
     num_per_pkt_race_version = len(inconsistent_packet_entry_version)
     num_per_pkt_inconsistent_no_repeat = len(summarized)
 
-    with open(file_name, 'w') as f:
+    def write_general_info_to_file(f):
       # General info
       f.write('key,value\n')
       f.write('rw_delta,%s\n' % rw_delta)
       f.write('ww_delta,%s\n' % ww_delta)
       f.write('alt_barrier,%s\n' % self.alt_barr)
+
+    with open(file_name, 'w') as f:
+      write_general_info_to_file(f)
 
       # Operataions
       f.write('num_read,%d\n' % num_read)
@@ -1352,6 +1357,9 @@ class Main(object):
       f.write('num_per_pkt_race_version,%d\n' % num_per_pkt_race_version)
       f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
 
+    with open(timings_file_name, 'w') as f:
+      write_general_info_to_file(f)
+      
       # Times
       f.write('total_time_sec,%f\n'% total_time)
       f.write('load_time_sec,%f\n' % load_time )
