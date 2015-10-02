@@ -73,7 +73,6 @@ func_call_by_name(){
     # redirect output to tmpfile, then print out once done
     FUNC_CALL_OUTPUT_TMPFILE=$(mktemp --tmpdir="$CURRENT_TMP_DIR")
 #    echo "Storing output temporarily in $FUNC_CALL_OUTPUT_TMPFILE"
-    trap 'rm -f "$FUNC_CALL_OUTPUT_TMPFILE"' EXIT
     $1 "${@:2}" >> "$FUNC_CALL_OUTPUT_TMPFILE" 2>&1
     # print output once done
     cat "$FUNC_CALL_OUTPUT_TMPFILE"
@@ -84,7 +83,7 @@ func_call_by_name(){
 export -f func_call_by_name
 
 # How this works:
-# (Equivalent to: parallel -k generate_plots ::: "${trace_dirs_array[@]}")
+# (Equivalent to: parallel generate_plots ::: "${trace_dirs_array[@]}")
 # 1. print each entry in the array followed by a NUL char (\x00)
 # 2. xargs:
 #    -0 handle NUL chars as delimiter

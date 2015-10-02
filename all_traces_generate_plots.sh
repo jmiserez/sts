@@ -71,7 +71,6 @@ func_call_by_name(){
     # redirect output to tmpfile, then print out once done
     FUNC_CALL_OUTPUT_TMPFILE=$(mktemp --tmpdir="$CURRENT_TMP_DIR")
 #    echo "Storing output temporarily in $FUNC_CALL_OUTPUT_TMPFILE"
-    trap 'rm -f "$FUNC_CALL_OUTPUT_TMPFILE"' EXIT
     $1 "${@:2}" >> "$FUNC_CALL_OUTPUT_TMPFILE" 2>&1
     # print output once done
     cat "$FUNC_CALL_OUTPUT_TMPFILE"
