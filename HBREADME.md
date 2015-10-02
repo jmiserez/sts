@@ -15,7 +15,7 @@ These instructions were tested on a fresh install of Ubuntu 14.04.3 LTS 64bit in
 - Install the following packages on top of the fresh install:
 
 ```
-$ sudo apt-get install git build-essential python-dev ant openjdk-7-jdk python-docutils python-networkx xdot graphviz python-pygraphviz python-matplotlib python-scipy
+$ sudo apt-get install git build-essential python-dev ant openjdk-7-jdk python-docutils python-networkx xdot graphviz python-pygraphviz python-matplotlib python-scipy parallel
 ```
 
 Dependencies due to:
