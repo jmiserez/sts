@@ -12,7 +12,7 @@ cd "$SCRIPTPATH"
 WORKSPACE=$1
 echo "WORKSPACE: $WORKSPACE"
 
-for i in "$WORKSPACE"/trace_*; do
+for i in "$WORKSPACE"/trace_pox_l2_multi-StarTopology2-steps1*; do
 echo "./gen.sh $i"
 ./gen.sh "$i"
 pushd "$i"
