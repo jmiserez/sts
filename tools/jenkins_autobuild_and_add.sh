@@ -9,7 +9,7 @@ fi
 MATCHPATTERN=${2:-"trace_*"}
 
 SCRIPT=$(readlink -f $0)
-SCRIPTPATH=`dirname $SCRIPT`
+export SCRIPTPATH=`dirname $SCRIPT`
 
 WORKSPACE=$1
 echo "WORKSPACE: $WORKSPACE"
@@ -27,9 +27,10 @@ done;
 
 generate_results() {
 #  echo "Generating results for trace $1"
+  echo $SCRIPTPATH
   pushd "$SCRIPTPATH" > /dev/null
   echo "./gen.sh $1"
-  ./gen.sh "$1"
+  #./gen.sh "$1"
   popd > /dev/null
 }
 export -f generate_results
@@ -68,6 +69,6 @@ done < <(find "$WORKSPACE" -maxdepth 1 -type d -name "trace_*" -print0 | sort -n
 # Using GNU Parallel, uses N jobs (N=number of cores) by default
 # -k: keep order of input to output
 parallel -k generate_results ::: "${trace_dirs_array[@]}"
-parallel -k generate_plots ::: "${trace_dirs_array[@]}"
-parallel -k --jobs 1 add_results_to_git ::: "${trace_dirs_array[@]}"
+#parallel -k generate_plots ::: "${trace_dirs_array[@]}"
+#parallel -k --jobs 1 add_results_to_git ::: "${trace_dirs_array[@]}"
 
