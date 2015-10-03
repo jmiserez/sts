@@ -111,7 +111,7 @@ case $NUM_CPU_CORES in
 esac
 echo "NUM_CPU_CORES=$NUM_CPU_CORES"
 
-printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -i -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
+printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
 
 if [ "$IS_SINGLE_JOB" = true ]
   then
