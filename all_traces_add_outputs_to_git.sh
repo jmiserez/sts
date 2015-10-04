@@ -4,6 +4,8 @@ SCRIPT=$(readlink -f $0)
 export SCRIPTPATH=`dirname $SCRIPT`
 SCRIPTNAME=$(basename "$SCRIPT")
 
+export STS_DIR=$SCRIPTPATH
+
 if [ "$#" -lt 1 ]
 then
   echo "Usage: ./$SCRIPTNAME <sdnracer-traces folder path> [<pattern for matching directories, default is \"trace_*\">]"
@@ -79,8 +81,8 @@ func_call_by_name(){
     FUNC_CALL_OUTPUT_TMPFILE=$(mktemp --tmpdir="$CURRENT_TMP_DIR")
 #    echo "Storing output temporarily in $FUNC_CALL_OUTPUT_TMPFILE"
     $1 "${@:2}" >> "$FUNC_CALL_OUTPUT_TMPFILE" 2>&1
-    # print output once done
-    cat "$FUNC_CALL_OUTPUT_TMPFILE"
+    # print output once done, if file still exists
+    [[ -f "$FUNC_CALL_OUTPUT_TMPFILE" ]] && cat "$FUNC_CALL_OUTPUT_TMPFILE"
     # remove temp file
     rm -f "$FUNC_CALL_OUTPUT_TMPFILE"
   fi
