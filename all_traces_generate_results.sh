@@ -55,27 +55,29 @@ for i in "${trace_dirs_array[@]}"; do
   echo "  " "$i"
 done;
 
-if [ "$IS_SINGLE_JOB" = true ]
-  then
-    :
-  else
-    # create tmp directory
-    export CURRENT_TMP_DIR=`mktemp -d`
-    # set trap to cleanup upon exit/CTRL-C. Note: not triggered when using kill -9.
-    trap 'rm -rf "$CURRENT_TMP_DIR"' EXIT
-fi
+pidtree(){
+  pids_for_ppid=(); while read pid ppid; do pids_for_ppid[$ppid]+=" $pid"; done < <(ps -e -o pid,ppid --no-headers)
+  print_children(){ for i in ${pids_for_ppid[$1]}; do ( (print_children $i) ); echo $i; done }
+  ( (print_children $1) ); echo $1
+}
+export -f pidtree
+
+# create tmp directory
+export CURRENT_TMP_DIR=`mktemp -d`
+# set trap to cleanup upon exit/CTRL-C. Note: not triggered when using kill -9.
+trap 'for i in $CURRENT_TMP_DIR/*.pid; do kill $(pidtree $(basename "${i%.pid}")) >> /dev/null 2>&1; rm -f "$i"; done; rm -rf "$CURRENT_TMP_DIR"' EXIT
 
 func_call_by_name(){
   if [ "$IS_SINGLE_JOB" = true ]
   then
     # no redirection, no tmpfile
     # call function $1 with all remaining arguments
-    $1 "${@:2}"
+    $1 "${@:2}" & FUNC_PID=$!; touch "$CURRENT_TMP_DIR/$FUNC_PID.pid"; wait $FUNC_PID; rm -f "$CURRENT_TMP_DIR/$FUNC_PID.pid"
   else
     # redirect output to tmpfile, then print out once done
     FUNC_CALL_OUTPUT_TMPFILE=$(mktemp --tmpdir="$CURRENT_TMP_DIR")
 #    echo "Storing output temporarily in $FUNC_CALL_OUTPUT_TMPFILE"
-    $1 "${@:2}" >> "$FUNC_CALL_OUTPUT_TMPFILE" 2>&1
+    $1 "${@:2}" >> "$FUNC_CALL_OUTPUT_TMPFILE" 2>&1 & FUNC_PID=$!; touch "$CURRENT_TMP_DIR/$FUNC_PID.pid"; wait $FUNC_PID; rm -f "$CURRENT_TMP_DIR/$FUNC_PID.pid"
     # print output once done, if file still exists
     [[ -f "$FUNC_CALL_OUTPUT_TMPFILE" ]] && cat "$FUNC_CALL_OUTPUT_TMPFILE"
     # remove temp file
