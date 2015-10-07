@@ -52,13 +52,17 @@ class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
                ww_delta=1, filter_rw=False, ignore_ethertypes=None,
-               no_race=False, alt_barr=False):
+               no_race=False, alt_barr=False, disable_path_cache=True):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
+    
+    self.disable_path_cache = disable_path_cache
+    self._cached_paths = None
+    self._cached_reverse_paths = None
 
     self.events_by_id = dict()
-    self.pruned_events = set()
+    self.events_with_reads_writes = list()
 
     self.events_by_pid_out = defaultdict(list)
     self.events_by_mid_out = defaultdict(list)
@@ -66,9 +70,6 @@ class HappensBeforeGraph(object):
     # events that have a mid_in/mid_in and are still looking for a pid_out/mid_out to match 
     self.events_pending_pid_in = defaultdict(list)
     self.events_pending_mid_in = defaultdict(list)
-    
-    # for flow mod rule
-    self.events_flowmod_by_dpid_match = defaultdict(list)
     
     # for barrier pre rule
     self.events_before_next_barrier = defaultdict(list)
@@ -97,7 +98,7 @@ class HappensBeforeGraph(object):
     self.msg_handles = {}
     # Messages from the switch to the controller
     self.msgs = {}
-
+    
     self.alt_barr = alt_barr
     self.versions = {}
 
@@ -108,25 +109,12 @@ class HappensBeforeGraph(object):
 
   @property
   def predecessors(self):
-    """Horribly inefficient!!!!!"""
-    predecessors = defaultdict(set)
+    """Get predecessor events for all events. """
     for eid, data in self.g.nodes(data=True):
-      event = data['event']
-      predecessors[event] = set()
+      this_predecessors = set()
       for pred in self.g.predecessors_iter(eid):
-        predecessors[event].add(self.g.node[pred]['event'])
-    return predecessors
-
-  @property
-  def successors(self):
-    """Horribly inefficient!!!!!"""
-    successors = defaultdict(set)
-    for eid, data in self.g.nodes(data=True):
-      event = data['event']
-      successors[event] = set()
-      for pred in self.g.successors_iter(eid):
-        successors[event].add(self.g.node[pred]['event'])
-    return successors
+        this_predecessors.add(self.g.node[pred]['event'])
+      yield (data['event'],this_predecessors)
 
   def _add_to_lookup_tables(self, event):
     if hasattr(event, 'pid_out'):
@@ -146,14 +134,6 @@ class HappensBeforeGraph(object):
                            (self.events_pending_mid_in, 
                             lambda x: hasattr(x, 'mid_in'), 
                             lambda x: x.mid_in ),
-                           (self.events_flowmod_by_dpid_match, 
-                            lambda x: (x.type == 'HbMessageHandle' and
-                                       hasattr(x, 'msg_type_str') and 
-                                       x.msg_type == "OFPT_FLOW_MOD" and
-                                       hasattr(x, 'dpid') and
-                                       hasattr(x, 'msg_flowmod')
-                                       ),
-                            lambda x: (x.dpid, x.msg_flowmod) ),
                            ]
     for entry in self.lookup_tables:
       table, condition, key = entry
@@ -166,21 +146,84 @@ class HappensBeforeGraph(object):
   def _update_event_is_linked_mid_in(self, event):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
-  def _update_event_has_no_further_successors_pid_out(self, event):
-    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
-    if event in self.events_by_pid_out[event.pid_out]:
-      self.events_by_pid_out[event.pid_out].remove(event)
-  def _update_event_has_no_further_successors_mid_out(self, event):
-    # TODO(jm): This is now never possible/valid, and this function should never be called. Remove it.
-    if event in self.events_by_mid_out[event.mid_out]:
-      self.events_by_mid_out[event.mid_out].remove(event)
   
-  def _add_edge(self, before, after, sanity_check=True, **attrs):
+  def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):
+    if self.disable_path_cache or not use_path_cache:
+      # fallback to one-off checking
+      if nx.has_path(self.g, src_eid, dst_eid):
+        return True
+      if bidirectional and nx.has_path(self.g, dst_eid, src_eid):
+        return True
+      return False
+    else:
+      if self._cached_paths is None:
+        self._initialize_path_cache()
+      if src_eid not in self._cached_paths:
+        return False
+      if dst_eid in self._cached_paths[src_eid]:
+        return True
+      if bidirectional:
+        if dst_eid not in self._cached_paths:
+          return False
+        if src_eid in self._cached_paths[dst_eid]:
+          return True
+      return False
+  
+  def _initialize_path_cache(self):
+    self._cached_paths = nx.all_pairs_shortest_path_length(self.g, cutoff=None)
+    
+  def _clear_path_cache(self):
+    self._cached_paths = None
+    self._cached_reverse_paths = None
+    
+  def _update_path_cache(self, src, dst):
+    """
+    Update the shortest paths when a new edge is added.
+    Add paths from all nodes that can reach src, to all nodes reachable from dst.
+    
+    This is not efficient, but it does not need to be as we'll only be adding
+    very few paths this way and the graph is not dense.
+    """
+    if self._cached_paths is None:
+      self._initialize_path_cache()
+    else:
+      if self._cached_reverse_paths is None:
+        # need this for online updates
+        self._cached_reverse_paths = dict()
+        for src,dstpathdict in self._cached_paths.iteritems():
+          for dst, path in dstpathdict.iteritems():
+            if dst not in self._cached_reverse_paths:
+              self._cached_reverse_paths[dst] = dict()
+            self._cached_reverse_paths[dst][src] = path
+      
+      if src not in self._cached_paths:
+        self._cached_paths[src]=dict()
+        self._cached_paths[src][src] = 0
+      if dst not in self._cached_paths:
+        self._cached_paths[dst]=dict()
+        self._cached_paths[dst][dst] = 0
+      if src not in self._cached_reverse_paths:
+        self._cached_reverse_paths[src]=dict()
+        self._cached_reverse_paths[src][src] = 0
+      if dst not in self._cached_reverse_paths:
+        self._cached_reverse_paths[dst]=dict()
+        self._cached_reverse_paths[src][dst] = 0
+        
+      # nodes that have a path to src from somewhere (includes src)
+      for pre_src,path_to_src in self._cached_reverse_paths[src].items():
+        # nodes that are reachable from dst (includes dst)
+        for post_dst, path_from_dst in self._cached_paths[dst].items():
+          # there is now a path from pre_src -> post_dst
+          if post_dst not in self._cached_paths[pre_src]:
+            self._cached_paths[pre_src][post_dst] = path_to_src + path_from_dst + 1
+          else:
+            self._cached_paths[pre_src][post_dst] = max(self._cached_paths[pre_src][post_dst], path_to_src + path_from_dst + 1)
+          self._cached_reverse_paths[post_dst][pre_src] = self._cached_paths[pre_src][post_dst]
+  
+  def _add_edge(self, before, after, sanity_check=True, update_path_cache=False, **attrs):
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
-    #self.predecessors[after].add(before)
-    #self.successors[before].add(after)
     src, dst = before.eid, after.eid
     if self.g.has_edge(src, dst):
       rel = self.g.edge[src][dst]['rel']
@@ -190,6 +233,10 @@ class HappensBeforeGraph(object):
         raise ValueError(
           "Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
+    if update_path_cache:
+      self._update_path_cache(src,dst)
+    else:
+      self._clear_path_cache()
 
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
@@ -441,35 +488,15 @@ class HappensBeforeGraph(object):
       self._rule_06_time_rw(event)
       self._rule_07_time_ww(event)
 
-  def _add_transitive_edges(self, event):
-    """
-    Add transitive edges: A->x->B will add edge A->B
-    """
-    out_events = set(self.successors[event])
-    in_events = set(self.predecessors[event])
-    
-    for in_evt in in_events:
-      for out_evt in out_events:
-        self._add_edge(in_evt, out_evt, sanity_check=False)
-  
-  # TODO(jm): make online_update a config option
-  def add_line(self, line, online_update=False):
+  def add_line(self, line):
     # Skip empty lines and the ones start with '#'
     if not line or line.startswith('#'):
       return
 
     event = JsonEvent.from_json(json.loads(line))
     self.add_event(event)
-    if online_update:
-      self.race_detector.detect_races(event)
-      has_new_races = self.race_detector.total_races > 0
-      self.race_detector.detect_races()
-      if has_new_races:
-        self.race_detector.print_races()
-      self.store_graph()
 
   def add_event(self, event):
-    #self.events.append(event)
     assert event.eid not in self.events_by_id
     if self.ignore_ethertypes:
       packet = None
@@ -486,6 +513,11 @@ class HappensBeforeGraph(object):
     self.g.add_node(event.eid, event=event)
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
+
+    if hasattr(event, 'operations'):
+      for op in event.operations:
+        if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
+          self.events_with_reads_writes.append(event.eid)
 
     def _handle_HbAsyncFlowExpiry(event):
       self._update_edges(event)
@@ -528,7 +560,7 @@ class HappensBeforeGraph(object):
     self.events_by_id = dict()
     with open(filename) as f:
       for line in f:
-        self.add_line(line, online_update=False)
+        self.add_line(line)
     print "Read in " + str(len(list(self.events))) + " events."
     #self.events.sort(key=lambda i: i.eid)
 
@@ -548,31 +580,7 @@ class HappensBeforeGraph(object):
                             'OFPT_HELLO',
                             ]
         
-#     prunable_types =  [
-#                        EventType.HbPacketSend,
-#                        EventType.HbHostHandle,
-#                        EventType.HbHostSend,
-#                        EventType.HbControllerHandle,
-#                        EventType.HbControllerSend,
-#                       ]
-    
-    prunable_types =  []
-
-    # make a copy of self.predecessors, and then add transitive edges
-    # this way we can customize the output of the graphviz file without affecting
-    # the graph itself
     pruned_events = []
-    transitive_predecessors = defaultdict(set)
-    for k,v in self.predecessors.iteritems():
-      transitive_predecessors[k].update(v)
-    for i in self.events:
-      if i.type in prunable_types:
-        out_events = set(self.successors[i])
-        in_events = set(self.predecessors[i])
-        for in_evt in in_events:
-          for out_evt in out_events:
-            transitive_predecessors[out_evt].add(in_evt)
-        pruned_events.append(i)
     
     if print_only_racing:
       for i in self.events:
@@ -623,7 +631,7 @@ class HappensBeforeGraph(object):
                 i.type,
                 event_info_lines_str,
                 shape))
-    for k,v in transitive_predecessors.iteritems():
+    for k,v in self.predecessors:
       if k not in pruned_events:
         for i in v:
           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
@@ -748,19 +756,19 @@ class HappensBeforeGraph(object):
                                                       str(send.packet.src),
                                                       str(send.packet.dst), send.eid))
 
-  def add_harmful_edges(self, bidir=False):
-    for race in self.race_detector.races_harmful:
-      props = dict(rel='race', rtype=race.rtype, harmful=True)
-      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-      if bidir:
-        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-
-  def add_commute_edges(self, bidir=False):
-    for race in self.race_detector.races_commute:
-      props = dict(rel='race', rtype=race.rtype, harmful=False)
-      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-      if bidir:
-        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+#   def add_harmful_edges(self, bidir=False):
+#     for race in self.race_detector.races_harmful:
+#       props = dict(rel='race', rtype=race.rtype, harmful=True)
+#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+#       if bidir:
+#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+# 
+#   def add_commute_edges(self, bidir=False):
+#     for race in self.race_detector.races_commute:
+#       props = dict(rel='race', rtype=race.rtype, harmful=False)
+#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+#       if bidir:
+#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
   def get_racing_events(self, trace, ignore_other_traces=True):
     """
@@ -1179,7 +1187,7 @@ class Main(object):
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
-               verbose=True, ignore_first=False):
+               verbose=True, ignore_first=False, disable_path_cache=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -1195,6 +1203,7 @@ class Main(object):
     self.alt_barr = alt_barr
     self.verbose = verbose
     self.ignore_first = ignore_first
+    self.disable_path_cache = disable_path_cache
 
   def run(self):
     import time
@@ -1205,12 +1214,13 @@ class Main(object):
                                     filter_rw=self.filter_rw,
                                     ignore_ethertypes=self.ignore_ethertypes,
                                     no_race=self.no_race,
-                                    alt_barr=self.alt_barr)
+                                    alt_barr=self.alt_barr,
+                                    disable_path_cache=self.disable_path_cache)
     t0 = time.time()    
 
     self.graph.load_trace(self.filename)
     t1 = time.time()
-
+    
     self.graph.race_detector.detect_races(verbose=True)
     t2 = time.time()
 
@@ -1404,11 +1414,13 @@ if __name__ == '__main__':
                       help="Print all commute and harmful races")
   parser.add_argument('--ignore-first', dest='ignore_first', action='store_true',
                       default=False, help="Ignore the first race for per-packet consistency check")
+  parser.add_argument('--disable-path-cache', dest='disable_path_cache', action='store_true',
+                      default=False, help="Disable using all_pairs_shortest_path_length() preprocessing.")
 
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
-              ignore_first=args.ignore_first)
+              ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache)
   main.run()

@@ -88,18 +88,12 @@ class RaceDetector(object):
   def time_hb_ww_edges_counter(self):
     return self._time_hb_ww_edges_counter
 
-  def is_reachable(self, source, target):
-    return nx.has_path(self.graph.g, source.eid, target.eid)
-
   def is_ordered(self, event, other):
-    # TODO(jm): horribly inefficient, this should be done the right way
-    older = event if event.eid < other.eid else other
-    newer = event if event.eid > other.eid else other
-    if self.is_reachable(newer, older):
-      return True
-    if self.is_reachable(older, newer): # need to check due to async controller instrumentation # TODO(jm): change numbering of controller events so that we can finally remove this
-      return True
-    return False
+    """
+    It only matters that there is an ordering in the graph between the two events,
+    but it is irrelevant in which direction.
+    """
+    return self.graph.has_path(event.eid, other.eid, bidirectional=True, use_path_cache=True)
 
   def has_common_ancestor(self, event, other):
     """
@@ -121,7 +115,8 @@ class RaceDetector(object):
     self.read_operations = []
     self.write_operations = []
 
-    for i in self.graph.events:
+    for eid in self.graph.events_with_reads_writes:
+      i = self.graph.events_by_id[eid]
       if hasattr(i, 'operations'):
         for k in i.operations:
           if k.type == 'TraceSwitchFlowTableWrite':
@@ -134,6 +129,8 @@ class RaceDetector(object):
             assert hasattr(i, 'packet')
             assert hasattr(i, 'in_port')
             self.read_operations.append((i, k))
+          # TODO(jm): Do we need to consider TraceSwitchFlowTableEntryExpiry here as well??? Probably yes?
+          #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
 
   def detect_ww_races(self, event=None, verbose=False):
     count = 0
