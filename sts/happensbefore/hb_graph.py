@@ -23,6 +23,8 @@ from pox.openflow.libopenflow_01 import OFPT_STATS_REPLY
 
 from hb_utils import pkt_info
 
+from hb_shadow_table import ShadowFlowTable
+
 from hb_race_detector import RaceDetector
 from hb_race_detector import predecessor_types
 
@@ -52,7 +54,7 @@ class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
                ww_delta=1, filter_rw=False, ignore_ethertypes=None,
-               no_race=False, alt_barr=False, disable_path_cache=True):
+               no_race=False, alt_barr=False, disable_path_cache=True, data_deps=False):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -75,12 +77,12 @@ class HappensBeforeGraph(object):
     self.events_before_next_barrier = defaultdict(list)
     
     # for barrier post rule
-    self.most_recent_barrier = defaultdict()
+    self.most_recent_barrier = dict()
     
     # for races
     self.race_detector = RaceDetector(
       self, filter_rw=filter_rw, add_hb_time=add_hb_time, ww_delta=ww_delta,
-      rw_delta=rw_delta)
+      rw_delta=rw_delta, data_deps=data_deps)
 
     self.ww_delta = ww_delta
     self.rw_delta = rw_delta
@@ -101,6 +103,10 @@ class HappensBeforeGraph(object):
     
     self.alt_barr = alt_barr
     self.versions = {}
+    
+    # add read-after-write dependency edges
+    self.data_deps = data_deps
+    self.shadow_tables = dict()
 
   @property
   def events(self):
@@ -146,6 +152,11 @@ class HappensBeforeGraph(object):
   def _update_event_is_linked_mid_in(self, event):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
+
+  def _update_shadow_tables(self, event):
+    if event.dpid not in self.shadow_tables:
+      self.shadow_tables[event.dpid] = ShadowFlowTable(event.dpid)
+    self.shadow_tables[event.dpid].apply_event(event)
   
   def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):
     if self.disable_path_cache or not use_path_cache:
@@ -513,6 +524,8 @@ class HappensBeforeGraph(object):
     self.g.add_node(event.eid, event=event)
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
+    
+    
 
     if hasattr(event, 'operations'):
       for op in event.operations:
@@ -520,12 +533,15 @@ class HappensBeforeGraph(object):
           self.events_with_reads_writes.append(event.eid)
 
     def _handle_HbAsyncFlowExpiry(event):
+      self._update_shadow_tables(event)
       self._update_edges(event)
     def _handle_HbPacketHandle(event):
+      self._update_shadow_tables(event)
       self._update_edges(event)
     def _handle_HbPacketSend(event):
       self._update_edges(event)
     def _handle_HbMessageHandle(event):
+      self._update_shadow_tables(event)
       self._update_edges(event)
       self.msg_handles[event.eid] = event
     def _handle_HbMessageSend(event):
@@ -541,6 +557,7 @@ class HappensBeforeGraph(object):
     def _handle_HbControllerSend(event):
       self._update_edges(event)
     def _handle_default(event):
+      assert False
       pass
     
     handlers = {'HbAsyncFlowExpiry':   _handle_HbAsyncFlowExpiry,
@@ -822,6 +839,7 @@ class HappensBeforeGraph(object):
     If two packets are inconsistent, but they race with the same set of writes,
     then only one will be reported
     """
+    # TODO(jm): This does not take into account the order of the writes or the path the packets took. Do we care?
     result = {}
     removed = defaultdict(list)
     for trace, races, versions in traces_races:
@@ -878,52 +896,52 @@ class HappensBeforeGraph(object):
     print "Saving all races graph in", name
     nx.write_dot(graph, os.path.join(self.results_dir, name))
 
-  def check_covered(self, ordered_trace_events, races):
-    # Cannot be covered if there is only one race
-    if len(races) <= 1:
-      return False
-
-    # Collect reads and writes
-    by_writes = {}
-    by_reads = {}
-    for race in races:
-      if isinstance(race.i_op, TraceSwitchFlowTableWrite):
-        wr = race.i_event.eid
-        rd = race.k_event.eid
-      else:
-        rd = race.i_event.eid
-        wr = race.k_event.eid
-      if wr not in by_writes:
-        by_writes[wr] = []
-      if rd not in by_reads:
-        by_reads[rd] = []
-      by_writes[wr].append(rd)
-      by_reads[rd].append(wr)
-
-    ordered_racing_reads = []
-    for eid in ordered_trace_events:
-      if eid in by_reads:
-        ordered_racing_reads.append(eid)
-
-    # Try to find if the two writes have HB relations between them
-    found_paths = []
-    for i in range(1, len(ordered_racing_reads)):
-      r1 = ordered_racing_reads[i-1]
-      r2 = ordered_racing_reads[i]
-
-      for wr1 in by_reads[r1]:
-        for wr2 in by_reads[r2]:
-          if not nx.has_path(self.g, wr2, wr1):
-            found_paths.append((wr2, wr1))
-    for wr2, wr1 in found_paths:
-      write1 = self.g.node[wr1]['event']
-      write2 = self.g.node[wr2]['event']
-      delta = write1.operations[0].t - write2.operations[0].t
-      if self.race_detector.add_hb_time and delta >= self.race_detector.ww_delta:
-        continue # Covered because of time
-      # TODO(AH): Now match the tables and check the network forwarding behaviour before w1
-      return False
-    return True
+#   def check_covered(self, ordered_trace_events, races):
+#     # Cannot be covered if there is only one race
+#     if len(races) <= 1:
+#       return False
+# 
+#     # Collect reads and writes
+#     by_writes = {}
+#     by_reads = {}
+#     for race in races:
+#       if isinstance(race.i_op, TraceSwitchFlowTableWrite):
+#         wr = race.i_event.eid
+#         rd = race.k_event.eid
+#       else:
+#         rd = race.i_event.eid
+#         wr = race.k_event.eid
+#       if wr not in by_writes:
+#         by_writes[wr] = []
+#       if rd not in by_reads:
+#         by_reads[rd] = []
+#       by_writes[wr].append(rd)
+#       by_reads[rd].append(wr)
+# 
+#     ordered_racing_reads = []
+#     for eid in ordered_trace_events:
+#       if eid in by_reads:
+#         ordered_racing_reads.append(eid)
+# 
+#     # Try to find if the two writes have HB relations between them
+#     found_paths = []
+#     for i in range(1, len(ordered_racing_reads)):
+#       r1 = ordered_racing_reads[i-1]
+#       r2 = ordered_racing_reads[i]
+# 
+#       for wr1 in by_reads[r1]:
+#         for wr2 in by_reads[r2]:
+#           if not nx.has_path(self.g, wr2, wr1):
+#             found_paths.append((wr2, wr1))
+#     for wr2, wr1 in found_paths:
+#       write1 = self.g.node[wr1]['event']
+#       write2 = self.g.node[wr2]['event']
+#       delta = write1.operations[0].t - write2.operations[0].t
+#       if self.race_detector.add_hb_time and delta >= self.race_detector.ww_delta:
+#         continue # Covered because of time
+#       # TODO(AH): Now match the tables and check the network forwarding behaviour before w1
+#       return False
+#     return True
 
   def find_per_packet_inconsistent(self, check_covered=False, summarize=True):
     """
@@ -977,12 +995,17 @@ class HappensBeforeGraph(object):
         inconsistent_packet_entry_version.append((trace, races, racing_versions))
 
     if check_covered:
-      for trace, races, versions in all_inconsistent_packet_traces:
-        ordered = list(nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid))
-        if self.check_covered(ordered, races):
-          inconsistent_packet_traces_covered.append((trace, races, versions))
-        else:
-          inconsistent_packet_traces.append((trace, races, versions))
+      # TODO(jm): Check for covered races. Covered races are a subset of the difference between 
+      #           regular race detection and race detection with dependencies.
+      # TODO(jm): What exactly is the criteria? That adding a dep edge to resolve one of the races
+      #           earlier in the packet trace resolves a race later on.
+      pass
+#       for trace, races, versions in all_inconsistent_packet_traces:
+#         ordered = list(nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid))
+#         if self.check_covered(ordered, races):
+#           inconsistent_packet_traces_covered.append((trace, races, versions))
+#         else:
+#           inconsistent_packet_traces.append((trace, races, versions))
     else:
       inconsistent_packet_traces = all_inconsistent_packet_traces
 
@@ -998,6 +1021,8 @@ class HappensBeforeGraph(object):
       if self.msgs[eid].msg_type_str != 'OFPT_BARRIER_REPLY':
         continue
       nodes = []
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies 
       edges = dfs_edge_filter(self.g, eid, just_mid_iter)
       for src, dst in edges:
         src_event = self.g.node[src]['event']
@@ -1020,6 +1045,8 @@ class HappensBeforeGraph(object):
       if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
         continue
       nodes = []
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
       edges = dfs_edge_filter(self.g, eid, just_mid_iter)
       for src, dst in edges:
         src_event = self.g.node[src]['event']
@@ -1040,6 +1067,7 @@ class HappensBeforeGraph(object):
     """
     Proactive is all the cmds that were not in the reactive set
     """
+    # TODO(jm): At the end of the trace, some of the controller instrumentation might not be there, so some of the commands at the very end could be reactive. Cut them off somehow?
     if not reactive_versions:
       reactive_versions = self.find_reactive_versions()
     reactive_cmds = []
@@ -1059,6 +1087,7 @@ class HappensBeforeGraph(object):
     """
     # Cluster by time
     from scipy.cluster.hierarchy import fclusterdata
+    # TODO(jm): Should we add a setting for the threshold, or use STS rounds instead of time?
     features = [[e.operations[0].t] for e in cmds]
     result = fclusterdata(features, 1, criterion="distance")
     clustered = defaultdict(list)
@@ -1091,6 +1120,7 @@ class HappensBeforeGraph(object):
 
     # Now merge versions if one contains a response to a barrier request
     # from previous version
+    # TODO(jm): Perhaps we should not just consider barrier replies, but also flow removed messages for explicit deletes? Are there more such replies?
     barrier_replies = self.find_barrier_replies()
     replies_by_xid = {} # (dpid, xid) -> cmds
     replies_by_xid_versions = {}  # (dpid, xid) -> versions
@@ -1137,6 +1167,8 @@ class HappensBeforeGraph(object):
     """Try to find if two versions race with each other"""
     versions = self.find_versions()
 
+    # TODO(jm): Could we check the races directly instead of creating the ww_races variable?
+    
     ww_races = defaultdict(list)
     for race in self.race_detector.races_harmful:
       if race.rtype == 'w/w':
@@ -1187,7 +1219,7 @@ class Main(object):
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
-               verbose=True, ignore_first=False, disable_path_cache=False):
+               verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -1204,6 +1236,7 @@ class Main(object):
     self.verbose = verbose
     self.ignore_first = ignore_first
     self.disable_path_cache = disable_path_cache
+    self.data_deps = data_deps
 
   def run(self):
     import time
@@ -1215,15 +1248,16 @@ class Main(object):
                                     ignore_ethertypes=self.ignore_ethertypes,
                                     no_race=self.no_race,
                                     alt_barr=self.alt_barr,
-                                    disable_path_cache=self.disable_path_cache)
+                                    disable_path_cache=self.disable_path_cache,
+                                    data_deps=self.data_deps)
     t0 = time.time()    
 
     self.graph.load_trace(self.filename)
     t1 = time.time()
     
-    self.graph.race_detector.detect_races(verbose=True)
+    self.graph.race_detector.detect_races(verbose=True, data_deps=self.data_deps)
     t2 = time.time()
-
+    
     packet_traces = self.graph.extract_traces(self.graph.g)
     t3 = time.time()
 
@@ -1272,6 +1306,7 @@ class Main(object):
     print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
+    # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
     print "INCONSISENT updates", racing_versions
 
     load_time = t1 - t0
@@ -1345,7 +1380,7 @@ class Main(object):
     with open(file_name, 'w') as f:
       write_general_info_to_file(f)
 
-      # Operataions
+      # Operations
       f.write('num_read,%d\n' % num_read)
       f.write('num_writes,%d\n' % num_writes)
       f.write('num_ops,%d\n' % num_ops)
@@ -1416,11 +1451,16 @@ if __name__ == '__main__':
                       default=False, help="Ignore the first race for per-packet consistency check")
   parser.add_argument('--disable-path-cache', dest='disable_path_cache', action='store_true',
                       default=False, help="Disable using all_pairs_shortest_path_length() preprocessing.")
+  parser.add_argument('--data_deps', dest='data_deps', action='store_true',
+                      default=False, help="Add data dependency edges for all reads that use a previously written value")
+
+  # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
   args = parser.parse_args()
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
-              ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache)
+              ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache, 
+              data_deps=args.data_deps)
   main.run()

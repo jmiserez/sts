@@ -5,7 +5,8 @@ import networkx as nx
 from hb_utils import op_to_str
 from hb_utils import nCr
 
-from sts.happensbefore.hb_commute_check import CommutativityChecker
+from hb_commute_check import CommutativityChecker
+from sts.happensbefore.hb_sts_events import TraceSwitchFlowTableEntryExpiry
 
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
@@ -55,7 +56,7 @@ class RaceDetector(object):
 
   # TODO(jm): make filter_rw a config option
   def __init__(self, graph, filter_rw=False, add_hb_time=False, rw_delta=5,
-               ww_delta=1):
+               ww_delta=1, data_deps=False):
     self.graph = graph
 
     self.read_operations = []
@@ -79,6 +80,9 @@ class RaceDetector(object):
     # Just to keep track of how many HB edges where added based on time
     self._time_hb_rw_edges_counter = 0
     self._time_hb_ww_edges_counter = 0
+    
+    self.data_deps = data_deps
+    self._dep_raw_edges_counter = 0
 
   @property
   def time_hb_rw_edges_counter(self):
@@ -87,7 +91,11 @@ class RaceDetector(object):
   @property
   def time_hb_ww_edges_counter(self):
     return self._time_hb_ww_edges_counter
-
+  
+  @property
+  def dep_raw_edges_counter(self):
+    return self._dep_raw_edges_counter
+  
   def is_ordered(self, event, other):
     """
     It only matters that there is an ordering in the graph between the two events,
@@ -116,21 +124,24 @@ class RaceDetector(object):
     self.write_operations = []
 
     for eid in self.graph.events_with_reads_writes:
-      i = self.graph.events_by_id[eid]
-      if hasattr(i, 'operations'):
-        for k in i.operations:
-          if k.type == 'TraceSwitchFlowTableWrite':
-            assert hasattr(k, 'flow_table')
-            assert hasattr(k, 'flow_mod')
-            self.write_operations.append((i, k))
-          elif k.type == 'TraceSwitchFlowTableRead':
-            assert hasattr(k, 'flow_table')
-            assert hasattr(k, 'flow_mod')
-            assert hasattr(i, 'packet')
-            assert hasattr(i, 'in_port')
-            self.read_operations.append((i, k))
+      event = self.graph.events_by_id[eid]
+      assert hasattr(event, 'operations')
+      for op in event.operations:
+        if type(op) == TraceSwitchFlowTableWrite:
+          assert hasattr(op, 'flow_table')
+          assert hasattr(op, 'flow_mod')
+          self.write_operations.append((event, op))
+        elif type(op) == TraceSwitchFlowTableRead:
+          assert hasattr(k, 'flow_table')
+          assert hasattr(k, 'flow_mod')
+          assert hasattr(i, 'packet')
+          assert hasattr(i, 'in_port')
+          self.read_operations.append((event, op))
+        elif type(op) == TraceSwitchFlowTableEntryExpiry:
+          pass # for now
           # TODO(jm): Do we need to consider TraceSwitchFlowTableEntryExpiry here as well??? Probably yes?
           #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
+      
 
   def detect_ww_races(self, event=None, verbose=False):
     count = 0
@@ -212,6 +223,72 @@ class RaceDetector(object):
                 self.graph._add_edge(first, second, sanity_check=False, rel='time')
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)
+            
+#   def detect_races_incremental(self):
+#     """
+#     Detect races in trace order, adding data dependency edges in the graph along the way
+#     """
+#     remaining_events = self.graph.events_with_reads_writes[::-1] #copy reversed
+#     
+#     eid = remaining_events.pop()
+#       event = self.graph.events_by_id[eid]
+#       assert hasattr(event, 'operations'):
+#       for op in event.operations:
+#         elif type(op) == TraceSwitchFlowTableWrite
+#           assert hasattr(op, 'flow_table')
+#           assert hasattr(op, 'flow_mod')
+#           self.candidate_write_ops.append((eid, op))
+#         elif type(op) == TraceSwitchFlowTableRead:
+#           assert hasattr(k, 'flow_table')
+#           assert hasattr(k, 'flow_mod')
+#           assert hasattr(i, 'packet')
+#           assert hasattr(i, 'in_port')
+#           self.candidate_read_ops.append((eid, op))
+#     
+#     
+#     
+#     latest_eid = 0
+#     
+#     def _goto_next_event():
+#       
+#         # TODO(jm): Do we need to consider TraceSwitchFlowTableEntryExpiry here as well??? Probably yes?
+#         #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
+#       return eid
+#     
+#     def _detect_races_event(eid):
+#       event = self.graph.events_by_id[eid]
+#   
+#     rw_combination_count = len(self.read_operations)*len(self.write_operations)
+# 
+#     # read <-> write
+#     for i_event, i_op in self.read_operations:
+#       for k_event, k_op in self.write_operations:
+#         if (i_event != k_event and
+#             (event is None or event == i_event or event == k_event) and
+#             i_event.dpid == k_event.dpid and
+#             not self.is_ordered(i_event, k_event)):
+# 
+#           if self.filter_rw and not self.has_common_ancestor(i_event, k_event):
+#             self.total_filtered += 1
+#           else:
+#             if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
+#                                                                  k_event, k_op):
+#               self.races_commute.append(Race('r/w',i_event, i_op, k_event, k_op))
+#             else:
+#               delta = abs(i_op.t - k_op.t)
+#               if delta < self.rw_delta or not self.add_hb_time:
+#                 self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
+#                 self.racing_events_harmful.add(i_event)
+#                 self.racing_events_harmful.add(k_event)
+#               else:
+#                 self._time_hb_rw_edges_counter += 1
+#                 first = i_event if i_op.t < k_op.t else k_event
+#                 second = k_event if first == i_event else i_event
+#                 assert first != second
+#                 self.graph._add_edge(first, second, sanity_check=False, rel='time')
+#             self.racing_events.add(i_event)
+#             self.racing_events.add(k_event)
+    
 
   # TODO(jm): make verbose a config option
   def detect_races(self, event=None, verbose=False):

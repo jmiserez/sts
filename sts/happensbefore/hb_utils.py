@@ -167,6 +167,13 @@ def read_flow_table(table, packet, in_port):
 def write_flow_table(table, flow_mod):
   return table.process_flow_mod(flow_mod)
 
+def find_entries_in_flow_table(table, flow_mod):
+  found = []
+  for i in table:
+    if i.to_flow_mod() == flow_mod:
+      found.append(i)
+  return found
+
 
 def nCr(n,r):
   """

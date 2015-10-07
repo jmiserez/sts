@@ -19,6 +19,8 @@ from hb_utils import write_flow_table
 
 class CommutativityChecker(object):
 
+  # TODO(jm): Move the code that does NOT use the commutativity specification to separate functions
+
   # TODO(jm): make use_comm_spec a config option
   def __init__(self, use_comm_spec=True):
     self.use_comm_spec = use_comm_spec # Use commutativity spec if True
