@@ -5,7 +5,7 @@ import networkx as nx
 from hb_utils import op_to_str
 from hb_utils import nCr
 
-from hb_comute_check import CommutativityChecker
+from sts.happensbefore.hb_commute_check import CommutativityChecker
 
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
