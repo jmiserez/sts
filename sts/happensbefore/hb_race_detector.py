@@ -148,17 +148,7 @@ class RaceDetector(object):
           #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
 
 
-  def detect_races_all(self, all_operations, ops_to_check=None, verbose=False):
-#     def print_progress(count, length, progress):
-#       if verbose:
-#         percentage = int(((count / float(iter_func_len)) * 100)) // 10 * 10
-#         if percentage > progress:
-#           progress = percentage
-#           print "{}% ".format(progress)
-#     if verbose:
-#       print "Processing {} r/w combinations".format(iter_func_len)
-#     progress = 0
-    
+  def detect_races_all(self, all_operations, ops_to_check=None, verbose=True):
     racing_events = set()
     racing_events_harmful = set()
     commuting_races = []
@@ -189,7 +179,12 @@ class RaceDetector(object):
     else:
       dpids = ops_by_dpid.keys()
     
+    if verbose:
+      print "Race detection for {} dpids:".format(len(dpids))
+    
     for dpid in dpids:
+      if verbose:
+        print "  dpid {}".format(dpid)
       assert dpid in ops_by_dpid
       if ops_to_check is not None:
         assert dpid in ops_to_check_by_dpid
@@ -232,7 +227,7 @@ class RaceDetector(object):
           writes_b = filter(is_write,ops_b)
           reads_b = filter(is_read,ops_b)
           
-          # writes-write races
+          # write-write races
           inner_iter = itertools.product(writes_a, writes_b)
           inner_iter_len = len(writes_a) * len(writes_b)
           
@@ -243,8 +238,8 @@ class RaceDetector(object):
               delta = abs(i_op.t - k_op.t)
               if delta < self.ww_delta or not self.add_hb_time:
                 harmful_races.append(Race('w/w', i_event, i_op, k_event, k_op))
-                racing_events_harmful.add(i_eid)
-                racing_events_harmful.add(k_eid)
+                racing_events_harmful.add(i_event)
+                racing_events_harmful.add(k_event)
               else:
                 self._time_hb_ww_edges_counter += 1
                 first = i_eid if i_op.t < k_op.t else k_eid
@@ -269,8 +264,8 @@ class RaceDetector(object):
                 delta = abs(i_op.t - k_op.t)
                 if delta < self.rw_delta or not self.add_hb_time:
                   harmful_races.append(Race('r/w',i_event, i_op, k_event, k_op))
-                  racing_events_harmful.add(i_eid)
-                  racing_events_harmful.add(k_eid)
+                  racing_events_harmful.add(i_event)
+                  racing_events_harmful.add(k_event)
                 else:
                   self._time_hb_rw_edges_counter += 1
                   first = i_event if i_op.t < k_op.t else k_event
