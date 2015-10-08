@@ -70,6 +70,12 @@ class JsonEvent(Event):
     """Register a class to be decoded in from_json"""
     cls._json_types[klass.__name__] = klass
 
+
+  # TODO(jm): I did some tests to see why loading events is so slow.
+  #           JsonEvent.from_json is the slow part, everything else
+  #           (including json.loads()) is blazing fast.
+  #           We might want to speed that up a bit.
+
   @classmethod
   def from_json(cls, json_dict):
     """Decode json dict to JsonEvent"""

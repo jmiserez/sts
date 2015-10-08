@@ -105,6 +105,7 @@ class ShadowFlowTable(object):
     pass
 
   def apply_event(self, event):
+    assert event.eid > self.latest_event_eid
     self.latest_event_eid = event.eid
     assert type(event) in [HbPacketHandle, HbMessageHandle, HbAsyncFlowExpiry]
     assert hasattr(event, "operations")
@@ -145,7 +146,7 @@ class ShadowFlowTable(object):
     deps = self.get_RaW_data_dependencies(event.eid)
     if len(deps) > 0:
       self.data_deps[event.eid].extend(deps)
-      print "RaW dependencies: {} < [{}]".format(event.eid,', '.join(str(k[1]) for k in enumerate(deps)))
+#       print "RaW dependencies: {} < [{}]".format(event.eid,', '.join(str(k[1]) for k in enumerate(deps)))
 
     
     

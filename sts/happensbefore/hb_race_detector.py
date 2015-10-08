@@ -6,7 +6,10 @@ from hb_utils import op_to_str
 from hb_utils import nCr
 
 from hb_commute_check import CommutativityChecker
-from sts.happensbefore.hb_sts_events import TraceSwitchFlowTableEntryExpiry
+
+from hb_json_event import *
+from hb_events import *
+from hb_sts_events import *
 
 
 # Sanity check! This is a mapping of all predecessor types that make sense.
@@ -96,12 +99,14 @@ class RaceDetector(object):
   def dep_raw_edges_counter(self):
     return self._dep_raw_edges_counter
   
-  def is_ordered(self, event, other):
+  def is_ordered(self, eid, other_eid):
     """
     It only matters that there is an ordering in the graph between the two events,
     but it is irrelevant in which direction.
     """
-    return self.graph.has_path(event.eid, other.eid, bidirectional=True, use_path_cache=True)
+    # TODO(jm): Remove this assert once it's tested with data dependencies!
+#     assert self.graph.has_path(eid, other_eid, bidirectional=True, use_path_cache=True) == self.graph.has_path(eid, other_eid, bidirectional=True, use_path_cache=False)
+    return self.graph.has_path(eid, other_eid, bidirectional=True, use_path_cache=True)
 
   def has_common_ancestor(self, event, other):
     """
@@ -114,7 +119,7 @@ class RaceDetector(object):
     other_ancs.add(other.eid)
     return not event_ancs.isdisjoint(other_ancs)
 
-  def read_ops(self):
+  def update_ops_lists(self):
     """
     Helper method to extract read and write operations from the HB graph.
     MUST be called before detect_rw and detect_ww. But detect_races calls it
@@ -130,187 +135,176 @@ class RaceDetector(object):
         if type(op) == TraceSwitchFlowTableWrite:
           assert hasattr(op, 'flow_table')
           assert hasattr(op, 'flow_mod')
-          self.write_operations.append((event, op))
+          self.write_operations.append((event, event.dpid, eid, op))
         elif type(op) == TraceSwitchFlowTableRead:
-          assert hasattr(k, 'flow_table')
-          assert hasattr(k, 'flow_mod')
-          assert hasattr(i, 'packet')
-          assert hasattr(i, 'in_port')
-          self.read_operations.append((event, op))
+          assert hasattr(op, 'flow_table')
+          assert hasattr(op, 'flow_mod')
+          assert hasattr(event, 'packet')
+          assert hasattr(event, 'in_port')
+          self.read_operations.append((event, event.dpid, eid, op))
         elif type(op) == TraceSwitchFlowTableEntryExpiry:
           pass # for now
           # TODO(jm): Do we need to consider TraceSwitchFlowTableEntryExpiry here as well??? Probably yes?
           #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
+
+
+  def detect_races_all(self, all_operations, ops_to_check=None, verbose=False):
+#     def print_progress(count, length, progress):
+#       if verbose:
+#         percentage = int(((count / float(iter_func_len)) * 100)) // 10 * 10
+#         if percentage > progress:
+#           progress = percentage
+#           print "{}% ".format(progress)
+#     if verbose:
+#       print "Processing {} r/w combinations".format(iter_func_len)
+#     progress = 0
+    
+    racing_events = set()
+    racing_events_harmful = set()
+    commuting_races = []
+    harmful_races = []
+    
+    ops_by_dpid = dict()
+    ops_to_check_by_dpid = dict()
+    
+    for xop in all_operations:
+      event,dpid,eid,op = xop
+      if dpid not in ops_by_dpid:
+        ops_by_dpid[dpid] = dict()
+      if eid not in ops_by_dpid[dpid]:
+        ops_by_dpid[dpid][eid] = list()
+      ops_by_dpid[dpid][eid].append(xop)
+    
+    if ops_to_check is not None:
+      for xop in ops_to_check:
+        event,dpid,eid,op = xop
+        if dpid not in ops_to_check_by_dpid:
+          ops_to_check_by_dpid[dpid] = dict()
+        if eid not in ops_to_check_by_dpid[dpid]:
+          ops_to_check_by_dpid[dpid][eid] = list()
+        ops_to_check_by_dpid[dpid][eid].append(xop)
       
+    if ops_to_check is not None:
+      dpids = list(set(ops_by_dpid.keys()).intersection(set(ops_to_check_by_dpid.keys())))
+    else:
+      dpids = ops_by_dpid.keys()
+    
+    for dpid in dpids:
+      assert dpid in ops_by_dpid
+      if ops_to_check is not None:
+        assert dpid in ops_to_check_by_dpid
+        eids_a = ops_to_check_by_dpid[dpid].keys()
+        eids_b = ops_by_dpid[dpid].keys()
+        
+        # remove all in eids_a from eids_b 
+        eids_b = list(set(eids_b).difference(set(eids_a)))
+        
+        # each eid_a with each eid_b
+        iter_func = itertools.product(eids_a, eids_b)
+        iter_func_len = len(eids_a) * len(eids_b)
+      else:
+        eids_ab = ops_by_dpid[dpid].keys()
 
-  def detect_ww_races(self, event=None, verbose=False):
-    count = 0
-    percentage_done = 0
-
-    ww_combination_count = nCr(len(self.write_operations),2)
-
-    if verbose:
-      print "Processing {} w/w combinations".format(ww_combination_count)
-    # write <-> write
-    for (i_event, i_op), (k_event, k_op) in itertools.combinations(self.write_operations, 2):
-      if verbose:
-        count += 1
-        percentage = int(((count / float(ww_combination_count)) * 100)) // 10 * 10
-        if percentage > percentage_done:
-          percentage_done = percentage
-          print "{}% ".format(percentage)
-      if (i_event != k_event and
-          (event is None or event == i_event or event == k_event) and
-          i_event.dpid == k_event.dpid and
-          not self.is_ordered(i_event, k_event)):
-
-        if self.commutativity_checker.check_commutativity_ww(i_event, i_op,
-                                                             k_event, k_op):
-          self.races_commute.append(Race('w/w', i_event, i_op, k_event, k_op))
-        else:
-          delta = abs(i_op.t - k_op.t)
-          if delta < self.ww_delta or not self.add_hb_time:
-            self.races_harmful.append(Race('w/w', i_event, i_op, k_event, k_op))
-            self.racing_events_harmful.add(i_event)
-            self.racing_events_harmful.add(k_event)
+        # each combination of length 2 in eids_ab (without (self, self))
+        iter_func = itertools.combinations(eids_ab, 2)
+        iter_func_len = nCr(len(eids_ab),2)
+      
+      for count, (i_eid, k_eid) in itertools.izip(itertools.count(),iter_func):
+        assert i_eid != k_eid
+        if not self.is_ordered(i_eid, k_eid):
+          
+          if ops_to_check is not None:
+            # check all pairs of ops of the two eids
+            ops_a = ops_to_check_by_dpid[dpid][i_eid]
+            ops_b = ops_by_dpid[dpid][k_eid]
           else:
-            self._time_hb_ww_edges_counter += 1
-            first = i_event if i_op.t < k_op.t else k_event
-            second = k_event if first == i_event else i_event
-            assert first != second
-            self.graph._add_edge(first, second, sanity_check=False, rel='time')
-        self.racing_events.add(i_event)
-        self.racing_events.add(k_event)
-
-  def detect_rw_races(self, event=None, verbose=False):
-    percentage_done = 0
-    count = 0
-    rw_combination_count = len(self.read_operations)*len(self.write_operations)
-
-    if verbose:
-      print "Processing {} r/w combinations".format(rw_combination_count)
-    # read <-> write
-    for i_event, i_op in self.read_operations:
-      for k_event, k_op in self.write_operations:
-        if verbose:
-          count += 1
-          percentage = int(((count / float(rw_combination_count)) * 100)) // 10 * 10
-          if percentage > percentage_done:
-            percentage_done = percentage
-            print "{}% ".format(percentage)
-        if (i_event != k_event and
-            (event is None or event == i_event or event == k_event) and
-            i_event.dpid == k_event.dpid and
-            not self.is_ordered(i_event, k_event)):
-
-          if self.filter_rw and not self.has_common_ancestor(i_event, k_event):
-            self.total_filtered += 1
-          else:
-            if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
-                                                                 k_event, k_op):
-              self.races_commute.append(Race('r/w',i_event, i_op, k_event, k_op))
+            # check all pairs of ops of the two eids
+            ops_a = ops_by_dpid[dpid][i_eid]
+            ops_b = ops_by_dpid[dpid][k_eid]
+            
+          def is_write(op):
+            return op in self.write_operations
+          def is_read(op):
+            return op in self.read_operations
+          
+          writes_a = filter(is_write,ops_a)
+          reads_a = filter(is_read,ops_a)
+          writes_b = filter(is_write,ops_b)
+          reads_b = filter(is_read,ops_b)
+          
+          # writes-write races
+          inner_iter = itertools.product(writes_a, writes_b)
+          inner_iter_len = len(writes_a) * len(writes_b)
+          
+          for inner_count, ((i_event,i_dpid,i_eid,i_op), (k_event,k_dpid,k_eid,k_op)) in itertools.izip(itertools.count(),inner_iter):
+            if self.commutativity_checker.check_commutativity_ww(i_event, i_op, k_event, k_op):
+              commuting_races.append(Race('w/w', i_event, i_op, k_event, k_op))
             else:
               delta = abs(i_op.t - k_op.t)
-              if delta < self.rw_delta or not self.add_hb_time:
-                self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
-                self.racing_events_harmful.add(i_event)
-                self.racing_events_harmful.add(k_event)
+              if delta < self.ww_delta or not self.add_hb_time:
+                harmful_races.append(Race('w/w', i_event, i_op, k_event, k_op))
+                racing_events_harmful.add(i_eid)
+                racing_events_harmful.add(k_eid)
               else:
-                self._time_hb_rw_edges_counter += 1
-                first = i_event if i_op.t < k_op.t else k_event
-                second = k_event if first == i_event else i_event
+                self._time_hb_ww_edges_counter += 1
+                first = i_eid if i_op.t < k_op.t else k_eid
+                second = k_eid if first == i_eid else i_eid
                 assert first != second
                 self.graph._add_edge(first, second, sanity_check=False, rel='time')
-            self.racing_events.add(i_event)
-            self.racing_events.add(k_event)
+            racing_events.add(i_event)
+            racing_events.add(k_event)
+          
+          # read-write races
+          inner_iter = itertools.chain(itertools.product(reads_a, writes_b), itertools.product(reads_b, writes_a))
+          inner_iter_len = (len(reads_a) * len(writes_b)) + (len(writes_a) * len(reads_b))
+          
+          for inner_count, ((i_event,i_dpid,i_eid,i_op), (k_event,k_dpid,k_eid,k_op)) in itertools.izip(itertools.count(),inner_iter):
+            if self.filter_rw and not self.has_common_ancestor(i_event, k_event):
+              self.total_filtered += 1
+            else:
+              if self.commutativity_checker.check_commutativity_rw(i_event, i_op, k_event, k_op):
+                commuting_races.append(Race('r/w',i_event, i_op, k_event, k_op))
+                commuting_races.append(Race('w/w', i_event, i_op, k_event, k_op))
+              else:
+                delta = abs(i_op.t - k_op.t)
+                if delta < self.rw_delta or not self.add_hb_time:
+                  harmful_races.append(Race('r/w',i_event, i_op, k_event, k_op))
+                  racing_events_harmful.add(i_eid)
+                  racing_events_harmful.add(k_eid)
+                else:
+                  self._time_hb_rw_edges_counter += 1
+                  first = i_event if i_op.t < k_op.t else k_event
+                  second = k_event if first == i_event else i_event
+                  assert first != second
+                  self.graph._add_edge(first, second, sanity_check=False, rel='time')
+            racing_events.add(i_event)
+            racing_events.add(k_event)
+          
+    return (racing_events, racing_events_harmful, commuting_races, harmful_races)
             
-#   def detect_races_incremental(self):
-#     """
-#     Detect races in trace order, adding data dependency edges in the graph along the way
-#     """
-#     remaining_events = self.graph.events_with_reads_writes[::-1] #copy reversed
-#     
-#     eid = remaining_events.pop()
-#       event = self.graph.events_by_id[eid]
-#       assert hasattr(event, 'operations'):
-#       for op in event.operations:
-#         elif type(op) == TraceSwitchFlowTableWrite
-#           assert hasattr(op, 'flow_table')
-#           assert hasattr(op, 'flow_mod')
-#           self.candidate_write_ops.append((eid, op))
-#         elif type(op) == TraceSwitchFlowTableRead:
-#           assert hasattr(k, 'flow_table')
-#           assert hasattr(k, 'flow_mod')
-#           assert hasattr(i, 'packet')
-#           assert hasattr(i, 'in_port')
-#           self.candidate_read_ops.append((eid, op))
-#     
-#     
-#     
-#     latest_eid = 0
-#     
-#     def _goto_next_event():
-#       
-#         # TODO(jm): Do we need to consider TraceSwitchFlowTableEntryExpiry here as well??? Probably yes?
-#         #           However, for expiry, the flow_table is the table *after* the operation, so some changes are needed.
-#       return eid
-#     
-#     def _detect_races_event(eid):
-#       event = self.graph.events_by_id[eid]
-#   
-#     rw_combination_count = len(self.read_operations)*len(self.write_operations)
-# 
-#     # read <-> write
-#     for i_event, i_op in self.read_operations:
-#       for k_event, k_op in self.write_operations:
-#         if (i_event != k_event and
-#             (event is None or event == i_event or event == k_event) and
-#             i_event.dpid == k_event.dpid and
-#             not self.is_ordered(i_event, k_event)):
-# 
-#           if self.filter_rw and not self.has_common_ancestor(i_event, k_event):
-#             self.total_filtered += 1
-#           else:
-#             if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
-#                                                                  k_event, k_op):
-#               self.races_commute.append(Race('r/w',i_event, i_op, k_event, k_op))
-#             else:
-#               delta = abs(i_op.t - k_op.t)
-#               if delta < self.rw_delta or not self.add_hb_time:
-#                 self.races_harmful.append(Race('r/w',i_event, i_op, k_event, k_op))
-#                 self.racing_events_harmful.add(i_event)
-#                 self.racing_events_harmful.add(k_event)
-#               else:
-#                 self._time_hb_rw_edges_counter += 1
-#                 first = i_event if i_op.t < k_op.t else k_event
-#                 second = k_event if first == i_event else i_event
-#                 assert first != second
-#                 self.graph._add_edge(first, second, sanity_check=False, rel='time')
-#             self.racing_events.add(i_event)
-#             self.racing_events.add(k_event)
-    
-
   # TODO(jm): make verbose a config option
-  def detect_races(self, event=None, verbose=False):
+  def detect_races(self, event=None, verbose=False, data_deps=False):
     """
     Detect all races that involve event.
     Detect all races for all events if event is None.
     """
-    self.read_ops()
+    self.update_ops_lists()
 
     if verbose:
       print "Total write operations: {}".format(len(self.write_operations))
       print "Total read operations: {}".format(len(self.read_operations))
 
-    self.races_harmful = []
-    self.races_commute = []
-    self.racing_events = set()
-    self.racing_events_harmful = set()
+    all_operations = list()
+    all_operations.extend(self.write_operations)
+    all_operations.extend(self.read_operations)
+    
+    racing_events, racing_events_harmful, commuting_races, harmful_races = self.detect_races_all(all_operations)
+
+    self.races_harmful = harmful_races
+    self.races_commute = commuting_races
+    self.racing_events = racing_events
+    self.racing_events_harmful = racing_events_harmful
     self.total_filtered = 0
-
-    self.detect_ww_races(event, verbose)
-
-    self.detect_rw_races(event, verbose)
 
     self.total_operations = len(self.write_operations) + len(self.read_operations)
     self.total_harmful = len(self.races_harmful)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import sys
+import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../pox"))
 
@@ -153,12 +154,7 @@ class HappensBeforeGraph(object):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
 
-  def _update_shadow_tables(self, event):
-    if event.dpid not in self.shadow_tables:
-      self.shadow_tables[event.dpid] = ShadowFlowTable(event.dpid)
-    self.shadow_tables[event.dpid].apply_event(event)
-  
-  def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):
+  def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):    
     if self.disable_path_cache or not use_path_cache:
       # fallback to one-off checking
       if nx.has_path(self.g, src_eid, dst_eid):
@@ -169,57 +165,64 @@ class HappensBeforeGraph(object):
     else:
       if self._cached_paths is None:
         self._initialize_path_cache()
+
       if src_eid not in self._cached_paths:
+        # new node after initialization with no edges
         return False
+      if dst_eid not in self._cached_paths:
+        # new node after initialization with no edges
+        return False
+          
       if dst_eid in self._cached_paths[src_eid]:
         return True
       if bidirectional:
-        if dst_eid not in self._cached_paths:
-          return False
+        # all nodes need to be keys of _cached_paths at all times!
+        assert dst_eid in self._cached_paths
         if src_eid in self._cached_paths[dst_eid]:
           return True
       return False
-  
+    
   def _initialize_path_cache(self):
-    self._cached_paths = nx.all_pairs_shortest_path_length(self.g, cutoff=None)
+    self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
+    self._cached_reverse_paths = None
     
   def _clear_path_cache(self):
     self._cached_paths = None
     self._cached_reverse_paths = None
     
-  def _update_path_cache(self, src, dst):
+  def _update_path_cache(self, node=None, src=None, dst=None):
     """
-    Update the shortest paths when a new edge is added.
-    Add paths from all nodes that can reach src, to all nodes reachable from dst.
+    Usage: - For nodes: _update_path_cache(node=node)
+           - For edges: _update_path_cache(src=src,  dst=dst)
+    Update the shortest paths cache after a new node or edge is added.
+    For previously unseen nodes: Adds a path from node to self of length 0.
+    For edges: Add paths from all nodes that can reach src to all nodes 
+               reachable from dst, including path from src to dst.
     
     This is not efficient, but it does not need to be as we'll only be adding
     very few paths this way and the graph is not dense.
     """
-    if self._cached_paths is None:
-      self._initialize_path_cache()
-    else:
-      if self._cached_reverse_paths is None:
-        # need this for online updates
-        self._cached_reverse_paths = dict()
-        for src,dstpathdict in self._cached_paths.iteritems():
-          for dst, path in dstpathdict.iteritems():
-            if dst not in self._cached_reverse_paths:
-              self._cached_reverse_paths[dst] = dict()
-            self._cached_reverse_paths[dst][src] = path
+    assert (node is not None) or ((src is not None) and (dst is not None))
+    
+    def update_with_node(node):
+      # add node as keys to the respective dicts
+      assert node not in self._cached_paths
+      assert node not in self._cached_reverse_paths
       
-      if src not in self._cached_paths:
-        self._cached_paths[src]=dict()
-        self._cached_paths[src][src] = 0
-      if dst not in self._cached_paths:
-        self._cached_paths[dst]=dict()
-        self._cached_paths[dst][dst] = 0
-      if src not in self._cached_reverse_paths:
-        self._cached_reverse_paths[src]=dict()
-        self._cached_reverse_paths[src][src] = 0
-      if dst not in self._cached_reverse_paths:
-        self._cached_reverse_paths[dst]=dict()
-        self._cached_reverse_paths[src][dst] = 0
-        
+      assert self.g.has_node(node)
+      assert len(self.g.edges(node)) == 0
+      
+      self._cached_paths[node]=dict()
+      self._cached_paths[node][node] = 0
+      self._cached_reverse_paths[node]=dict()
+      self._cached_reverse_paths[node][node] = 0
+      
+    def update_with_edge(src, dst):
+      assert src in self._cached_paths
+      assert src in self._cached_reverse_paths
+      assert dst in self._cached_paths
+      assert dst in self._cached_reverse_paths
+      
       # nodes that have a path to src from somewhere (includes src)
       for pre_src,path_to_src in self._cached_reverse_paths[src].items():
         # nodes that are reachable from dst (includes dst)
@@ -230,6 +233,23 @@ class HappensBeforeGraph(object):
           else:
             self._cached_paths[pre_src][post_dst] = max(self._cached_paths[pre_src][post_dst], path_to_src + path_from_dst + 1)
           self._cached_reverse_paths[post_dst][pre_src] = self._cached_paths[pre_src][post_dst]
+    
+    if self._cached_paths is None:
+      self._initialize_path_cache()
+    else:
+      if self._cached_reverse_paths is None:
+        # build the inverse dict once and keep it updated later
+        self._cached_reverse_paths = dict()
+        for src,dstpathdict in self._cached_paths.iteritems():
+          for dst, path in dstpathdict.iteritems():
+            if dst not in self._cached_reverse_paths:
+              self._cached_reverse_paths[dst] = dict()
+            self._cached_reverse_paths[dst][src] = path
+      
+      if node is not None:
+          update_with_node(node)
+      if (src is not None) and (dst is not None):
+        update_with_edge(src, dst)
   
   def _add_edge(self, before, after, sanity_check=True, update_path_cache=False, **attrs):
     if sanity_check and before.type not in predecessor_types[after.type]:
@@ -245,7 +265,7 @@ class HappensBeforeGraph(object):
           "Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
     if update_path_cache:
-      self._update_path_cache(src,dst)
+      self._update_path_cache(node=None,src=src,dst=src)
     else:
       self._clear_path_cache()
 
@@ -499,13 +519,27 @@ class HappensBeforeGraph(object):
       self._rule_06_time_rw(event)
       self._rule_07_time_ww(event)
 
-  def add_line(self, line):
+  def _update_shadow_tables(self, event):
+    if event.dpid not in self.shadow_tables:
+      self.shadow_tables[event.dpid] = ShadowFlowTable(event.dpid)
+    self.shadow_tables[event.dpid].apply_event(event)
+
+  def unpack_line(self, line):
     # Skip empty lines and the ones start with '#'
     if not line or line.startswith('#'):
       return
 
+    # TODO(jm): I did some tests to see why loading events is so slow.
+    #           JsonEvent.from_json is the slow part, everything else
+    #           (including json.loads()) is blazing fast.
+    #           We might want to speed that up a bit.
     event = JsonEvent.from_json(json.loads(line))
-    self.add_event(event)
+    return event
+
+  def add_line(self, line):
+    event = self.unpack_line(line)
+    if event:
+      self.add_event(event)
 
   def add_event(self, event):
     assert event.eid not in self.events_by_id
@@ -525,23 +559,24 @@ class HappensBeforeGraph(object):
     self.events_by_id[event.eid] = event
     self._add_to_lookup_tables(event)
     
-    
-
     if hasattr(event, 'operations'):
       for op in event.operations:
         if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
           self.events_with_reads_writes.append(event.eid)
 
     def _handle_HbAsyncFlowExpiry(event):
-      self._update_shadow_tables(event)
+      if self.data_deps:
+        self._update_shadow_tables(event)
       self._update_edges(event)
     def _handle_HbPacketHandle(event):
-      self._update_shadow_tables(event)
+      if self.data_deps:
+        self._update_shadow_tables(event)
       self._update_edges(event)
     def _handle_HbPacketSend(event):
       self._update_edges(event)
     def _handle_HbMessageHandle(event):
-      self._update_shadow_tables(event)
+      if self.data_deps:
+        self._update_shadow_tables(event)
       self._update_edges(event)
       self.msg_handles[event.eid] = event
     def _handle_HbMessageSend(event):
@@ -575,12 +610,20 @@ class HappensBeforeGraph(object):
   def load_trace(self, filename):
     self.g = nx.DiGraph()
     self.events_by_id = dict()
+    unpacked_events = list()
     with open(filename) as f:
       for line in f:
-        self.add_line(line)
-    print "Read in " + str(len(list(self.events))) + " events."
-    #self.events.sort(key=lambda i: i.eid)
+        event = self.unpack_line(line)
+        if event:
+          unpacked_events.append(event)
+    print "Read " + str(len(unpacked_events)) + " events."
+    
+    for event in unpacked_events:
+      self.add_event(event)
+      
+    print "Added " + str(len(list(self.events))) + " events."
 
+    
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
     if self.results_dir is not None:
       filename = os.path.join(self.results_dir,filename)
@@ -1239,7 +1282,6 @@ class Main(object):
     self.data_deps = data_deps
 
   def run(self):
-    import time
     self.graph = HappensBeforeGraph(results_dir=self.results_dir,
                                     add_hb_time=self.add_hb_time,
                                     rw_delta=self.rw_delta,
@@ -1451,8 +1493,8 @@ if __name__ == '__main__':
                       default=False, help="Ignore the first race for per-packet consistency check")
   parser.add_argument('--disable-path-cache', dest='disable_path_cache', action='store_true',
                       default=False, help="Disable using all_pairs_shortest_path_length() preprocessing.")
-  parser.add_argument('--data_deps', dest='data_deps', action='store_true',
-                      default=False, help="Add data dependency edges for all reads that use a previously written value")
+  parser.add_argument('--data-deps', dest='data_deps', action='store_true',
+                      default=False, help="Use shadow tables for adding data dependency edges between reads/writes.")
 
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
