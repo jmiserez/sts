@@ -83,7 +83,7 @@ class HappensBeforeGraph(object):
     # for races
     self.race_detector = RaceDetector(
       self, filter_rw=filter_rw, add_hb_time=add_hb_time, ww_delta=ww_delta,
-      rw_delta=rw_delta, data_deps=data_deps)
+      rw_delta=rw_delta)
 
     self.ww_delta = ww_delta
     self.rw_delta = rw_delta
@@ -1297,7 +1297,7 @@ class Main(object):
     self.graph.load_trace(self.filename)
     t1 = time.time()
     
-    self.graph.race_detector.detect_races(verbose=True, data_deps=self.data_deps)
+    self.graph.race_detector.detect_races(verbose=True)
     t2 = time.time()
     
     packet_traces = self.graph.extract_traces(self.graph.g)
