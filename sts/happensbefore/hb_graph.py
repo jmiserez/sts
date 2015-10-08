@@ -966,7 +966,7 @@ class HappensBeforeGraph(object):
           # add RaW dependencies (HB edge from event containing W -> event containing R)
           for write_eid in shadow_table.data_deps[event.eid]:
             write_event = self.events_by_id[write_eid]
-            self._add_edge(write_event, event, sanity_check=False, rel='dep_raw')
+            self._add_edge(write_event, event, sanity_check=False, rel='dep_raw', update_path_cache=True)
             
             # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
             
@@ -986,6 +986,7 @@ class HappensBeforeGraph(object):
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
                       self.covered_races.append((r,(eid,write_eid)))
+                      print len(self.covered_races)
     return self.covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
