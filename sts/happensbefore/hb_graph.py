@@ -108,6 +108,7 @@ class HappensBeforeGraph(object):
     # add read-after-write dependency edges
     self.data_deps = data_deps
     self.shadow_tables = dict()
+    self.covered_races = list()
 
   @property
   def events(self):
@@ -617,10 +618,8 @@ class HappensBeforeGraph(object):
         if event:
           unpacked_events.append(event)
     print "Read " + str(len(unpacked_events)) + " events."
-    
     for event in unpacked_events:
       self.add_event(event)
-      
     print "Added " + str(len(list(self.events))) + " events."
 
     
@@ -938,6 +937,56 @@ class HappensBeforeGraph(object):
     self.prep_draw(graph, print_pkts)
     print "Saving all races graph in", name
     nx.write_dot(graph, os.path.join(self.results_dir, name))
+
+  def find_covered_races(self):
+    """
+    Go through events in trace order, add a RaW dependency and then check if 
+    there are any races that are part of:
+     - the set of predecessors of W, and
+     - the set of successors of R
+    
+    These are now ordered so we can add them to the list.
+    """
+    latest_event_eid = None # TODO(jm): remove this after debugging
+
+    assert len(self.covered_races) == 0
+    
+    for eid in self.events_with_reads_writes:
+      assert (latest_event_eid is None) or eid > latest_event_eid # TODO(jm): remove this after debugging
+      event = self.events_by_id[eid]
+      dpid = event.dpid
+      shadow_table = self.shadow_tables[dpid]
+      
+      if hasattr(event, 'operations'):
+        has_reads = False
+        for op in event.operations:
+          if type(op) in [TraceSwitchFlowTableRead]:
+            has_reads = True
+        if has_reads:
+          # add RaW dependencies (HB edge from event containing W -> event containing R)
+          for write_eid in shadow_table.data_deps[event.eid]:
+            write_event = self.events_by_id[write_eid]
+            self._add_edge(write_event, event, sanity_check=False, rel='dep_raw')
+            
+            # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
+            
+            # includes write_eid itself
+            write_succs = set(nx.dfs_preorder_nodes(self.g, write_eid))
+            
+            for r in self.race_detector.races_harmful:
+              i_event = r.i_event
+              k_event = r.k_event
+              
+              # is there a path from our write to the the race
+              if i_event.eid in write_succs or k_event.eid in write_succs:
+                # ignore races that we just removed using the data dep edge.
+                if not (i_event == event and k_event == write_event) or (i_event == write_event and k_event == event):
+                  # only add a covered race the first time
+                  if r not in self.covered_races:
+                    if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
+                      # race is not a race anymore
+                      self.covered_races.append((r,(eid,write_eid)))
+    return self.covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
 #     # Cannot be covered if there is only one race
@@ -1318,7 +1367,9 @@ class Main(object):
 
     racing_versions = self.graph.find_inconsistent_updates()
     t7 = time.time()
-
+    
+    covered_races = self.graph.find_covered_races()
+    t8 = time.time()
 
     self.graph.race_detector.print_races(self.verbose)
     self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
@@ -1348,8 +1399,10 @@ class Main(object):
     print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
+    print "Number of covered races: ", len(covered_races)
     # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
-    print "INCONSISENT updates", racing_versions
+#     print "INCONSISENT updates", racing_versions
+    print "Covered races: ", covered_races
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
@@ -1358,6 +1411,7 @@ class Main(object):
     find_proactive_cmds_time = t5 - t4
     per_packet_inconsistent_time = t6 - t5
     find_inconsistent_update_time = t7 - t6
+    find_covered_races_time = t7 - t8
 
 
 
@@ -1371,6 +1425,7 @@ class Main(object):
     print "find_reactive_cmds_time:", find_reactive_cmds_time, "s"
     print "find_proactive_cmds_time:", find_proactive_cmds_time, "s"
     print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
+    print "find_covered_races_time:", find_covered_races_time, "s"
     #print "print_races:"+(str(t3-t2))+"s"
     #print "store_graph:"+(str(t4-t3))+"s"
     #print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
