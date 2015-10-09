@@ -93,7 +93,8 @@ class RaceDetector(object):
     It only matters that there is an ordering in the graph between the two events,
     but it is irrelevant in which direction.
     """
-    return self.graph.has_path(event.eid, other.eid, bidirectional=True, use_path_cache=True)
+#     return self.graph.has_path(event.eid, other.eid, bidirectional=True, use_path_cache=True)
+    return self.graph.has_path(event.eid, other.eid, bidirectional=True)
 
   def has_common_ancestor(self, event, other):
     """
