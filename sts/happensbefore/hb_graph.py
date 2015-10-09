@@ -989,7 +989,7 @@ class HappensBeforeGraph(object):
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
-    return list(covered_races.keys())
+    return covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
 #     # Cannot be covered if there is only one race
@@ -1038,7 +1038,7 @@ class HappensBeforeGraph(object):
 #       return False
 #     return True
 
-  def find_per_packet_inconsistent(self, check_covered=False, summarize=True):
+  def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
     """
     Returns the following sets of packet traces.
       1) all packet traces that race with a write event
@@ -1089,18 +1089,18 @@ class HappensBeforeGraph(object):
       else:
         inconsistent_packet_entry_version.append((trace, races, racing_versions))
 
-    if check_covered:
-      # TODO(jm): Check for covered races. Covered races are a subset of the difference between 
-      #           regular race detection and race detection with dependencies.
-      # TODO(jm): What exactly is the criteria? That adding a dep edge to resolve one of the races
-      #           earlier in the packet trace resolves a race later on.
-      pass
-#       for trace, races, versions in all_inconsistent_packet_traces:
-#         ordered = list(nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid))
-#         if self.check_covered(ordered, races):
-#           inconsistent_packet_traces_covered.append((trace, races, versions))
-#         else:
-#           inconsistent_packet_traces.append((trace, races, versions))
+    if covered_races is not None:
+      for trace, races, versions in all_inconsistent_packet_traces:
+        all_covered = True
+        for race in races:
+          # TODO(jm): @AH: Is this correct?
+          if race not in covered_races:
+            all_covered = False
+            break
+        if all_covered:
+          inconsistent_packet_traces_covered.append((trace, races, versions))
+        else:
+          inconsistent_packet_traces.append((trace, races, versions))
     else:
       inconsistent_packet_traces = all_inconsistent_packet_traces
 
@@ -1362,20 +1362,22 @@ class Main(object):
     versions = self.graph.find_versions()
     t5 = time.time()
 
-    packet_races, inconsistent_packet_traces, \
-           inconsistent_packet_traces_covered, \
-           inconsistent_packet_entry_version, summarized = \
-      self.graph.find_per_packet_inconsistent(True, True)
-    t6 = time.time()
-
-    racing_versions = self.graph.find_inconsistent_updates()
-    t7 = time.time()
-    
     if self.data_deps:
       covered_races = self.graph.find_covered_races()
     else:
-      covered_races = list()
+      covered_races = dict()
+    t6 = time.time()
+
+    packet_races, inconsistent_packet_traces, \
+           inconsistent_packet_traces_covered, \
+           inconsistent_packet_entry_version, summarized = \
+      self.graph.find_per_packet_inconsistent(covered_races, True)
+    t7 = time.time()
+
+    racing_versions = self.graph.find_inconsistent_updates()
     t8 = time.time()
+    
+    
 
     self.graph.race_detector.print_races(self.verbose)
     self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
@@ -1417,9 +1419,9 @@ class Main(object):
     extract_traces_time = t3 - t2
     find_reactive_cmds_time = t4 - t3
     find_proactive_cmds_time = t5 - t4
-    per_packet_inconsistent_time = t6 - t5
-    find_inconsistent_update_time = t7 - t6
-    find_covered_races_time = t7 - t8
+    find_covered_races_time = t6 - t5
+    per_packet_inconsistent_time = t7 - t6
+    find_inconsistent_update_time = t7 - t8
 
 
 
