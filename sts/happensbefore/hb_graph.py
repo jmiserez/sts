@@ -108,7 +108,6 @@ class HappensBeforeGraph(object):
     # add read-after-write dependency edges
     self.data_deps = data_deps
     self.shadow_tables = dict()
-    self.covered_races = list()
 
   @property
   def events(self):
@@ -951,12 +950,12 @@ class HappensBeforeGraph(object):
     
     These are now ordered so we can add them to the list.
     """
-    latest_event_eid = None # TODO(jm): remove this after debugging
-
-    assert len(self.covered_races) == 0
+    covered_races = list()
+    
+    # check for monotonically increasing eids, i.e. the list must be sorted
+    assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
     
     for eid in self.events_with_reads_writes:
-      assert (latest_event_eid is None) or eid > latest_event_eid # TODO(jm): remove this after debugging
       event = self.events_by_id[eid]
       dpid = event.dpid
       shadow_table = self.shadow_tables[dpid]
@@ -986,12 +985,12 @@ class HappensBeforeGraph(object):
                 # ignore races that we just removed using the data dep edge.
                 if not (i_event == event and k_event == write_event) or (i_event == write_event and k_event == event):
                   # only add a covered race the first time
-                  if r not in self.covered_races:
+                  if r not in covered_races:
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
-                      self.covered_races.append((r,(eid,write_eid)))
-                      print len(self.covered_races)
-    return self.covered_races
+                      covered_races.append((r,(eid,write_eid)))
+                      print i_event.eid, k_event.eid, len(covered_races)
+    return covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
 #     # Cannot be covered if there is only one race
@@ -1407,7 +1406,7 @@ class Main(object):
     print "Number of covered races: ", len(covered_races)
     # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
 #     print "INCONSISENT updates", racing_versions
-    print "Covered races: ", covered_races
+    print "Covered races: ", len(covered_races)
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
