@@ -989,7 +989,6 @@ class HappensBeforeGraph(object):
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
-                      print i_event.eid, k_event.eid, len(covered_races)
     return list(covered_races.keys())
 
 #   def check_covered(self, ordered_trace_events, races):
@@ -1372,7 +1371,10 @@ class Main(object):
     racing_versions = self.graph.find_inconsistent_updates()
     t7 = time.time()
     
-    covered_races = self.graph.find_covered_races()
+    if self.data_deps:
+      covered_races = self.graph.find_covered_races()
+    else:
+      covered_races = list()
     t8 = time.time()
 
     self.graph.race_detector.print_races(self.verbose)
@@ -1408,7 +1410,7 @@ class Main(object):
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
     print "Number of covered races: ", len(covered_races)
     # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
-#     print "INCONSISENT updates", racing_versions
+    print "Inconsistent updates:", len(racing_versions)
     print "Covered races: ", len(covered_races)
 
     load_time = t1 - t0
