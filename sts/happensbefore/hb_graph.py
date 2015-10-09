@@ -1057,58 +1057,77 @@ class HappensBeforeGraph(object):
     summazied = all per-packet inconsistent traces - repeatd all per-packet inconsistent traces
     """
     packet_races = self.get_all_packet_traces_with_races()
-    all_inconsistent_packet_traces = []
     inconsistent_packet_traces = []
     inconsistent_packet_traces_covered = []
     inconsistent_packet_entry_version = []
     summarized = []
 
-    versions_by_dpid = {}
+    dpids_for_version = {}
     for version, cmds in self.versions.iteritems():
-      versions_by_dpid[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
-
+      dpids_for_version[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
 
     def get_racing_versions(races):
+      # TODO(jm): Neither races nor versions are ordered by packet order, but they should be
       racing_versions = []
       for race in races:
         for version, cmds in self.versions.iteritems():
           if race.i_event.eid in cmds or race.k_event.eid in cmds:
             racing_versions.append(version)
-      return list(set(racing_versions))
-
-    for trace, races in packet_races:
-      # Then for sure this is a true inconsistent packet
-      racing_versions = get_racing_versions(races)
-      if len(races) > 1:
-        all_inconsistent_packet_traces.append((trace, races, racing_versions))
-        continue
-
-      race = races[0]
+      return list(set(racing_versions)) # TODO(jm): should change this to ordered set, or make the requirement otherwise explicit
+    
+    def is_inconsistent_packet_entry_version(trace, races, racing_versions, covered_races=None):
+      if covered_races is None:
+        covered_races = set()
+      assert (len(set(races).difference(set(covered_races))) == 1)
+      race = set(races).difference(covered_races).pop()
       trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
       trace_dpids = [getattr(self.g.node[node]['event'], 'dpid', None) for node in trace_nodes]
       racing_dpid = race.i_event.dpid
       none_racing_dpids = trace_dpids[:trace_dpids.index(racing_dpid)]
-      racing_version = racing_versions[0]
+      racing_version = racing_versions[0] # TODO(jm): Check if this is really the first
       # Check with the race on the first switch of the update
-      if versions_by_dpid[racing_version].intersection(none_racing_dpids):
-        all_inconsistent_packet_traces.append((trace, races, racing_versions))
+      if len(dpids_for_version[racing_version].intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len() 
+        return True # inconsistent
       else:
-        inconsistent_packet_entry_version.append((trace, races, racing_versions))
-
-    if covered_races is not None:
-      for trace, races, versions in all_inconsistent_packet_traces:
-        all_covered = True
-        for race in races:
-          # TODO(jm): @AH: Is this correct?
-          if race not in covered_races:
-            all_covered = False
-            break
-        if all_covered:
-          inconsistent_packet_traces_covered.append((trace, races, versions))
+        return False # either inconsistent or consistent
+      
+    for trace, races in packet_races:
+      racing_versions = get_racing_versions(races)
+      
+      if len(races) == 0:
+        assert False
+      else:
+        if covered_races is not None:
+          # We consider a packet trace consistent if:
+          # 1. Contains at most one uncovered race
+          # 2. The uncovered race (if it exists) is the first one
+          # 3. The first uncovered race is not already inconsistent
+          # We need not check why the race is covered, i.e. which race covers it.
+          at_most_first_uncovered = True
+          all_including_first_covered = True
+          for idx,race in enumerate(races):
+            if race not in covered_races: # TODO (jm): check intersection like above, this is not correct\
+              all_including_first_covered = False
+              if idx > 0:
+                at_most_first_uncovered = False
+                break
+          if all_including_first_covered:
+            # this is a consistent trace
+            inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+          elif at_most_first_uncovered:
+            if is_inconsistent_packet_entry_version(trace, races, racing_versions, covered_races):
+              # the packet sees other versions before the first race, which makes it inconsistent
+              inconsistent_packet_entry_version.append((trace, races, racing_versions))
+            else:
+              # consistent due to covered races
+              inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+          else:
+            inconsistent_packet_traces.append((trace, races, racing_versions))
         else:
-          inconsistent_packet_traces.append((trace, races, versions))
-    else:
-      inconsistent_packet_traces = all_inconsistent_packet_traces
+          if is_inconsistent_packet_entry_version(trace, races, racing_versions):
+            inconsistent_packet_entry_version.append((trace, races, racing_versions))
+          else:
+            inconsistent_packet_traces.append((trace, races, racing_versions))
 
     if summarize:
       summarized = self.summarize_per_packet_inconsistent(inconsistent_packet_traces)
@@ -1409,16 +1428,15 @@ class Main(object):
 
     print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
-    print "Number of packet inconsistencies that are covered by HB: ", len(inconsistent_packet_traces_covered)
-    print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
+    print "Number of packet inconsistencies that are actually consistent (covered): ", len(inconsistent_packet_traces_covered)
+    print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
     print "Number of races: ", str(len(self.graph.race_detector.races_commute)+len(self.graph.race_detector.races_harmful))
     print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-    # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
-    print "Inconsistent updates:", len(racing_versions)
     print "Number of covered races: ", len(covered_races)
+    print "Inconsistent updates:", len(racing_versions)
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
@@ -1469,13 +1487,6 @@ class Main(object):
     num_rw_time_edges = self.graph.race_detector.time_hb_rw_edges_counter
     num_ww_time_edges = self.graph.race_detector.time_hb_ww_edges_counter
     num_time_edges = num_rw_time_edges + num_ww_time_edges
-
-    print "Number of packet traces with races:", len(packet_races)
-    print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
-    print "Number of packet inconsistencies that are covered by HB: ", len(inconsistent_packet_traces_covered)
-    print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
-    print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
-
 
     num_per_pkt_races = len(packet_races)
     num_per_pkt_inconsistent = len(inconsistent_packet_traces)
