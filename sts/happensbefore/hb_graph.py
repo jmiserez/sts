@@ -950,7 +950,7 @@ class HappensBeforeGraph(object):
     
     These are now ordered so we can add them to the list.
     """
-    covered_races = list()
+    covered_races = dict()
     
     # check for monotonically increasing eids, i.e. the list must be sorted
     assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
@@ -988,9 +988,9 @@ class HappensBeforeGraph(object):
                   if r not in covered_races:
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
-                      covered_races.append((r,(eid,write_eid)))
+                      covered_races[r] = (eid,write_eid)
                       print i_event.eid, k_event.eid, len(covered_races)
-    return covered_races
+    return list(covered_races.keys())
 
 #   def check_covered(self, ordered_trace_events, races):
 #     # Cannot be covered if there is only one race
@@ -1403,6 +1403,9 @@ class Main(object):
     print "Number of packet traces that just races with the first version: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
+    print "Number of races: ", str(len(self.graph.race_detector.races_commute)+len(self.graph.race_detector.races_harmful))
+    print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
+    print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
     print "Number of covered races: ", len(covered_races)
     # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
 #     print "INCONSISENT updates", racing_versions
