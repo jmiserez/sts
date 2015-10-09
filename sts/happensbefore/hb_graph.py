@@ -951,6 +951,7 @@ class HappensBeforeGraph(object):
     These are now ordered so we can add them to the list.
     """
     covered_races = dict()
+    reported_races = set()
     
     # check for monotonically increasing eids, i.e. the list must be sorted
     assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
@@ -986,9 +987,11 @@ class HappensBeforeGraph(object):
               # is there a path from our write to the the race
               if i_event.eid in write_succs or k_event.eid in write_succs:
                 # ignore races that we just removed using the data dep edge.
-                if not (i_event == event and k_event == write_event) or (i_event == write_event and k_event == event):
+                if (i_event == event and k_event == write_event) or (i_event == write_event and k_event == event):
+                  reported_races.add(r)
+                else:
                   # only add a covered race the first time
-                  if r not in covered_races:
+                  if r not in covered_races and r not in reported_races:
                     if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
