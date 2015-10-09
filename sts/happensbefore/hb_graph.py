@@ -969,7 +969,10 @@ class HappensBeforeGraph(object):
           # add RaW dependencies (HB edge from event containing W -> event containing R)
           for write_eid in shadow_table.data_deps[event.eid]:
             write_event = self.events_by_id[write_eid]
-            self._add_edge(write_event, event, sanity_check=False, rel='dep_raw', update_path_cache=True)
+            try:
+              self._add_edge(write_event, event, sanity_check=False, rel='dep_raw', update_path_cache=True)
+            except ValueError as e:
+              continue
             
             # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
             
