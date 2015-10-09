@@ -971,7 +971,7 @@ class HappensBeforeGraph(object):
             write_event = self.events_by_id[write_eid]
             try:
               self._add_edge(write_event, event, sanity_check=False, rel='dep_raw', update_path_cache=True)
-            except ValueError as e:
+            except ValueError:
               continue
             
             # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
