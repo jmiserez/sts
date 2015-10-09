@@ -1408,10 +1408,9 @@ class Main(object):
     print "Number of races: ", str(len(self.graph.race_detector.races_commute)+len(self.graph.race_detector.races_harmful))
     print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-    print "Number of covered races: ", len(covered_races)
     # TODO(jm): The following line sometimes shows memory locations instead eids. Bug or expected?
     print "Inconsistent updates:", len(racing_versions)
-    print "Covered races: ", len(covered_races)
+    print "Number of covered races: ", len(covered_races)
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
