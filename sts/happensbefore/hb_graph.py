@@ -1102,7 +1102,7 @@ class HappensBeforeGraph(object):
       # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
-      if len(dpids_affected.intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len() 
+      if len(dpids_affected.intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len()?
         return True # inconsistent, the covered race is part of an update that affected earlier nodes
       else:
         return False # either inconsistent or consistent
