@@ -156,108 +156,99 @@ class HappensBeforeGraph(object):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
       
-  def has_path(self, src_eid, dst_eid, bidirectional=True):  
-    return nx.has_path(self.g, src_eid, dst_eid) or (bidirectional and nx.has_path(self.g, dst_eid, src_eid))
+  def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):  
+    if self.disable_path_cache or not use_path_cache:
+      # fallback to one-off checking
+      return nx.has_path(self.g, src_eid, dst_eid) or (bidirectional and nx.has_path(self.g, dst_eid, src_eid))
+    else:
+      if self._cached_paths is None:
+        self._initialize_path_cache()
+ 
+      if src_eid not in self._cached_paths:
+        # new node after initialization with no edges
+        return False
+      if dst_eid not in self._cached_paths:
+        # new node after initialization with no edges
+        return False
+           
+      if dst_eid in self._cached_paths[src_eid]:
+        return True
+      if bidirectional:
+        if src_eid in self._cached_paths[dst_eid]:
+          return True
+      return False
+     
+  def _initialize_path_cache(self):
+    print "INITIALIZING PATH CACHE"
+    self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
+    self._cached_reverse_paths = None
+     
+  def _clear_path_cache(self):
+    self._cached_paths = None
+    self._cached_reverse_paths = None
+     
+  def _update_path_cache(self, node=None, src=None, dst=None):
+    """
+    Usage: - For nodes: _update_path_cache(node=node)
+           - For edges: _update_path_cache(src=src,  dst=dst)
+    Update the shortest paths cache after a new node or edge is added.
+    For previously unseen nodes: Adds a path from node to self of length 0.
+    For edges: Add paths from all nodes that can reach src to all nodes 
+               reachable from dst, including path from src to dst.
+     
+    This is not efficient, but it does not need to be as we'll only be adding
+    very few paths this way and the graph is not dense.
+    """
+    assert (node is not None) or ((src is not None) and (dst is not None))
+     
+    def update_with_node(node):
+      # add node as keys to the respective dicts
+      assert node not in self._cached_paths
+      assert node not in self._cached_reverse_paths
+       
+      assert self.g.has_node(node)
+      assert len(self.g.edges(node)) == 0
+       
+      self._cached_paths[node]=dict()
+      self._cached_paths[node][node] = 0
+      self._cached_reverse_paths[node]=dict()
+      self._cached_reverse_paths[node][node] = 0
+       
+    def update_with_edge(src, dst):
+      assert src in self._cached_paths
+      assert src in self._cached_reverse_paths
+      assert dst in self._cached_paths
+      assert dst in self._cached_reverse_paths
+       
+      # nodes that have a path to src from somewhere (includes src)
+      for pre_src,path_to_src in self._cached_reverse_paths[src].items():
+        # nodes that are reachable from dst (includes dst)
+        for post_dst, path_from_dst in self._cached_paths[dst].items():
+          # there is now a path from pre_src -> post_dst
+          if post_dst not in self._cached_paths[pre_src]:
+            self._cached_paths[pre_src][post_dst] = path_to_src + path_from_dst + 1
+          else:
+            self._cached_paths[pre_src][post_dst] = max(self._cached_paths[pre_src][post_dst], path_to_src + path_from_dst + 1)
+          self._cached_reverse_paths[post_dst][pre_src] = self._cached_paths[pre_src][post_dst]
+     
+    if self._cached_paths is None:
+      self._initialize_path_cache()
+    else:
+      if self._cached_reverse_paths is None:
+        # build the inverse dict once and keep it updated later
+        self._cached_reverse_paths = dict()
+        for src,dstpathdict in self._cached_paths.iteritems():
+          for dst, path in dstpathdict.iteritems():
+            if dst not in self._cached_reverse_paths:
+              self._cached_reverse_paths[dst] = dict()
+            self._cached_reverse_paths[dst][src] = path
+       
+      if node is not None:
+          update_with_node(node)
+      if (src is not None) and (dst is not None):
+        update_with_edge(src, dst)
   
-#   def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):  
-#     if self.disable_path_cache or not use_path_cache:
-#       # fallback to one-off checking
-#       if nx.has_path(self.g, src_eid, dst_eid):
-#         return True
-#       if bidirectional and nx.has_path(self.g, dst_eid, src_eid):
-#         return True
-#       return False
-#     else:
-#       if self._cached_paths is None:
-#         self._initialize_path_cache()
-# 
-#       if src_eid not in self._cached_paths:
-#         # new node after initialization with no edges
-#         return False
-#       if dst_eid not in self._cached_paths:
-#         # new node after initialization with no edges
-#         return False
-#           
-#       if dst_eid in self._cached_paths[src_eid]:
-#         return True
-#       if bidirectional:
-#         # all nodes need to be keys of _cached_paths at all times!
-#         assert dst_eid in self._cached_paths
-#         if src_eid in self._cached_paths[dst_eid]:
-#           return True
-#       return False
-#     
-#   def _initialize_path_cache(self):
-#     self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
-#     self._cached_reverse_paths = None
-#     
-#   def _clear_path_cache(self):
-#     self._cached_paths = None
-#     self._cached_reverse_paths = None
-#     
-#   def _update_path_cache(self, node=None, src=None, dst=None):
-#     """
-#     Usage: - For nodes: _update_path_cache(node=node)
-#            - For edges: _update_path_cache(src=src,  dst=dst)
-#     Update the shortest paths cache after a new node or edge is added.
-#     For previously unseen nodes: Adds a path from node to self of length 0.
-#     For edges: Add paths from all nodes that can reach src to all nodes 
-#                reachable from dst, including path from src to dst.
-#     
-#     This is not efficient, but it does not need to be as we'll only be adding
-#     very few paths this way and the graph is not dense.
-#     """
-#     assert (node is not None) or ((src is not None) and (dst is not None))
-#     
-#     def update_with_node(node):
-#       # add node as keys to the respective dicts
-#       assert node not in self._cached_paths
-#       assert node not in self._cached_reverse_paths
-#       
-#       assert self.g.has_node(node)
-#       assert len(self.g.edges(node)) == 0
-#       
-#       self._cached_paths[node]=dict()
-#       self._cached_paths[node][node] = 0
-#       self._cached_reverse_paths[node]=dict()
-#       self._cached_reverse_paths[node][node] = 0
-#       
-#     def update_with_edge(src, dst):
-#       assert src in self._cached_paths
-#       assert src in self._cached_reverse_paths
-#       assert dst in self._cached_paths
-#       assert dst in self._cached_reverse_paths
-#       
-#       # nodes that have a path to src from somewhere (includes src)
-#       for pre_src,path_to_src in self._cached_reverse_paths[src].items():
-#         # nodes that are reachable from dst (includes dst)
-#         for post_dst, path_from_dst in self._cached_paths[dst].items():
-#           # there is now a path from pre_src -> post_dst
-#           if post_dst not in self._cached_paths[pre_src]:
-#             self._cached_paths[pre_src][post_dst] = path_to_src + path_from_dst + 1
-#           else:
-#             self._cached_paths[pre_src][post_dst] = max(self._cached_paths[pre_src][post_dst], path_to_src + path_from_dst + 1)
-#           self._cached_reverse_paths[post_dst][pre_src] = self._cached_paths[pre_src][post_dst]
-#     
-#     if self._cached_paths is None:
-#       self._initialize_path_cache()
-#     else:
-#       if self._cached_reverse_paths is None:
-#         # build the inverse dict once and keep it updated later
-#         self._cached_reverse_paths = dict()
-#         for src,dstpathdict in self._cached_paths.iteritems():
-#           for dst, path in dstpathdict.iteritems():
-#             if dst not in self._cached_reverse_paths:
-#               self._cached_reverse_paths[dst] = dict()
-#             self._cached_reverse_paths[dst][src] = path
-#       
-#       if node is not None:
-#           update_with_node(node)
-#       if (src is not None) and (dst is not None):
-#         update_with_edge(src, dst)
-  
-  def _add_edge(self, before, after, sanity_check=True, **attrs):
-#   def _add_edge(self, before, after, sanity_check=True, update_path_cache=False, **attrs):
+  def _add_edge(self, before, after, sanity_check=True, update_path_cache=False, **attrs):
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
@@ -270,10 +261,11 @@ class HappensBeforeGraph(object):
         raise ValueError(
           "Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
-#     if update_path_cache:
-#       self._update_path_cache(node=None,src=src,dst=src)
-#     else:
-#       self._clear_path_cache()
+    if not self.disable_path_cache:
+      if update_path_cache:
+        self._update_path_cache(node=None,src=src,dst=src)
+      else:
+        self._clear_path_cache()
 
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
@@ -987,7 +979,7 @@ class HappensBeforeGraph(object):
                 else:
                   # only add a covered race the first time
                   if r not in covered_races and r not in data_dep_races:
-                    if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
+                    if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True, use_path_cache=True):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
     self.covered_races = covered_races
