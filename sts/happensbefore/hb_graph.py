@@ -108,6 +108,8 @@ class HappensBeforeGraph(object):
     # add read-after-write dependency edges
     self.data_deps = data_deps
     self.shadow_tables = dict()
+    
+    self.covered_races = dict()
 
   @property
   def events(self):
@@ -795,8 +797,7 @@ class HappensBeforeGraph(object):
           nodes.remove(node)
       subg = nx.DiGraph(g.subgraph(nodes), host_send=g.node[eid]['event'])
       traces.append(subg)
-    for i in range(len(traces)):
-      subg = traces[i]
+    for i, subg in enumerate(traces):
       for src, dst, data in subg.edges(data=True):
         if data['rel'] in ['time', 'race']:
           subg.remove_edge(src, dst)
@@ -842,41 +843,34 @@ class HappensBeforeGraph(object):
     # Set of event ids of a packet trace
     eids = set(trace.nodes())
     # All events in packet trace that are also part of a race
-    racing = list(eids.intersection(all_harmful))
+    racing_eids = sorted(list(eids.intersection(all_harmful)))
     # Get the actual reported race;
     # will get us the other event that has been part of the race
-    races = [race for race in self.race_detector.races_harmful
-             if race.i_event.eid in racing or race.k_event.eid in racing]
-    if ignore_other_traces:
-      # We don't care about write on the packet trace that races with reads
-      # on other packet traces. The other traces will be reported anyway.
-      to_remove = []
-      for race in races:
-        if trace.has_node(race.i_event.eid):
-          mine = race.i_event
-          other = race.k_event
-        else:
-          mine = race.k_event
-          other = race.i_event
-        # Mine is write and racing with read from other packet trace
-        # Then don't report it, because it's going to be reported in the other
-        # Packet trace anyway
-        if isinstance(mine, HbMessageHandle) and isinstance(other, HbPacketHandle):
-          to_remove.append(race)
-      for i in to_remove:
-        races.remove(i)
-    return races
+    
+    rw_races_with_trace = list()
+    for race in self.race_detector.races_harmful:
+      if race.rtype == 'r/w':
+        # i_event is read, k_event is write
+        if race.i_event.eid in racing_eids or race.k_event.eid in racing_eids:
+          # We don't care about write on the packet trace that races with reads
+          # on other packet traces. The other traces will be reported anyway.
+          # logical implication: ignore_other_traces ==> race.i_event.eid in racing_eids
+          if (not ignore_other_traces) or (race.i_event.eid in racing_eids):
+            rw_races_with_trace.append(race)
+          
+    # make sure the races are sorted first by read, then by write. The default
+    # sort on the namedtuple already does this
+    return sorted(rw_races_with_trace)
 
   def get_all_packet_traces_with_races(self):
     """
     Finds all the races related each packet trace
     """
-    races = []
+    races = list()
     for trace in self.packet_traces:
-      tmp = self.get_racing_events(trace, True)
-      if not tmp:
-        continue
-      races.append((trace, tmp,))
+      racing_events = self.get_racing_events(trace, True)
+      if len(racing_events) > 0:
+        races.append((trace, racing_events,))
     return races
 
   def summarize_per_packet_inconsistent(self, traces_races):
@@ -950,8 +944,12 @@ class HappensBeforeGraph(object):
     
     These are now ordered so we can add them to the list.
     """
+    
+    if self.covered_races:
+      return self.covered_races
+    
     covered_races = dict()
-    reported_races = set()
+    data_dep_races = set()
     
     # check for monotonically increasing eids, i.e. the list must be sorted
     assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
@@ -980,22 +978,20 @@ class HappensBeforeGraph(object):
             # includes write_eid itself
             write_succs = set(nx.dfs_preorder_nodes(self.g, write_eid))
             
-            for r in self.race_detector.races_harmful:
-              i_event = r.i_event
-              k_event = r.k_event
-              
+            for r in self.race_detector.races_harmful: # TODO(jm): get rid of this loop here, lots of unnecessary looping
               # is there a path from our write to the the race
-              if i_event.eid in write_succs or k_event.eid in write_succs:
+              if r.i_event.eid in write_succs or r.k_event.eid in write_succs:
                 # ignore races that we just removed using the data dep edge.
-                if (i_event == event and k_event == write_event) or (i_event == write_event and k_event == event):
-                  reported_races.add(r)
+                if (r.i_event == event and r.k_event == write_event) or (r.i_event == write_event and r.k_event == event):
+                  data_dep_races.add(r)
                 else:
                   # only add a covered race the first time
-                  if r not in covered_races and r not in reported_races:
-                    if self.has_path(i_event.eid, k_event.eid, bidirectional=True):
+                  if r not in covered_races and r not in data_dep_races:
+                    if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
-    return covered_races
+    self.covered_races = covered_races
+    return self.covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
 #     # Cannot be covered if there is only one race
@@ -1056,6 +1052,8 @@ class HappensBeforeGraph(object):
     all packet traces = all per-packet inconsistent traces +  Packet traces with races with first switch on version update
     summazied = all per-packet inconsistent traces - repeatd all per-packet inconsistent traces
     """
+    
+    # list of (trace, races), ordered by trace order
     packet_races = self.get_all_packet_traces_with_races()
     inconsistent_packet_traces = []
     inconsistent_packet_traces_covered = []
@@ -1066,33 +1064,52 @@ class HappensBeforeGraph(object):
     for version, cmds in self.versions.iteritems():
       dpids_for_version[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
 
-    def get_racing_versions(races):
-      # TODO(jm): Neither races nor versions are ordered by packet order, but they should be
-      racing_versions = []
+    def get_versions_for_races(races):
+      # assume races is ordered!
+      assert all(races[i] < races[i+1] for i in xrange(len(races)-1))
+      versions_for_race = defaultdict(set)
       for race in races:
+        # get versions for each race
         for version, cmds in self.versions.iteritems():
           if race.i_event.eid in cmds or race.k_event.eid in cmds:
-            racing_versions.append(version)
-      return list(set(racing_versions)) # TODO(jm): should change this to ordered set, or make the requirement otherwise explicit
+            versions_for_race[race].add(version)
+      return versions_for_race # TODO(jm): should change this to ordered set, or make the requirement otherwise explicit
     
-    def is_inconsistent_packet_entry_version(trace, races, racing_versions, covered_races=None):
+    def is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races=None):
       if covered_races is None:
         covered_races = set()
-      assert (len(set(races).difference(set(covered_races))) == 1)
-      race = set(races).difference(covered_races).pop()
+        
+      # at most 1 uncovered race in races
+      assert len(set(races).difference(set(covered_races))) == 1
+      
+      uncovered_race = set(races).difference(covered_races).pop()
       trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
       trace_dpids = [getattr(self.g.node[node]['event'], 'dpid', None) for node in trace_nodes]
-      racing_dpid = race.i_event.dpid
-      none_racing_dpids = trace_dpids[:trace_dpids.index(racing_dpid)]
-      racing_version = racing_versions[0] # TODO(jm): Check if this is really the first
+      racing_dpid = uncovered_race.i_event.dpid
+      
+      # which switches/nodes does the packet traverse before hitting this 1 uncovered race?
+      none_racing_dpids = set([x for x in trace_dpids[:trace_dpids.index(racing_dpid)] if x is not None])
+      
+      # which version(s) is the write of this uncovered race part of?
+      versions_for_uncovered_race = versions_for_race[uncovered_race]
+      # as there is one write, this should be 1
+      assert len(versions_for_uncovered_race) == 1
+      racing_version = versions_for_uncovered_race.pop()
+      
+      # which dpids were affected by this version?
+      dpids_affected = set(dpids_for_version[racing_version])
+      
+      # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
-      if len(dpids_for_version[racing_version].intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len() 
-        return True # inconsistent
+      print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
+      if len(dpids_affected.intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len() 
+        return True # inconsistent, the covered race is part of an update that affected earlier nodes
       else:
         return False # either inconsistent or consistent
       
     for trace, races in packet_races:
-      racing_versions = get_racing_versions(races)
+      versions_for_race = get_versions_for_races(races)
+      racing_versions = sorted(list(set(versions_for_race.keys())))
       
       if len(races) == 0:
         assert False
@@ -1115,7 +1132,7 @@ class HappensBeforeGraph(object):
             # this is a consistent trace
             inconsistent_packet_traces_covered.append((trace, races, racing_versions))
           elif at_most_first_uncovered:
-            if is_inconsistent_packet_entry_version(trace, races, racing_versions, covered_races):
+            if is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races):
               # the packet sees other versions before the first race, which makes it inconsistent
               inconsistent_packet_entry_version.append((trace, races, racing_versions))
             else:
@@ -1124,7 +1141,7 @@ class HappensBeforeGraph(object):
           else:
             inconsistent_packet_traces.append((trace, races, racing_versions))
         else:
-          if is_inconsistent_packet_entry_version(trace, races, racing_versions):
+          if is_inconsistent_packet_entry_version(trace, races, versions_for_race):
             inconsistent_packet_entry_version.append((trace, races, racing_versions))
           else:
             inconsistent_packet_traces.append((trace, races, racing_versions))
