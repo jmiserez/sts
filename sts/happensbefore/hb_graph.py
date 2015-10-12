@@ -1208,6 +1208,30 @@ class HappensBeforeGraph(object):
           pretty_match(getattr(node.msg, 'match', None)),\
           getattr(node.msg, 'actions', None)
 
+  def print_covered_races(self):
+    print "Covered races"
+    eids = []
+    race_edges = []
+    nodes_on_path = []
+    for r,v in self.covered_races.iteritems():
+      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
+      eids.append(r.i_event.eid)
+      eids.append(r.k_event.eid)
+      race_edges.append((r.i_event.eid, r.k_event.eid))
+      eids.append(v[0])
+      eids.append(v[1])
+      for path in nx.all_simple_paths(self.g, r.i_event.eid, r.k_event.eid):
+        nodes_on_path.extend(path)
+      for path in nx.all_simple_paths(self.g, r.k_event.eid, r.i_event.eid):
+        nodes_on_path.extend(path)
+    nodes_on_path = list(set(nodes_on_path))
+    sub_nodes = nodes_on_path + eids
+    subg = self.g.subgraph(list(set(sub_nodes)))
+    for i, k in race_edges:
+      subg.add_edge(i, k, rel='covered')
+    self.prep_draw(subg, True)
+    nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
+
 
 class Main(object):
   
@@ -1299,10 +1323,7 @@ class Main(object):
 
 
     self.graph.print_versions(versions)
-
-    print "Covered races"
-    for r,v in self.graph.covered_races.iteritems():
-      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
+    self.graph.print_covered_races()
 
     print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
