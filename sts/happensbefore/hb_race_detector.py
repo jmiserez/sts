@@ -93,7 +93,7 @@ class RaceDetector(object):
     It only matters that there is an ordering in the graph between the two events,
     but it is irrelevant in which direction.
     """
-    return self.graph.has_path(event.eid, other.eid, bidirectional=True, use_path_cache=True)
+    return self.graph.has_path(event.eid, other.eid, bidirectional=True)
 
   def has_common_ancestor(self, event, other):
     """
@@ -167,7 +167,7 @@ class RaceDetector(object):
             first = i_event if i_op.t < k_op.t else k_event
             second = k_event if first == i_event else i_event
             assert first != second
-            self.graph._add_edge(first, second, sanity_check=False, update_path_cache=True, rel='time')
+            self.graph._add_edge(first, second, sanity_check=False, update_path_cache=False, rel='time')
         self.racing_events.add(i_event)
         self.racing_events.add(k_event)
 
@@ -209,7 +209,7 @@ class RaceDetector(object):
                 first = i_event if i_op.t < k_op.t else k_event
                 second = k_event if first == i_event else i_event
                 assert first != second
-                self.graph._add_edge(first, second, sanity_check=False, update_path_cache=True, rel='time')
+                self.graph._add_edge(first, second, sanity_check=False, update_path_cache=False, rel='time')
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)
 
