@@ -851,7 +851,8 @@ class HappensBeforeGraph(object):
     data_dep_races = set()
     
     # check for monotonically increasing eids, i.e. the list must be sorted
-    assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
+    assert all(x <= y for x, y in zip(self.events_with_reads_writes,
+                                      self.events_with_reads_writes[1:]))
     
     for eid in self.events_with_reads_writes:
       event = self.events_by_id[eid]
