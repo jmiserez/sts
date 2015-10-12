@@ -868,10 +868,10 @@ class HappensBeforeGraph(object):
           # add RaW dependencies (HB edge from event containing W -> event containing R)
           for write_eid in shadow_table.data_deps[event.eid]:
             write_event = self.events_by_id[write_eid]
-            try:
+            if self.g.has_edge(write_event.eid, event.eid):
+              assert self.g.get_edge_data(write_event.eid, event.eid)['rel'] == 'time'
+            else:
               self._add_edge(write_event, event, sanity_check=False, rel='dep_raw', update_path_cache=True)
-            except ValueError:
-              continue
             
             # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
             
@@ -889,11 +889,8 @@ class HappensBeforeGraph(object):
                   if r not in covered_races and r not in data_dep_races:
                     if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
                       # race is not a race anymore
-                      covered_races[r] = (eid,write_eid)
+                      covered_races[r] = (eid, write_eid)
     self.covered_races = covered_races
-    print "Covered races"
-    for r,v in self.covered_races.iteritems():
-      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
     return self.covered_races
 
   def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
@@ -1303,6 +1300,9 @@ class Main(object):
 
     self.graph.print_versions(versions)
 
+    print "Covered races"
+    for r,v in self.graph.covered_races.iteritems():
+      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
 
     print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
