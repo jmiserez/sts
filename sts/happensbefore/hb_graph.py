@@ -991,6 +991,8 @@ class HappensBeforeGraph(object):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
     self.covered_races = covered_races
+    for r,v in self.covered_races.iteritems():
+      print r.rtype, r.i_event.eid, r.k_event.eid, v
     return self.covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
@@ -1078,6 +1080,11 @@ class HappensBeforeGraph(object):
     def is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races=None):
       if covered_races is None:
         covered_races = set()
+      else:
+        covered_races = set(covered_races) # set of all keys of the dict covered_races
+        
+      # all elements of covered_races are of type Race()
+      assert type(covered_races) == set and all(type(i).__name__ == 'Race' for i in covered_races)
         
       # at most 1 uncovered race in races
       assert len(set(races).difference(set(covered_races))) == 1
@@ -1102,7 +1109,7 @@ class HappensBeforeGraph(object):
       # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
-      if len(dpids_affected.intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len()?
+      if dpids_affected.intersection(none_racing_dpids):
         return True # inconsistent, the covered race is part of an update that affected earlier nodes
       else:
         return False # either inconsistent or consistent
@@ -1123,7 +1130,7 @@ class HappensBeforeGraph(object):
           at_most_first_uncovered = True
           all_including_first_covered = True
           for idx,race in enumerate(races):
-            if race not in covered_races: # TODO (jm): check intersection like above, this is not correct\
+            if race not in covered_races:
               all_including_first_covered = False
               if idx > 0:
                 at_most_first_uncovered = False
