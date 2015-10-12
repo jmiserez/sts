@@ -991,8 +991,9 @@ class HappensBeforeGraph(object):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
     self.covered_races = covered_races
+    print "Covered races"
     for r,v in self.covered_races.iteritems():
-      print r.rtype, r.i_event.eid, r.k_event.eid, v
+      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
     return self.covered_races
 
 #   def check_covered(self, ordered_trace_events, races):
