@@ -3,24 +3,19 @@ Shadow flow table for tracking read-after-write dependencies
 """
 
 from collections import defaultdict
-import itertools
 from bisect import bisect
 
-from pox.openflow.flow_table import SwitchFlowTable
 from pox.openflow.flow_table import FlowTableModification
-from pox.openflow.flow_table import TableEntry
-from pox.openflow.libopenflow_01 import ofp_flow_mod
 
 from hb_json_event import *
 from hb_events import *
 from hb_sts_events import *
 
-from hb_utils import decode_flow_mod
-from hb_utils import decode_flow_table
 from hb_utils import compare_flow_table
 from hb_utils import read_flow_table
 from hb_utils import write_flow_table
 from hb_utils import find_entries_in_flow_table
+
 
 class ShadowFlowTable(object):
 
@@ -86,7 +81,7 @@ class ShadowFlowTable(object):
       if read_entry_id in self.modifying_eids:
         modifying_eids = self.modifying_eids[read_entry_id]
       
-      if len(modifying_eids) > 0:
+      if modifying_eids:
         # only consider events that happened before this read, i.e. strictly less than eid
         i = bisect.bisect_left(modifying_eids, eid)
         if i:
@@ -123,27 +118,27 @@ class ShadowFlowTable(object):
           entry = read_flow_table(self.table, event.packet, event.in_port)
           if entry is not None:
             self._on_flow_table_read(entry)
-            # TODO(jm): Would it make sense to add an edge from this read to all later write that could match this??? (WaR?)
+            # TODO(jm): Would it make sense to add an edge from this read to all
+            #          later write that could match this??? (WaR?)
           
         elif type(op) == TraceSwitchFlowTableWrite:
           # shadow table should agree with trace before op
           assert compare_flow_table(self.table, op.flow_table)
-          
           write_flow_table(self.table, op.flow_mod)
-          
+
         elif type(op) == TraceSwitchFlowTableEntryExpiry:
           exact_matches = find_entries_in_flow_table(self.table, op.flow_mod)
-          
+
           # it is impossible to add two entries with the *exact* same match and
           # priority to the flow table, so we should always get exactly one entry
           assert len(exact_matches) == 1
           
           self.table.remove_entries(exact_matches)
-          
+
           # shadow table should now agree with trace after op
           assert compare_flow_table(self.table, op.flow_table)
           
     deps = self.get_RaW_data_dependencies(event.eid)
-    if len(deps) > 0:
+    if deps > 0:
       self.data_deps[event.eid].extend(deps)
-      print "RaW dependencies (r <- [w]): {}  [{}]".format(event.eid,', '.join(str(k[1]) for k in enumerate(deps)))
+      print "RaW dependencies: {} > [{}]".format(event.eid,', '.join(str(dep) for dep in deps))
