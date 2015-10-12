@@ -159,105 +159,8 @@ class HappensBeforeGraph(object):
   def has_path(self, src_eid, dst_eid, bidirectional=True):  
     return nx.has_path(self.g, src_eid, dst_eid) or (bidirectional and nx.has_path(self.g, dst_eid, src_eid))
   
-#   def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=False):  
-#     if self.disable_path_cache or not use_path_cache:
-#       # fallback to one-off checking
-#       if nx.has_path(self.g, src_eid, dst_eid):
-#         return True
-#       if bidirectional and nx.has_path(self.g, dst_eid, src_eid):
-#         return True
-#       return False
-#     else:
-#       if self._cached_paths is None:
-#         self._initialize_path_cache()
-# 
-#       if src_eid not in self._cached_paths:
-#         # new node after initialization with no edges
-#         return False
-#       if dst_eid not in self._cached_paths:
-#         # new node after initialization with no edges
-#         return False
-#           
-#       if dst_eid in self._cached_paths[src_eid]:
-#         return True
-#       if bidirectional:
-#         # all nodes need to be keys of _cached_paths at all times!
-#         assert dst_eid in self._cached_paths
-#         if src_eid in self._cached_paths[dst_eid]:
-#           return True
-#       return False
-#     
-#   def _initialize_path_cache(self):
-#     self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
-#     self._cached_reverse_paths = None
-#     
-#   def _clear_path_cache(self):
-#     self._cached_paths = None
-#     self._cached_reverse_paths = None
-#     
-#   def _update_path_cache(self, node=None, src=None, dst=None):
-#     """
-#     Usage: - For nodes: _update_path_cache(node=node)
-#            - For edges: _update_path_cache(src=src,  dst=dst)
-#     Update the shortest paths cache after a new node or edge is added.
-#     For previously unseen nodes: Adds a path from node to self of length 0.
-#     For edges: Add paths from all nodes that can reach src to all nodes 
-#                reachable from dst, including path from src to dst.
-#     
-#     This is not efficient, but it does not need to be as we'll only be adding
-#     very few paths this way and the graph is not dense.
-#     """
-#     assert (node is not None) or ((src is not None) and (dst is not None))
-#     
-#     def update_with_node(node):
-#       # add node as keys to the respective dicts
-#       assert node not in self._cached_paths
-#       assert node not in self._cached_reverse_paths
-#       
-#       assert self.g.has_node(node)
-#       assert len(self.g.edges(node)) == 0
-#       
-#       self._cached_paths[node]=dict()
-#       self._cached_paths[node][node] = 0
-#       self._cached_reverse_paths[node]=dict()
-#       self._cached_reverse_paths[node][node] = 0
-#       
-#     def update_with_edge(src, dst):
-#       assert src in self._cached_paths
-#       assert src in self._cached_reverse_paths
-#       assert dst in self._cached_paths
-#       assert dst in self._cached_reverse_paths
-#       
-#       # nodes that have a path to src from somewhere (includes src)
-#       for pre_src,path_to_src in self._cached_reverse_paths[src].items():
-#         # nodes that are reachable from dst (includes dst)
-#         for post_dst, path_from_dst in self._cached_paths[dst].items():
-#           # there is now a path from pre_src -> post_dst
-#           if post_dst not in self._cached_paths[pre_src]:
-#             self._cached_paths[pre_src][post_dst] = path_to_src + path_from_dst + 1
-#           else:
-#             self._cached_paths[pre_src][post_dst] = max(self._cached_paths[pre_src][post_dst], path_to_src + path_from_dst + 1)
-#           self._cached_reverse_paths[post_dst][pre_src] = self._cached_paths[pre_src][post_dst]
-#     
-#     if self._cached_paths is None:
-#       self._initialize_path_cache()
-#     else:
-#       if self._cached_reverse_paths is None:
-#         # build the inverse dict once and keep it updated later
-#         self._cached_reverse_paths = dict()
-#         for src,dstpathdict in self._cached_paths.iteritems():
-#           for dst, path in dstpathdict.iteritems():
-#             if dst not in self._cached_reverse_paths:
-#               self._cached_reverse_paths[dst] = dict()
-#             self._cached_reverse_paths[dst][src] = path
-#       
-#       if node is not None:
-#           update_with_node(node)
-#       if (src is not None) and (dst is not None):
-#         update_with_edge(src, dst)
-  
   def _add_edge(self, before, after, sanity_check=True, **attrs):
-#   def _add_edge(self, before, after, sanity_check=True, update_path_cache=False, **attrs):
+
     if sanity_check and before.type not in predecessor_types[after.type]:
       print "Warning: Not a valid HB edge: "+before.typestr+" ("+str(before.eid)+") < "+after.typestr+" ("+str(after.eid)+")"
       assert False 
@@ -270,10 +173,6 @@ class HappensBeforeGraph(object):
         raise ValueError(
           "Edge already added %d->%d and relation: %s" % (src, dst, rel))
     self.g.add_edge(before.eid, after.eid, attrs)
-#     if update_path_cache:
-#       self._update_path_cache(node=None,src=src,dst=src)
-#     else:
-#       self._clear_path_cache()
 
   def _rule_01_pid(self, event):
     # pid_out -> pid_in
@@ -819,19 +718,19 @@ class HappensBeforeGraph(object):
                                                       str(send.packet.src),
                                                       str(send.packet.dst), send.eid))
 
-#   def add_harmful_edges(self, bidir=False):
-#     for race in self.race_detector.races_harmful:
-#       props = dict(rel='race', rtype=race.rtype, harmful=True)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-# 
-#   def add_commute_edges(self, bidir=False):
-#     for race in self.race_detector.races_commute:
-#       props = dict(rel='race', rtype=race.rtype, harmful=False)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+  def add_harmful_edges(self, bidir=False):
+    for race in self.race_detector.races_harmful:
+      props = dict(rel='race', rtype=race.rtype, harmful=True)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+
+  def add_commute_edges(self, bidir=False):
+    for race in self.race_detector.races_commute:
+      props = dict(rel='race', rtype=race.rtype, harmful=False)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
   def get_racing_events(self, trace, ignore_other_traces=True):
     """
@@ -995,53 +894,6 @@ class HappensBeforeGraph(object):
     for r,v in self.covered_races.iteritems():
       print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
     return self.covered_races
-
-#   def check_covered(self, ordered_trace_events, races):
-#     # Cannot be covered if there is only one race
-#     if len(races) <= 1:
-#       return False
-# 
-#     # Collect reads and writes
-#     by_writes = {}
-#     by_reads = {}
-#     for race in races:
-#       if isinstance(race.i_op, TraceSwitchFlowTableWrite):
-#         wr = race.i_event.eid
-#         rd = race.k_event.eid
-#       else:
-#         rd = race.i_event.eid
-#         wr = race.k_event.eid
-#       if wr not in by_writes:
-#         by_writes[wr] = []
-#       if rd not in by_reads:
-#         by_reads[rd] = []
-#       by_writes[wr].append(rd)
-#       by_reads[rd].append(wr)
-# 
-#     ordered_racing_reads = []
-#     for eid in ordered_trace_events:
-#       if eid in by_reads:
-#         ordered_racing_reads.append(eid)
-# 
-#     # Try to find if the two writes have HB relations between them
-#     found_paths = []
-#     for i in range(1, len(ordered_racing_reads)):
-#       r1 = ordered_racing_reads[i-1]
-#       r2 = ordered_racing_reads[i]
-# 
-#       for wr1 in by_reads[r1]:
-#         for wr2 in by_reads[r2]:
-#           if not nx.has_path(self.g, wr2, wr1):
-#             found_paths.append((wr2, wr1))
-#     for wr2, wr1 in found_paths:
-#       write1 = self.g.node[wr1]['event']
-#       write2 = self.g.node[wr2]['event']
-#       delta = write1.operations[0].t - write2.operations[0].t
-#       if self.race_detector.add_hb_time and delta >= self.race_detector.ww_delta:
-#         continue # Covered because of time
-#       # TODO(AH): Now match the tables and check the network forwarding behaviour before w1
-#       return False
-#     return True
 
   def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
     """
