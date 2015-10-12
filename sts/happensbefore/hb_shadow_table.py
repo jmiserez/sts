@@ -121,9 +121,21 @@ class ShadowFlowTable(object):
           assert compare_flow_table(self.table, op.flow_table)
           
           entry = read_flow_table(self.table, event.packet, event.in_port)
+          
           if entry is not None:
+            this_entry = ofp_flow_mod()
+            this_entry.unpack(entry.to_flow_mod().pack())
+            this_entry.xid = 0
+            assert op.entry is not None
+            trace_entry = ofp_flow_mod()
+            trace_entry.unpack(op.entry.pack())
+            trace_entry.xid = 0
+            assert this_entry == trace_entry
+            
             self._on_flow_table_read(entry)
             # TODO(jm): Would it make sense to add an edge from this read to all later write that could match this??? (WaR?)
+          else:
+            assert op.entry == None
           
         elif type(op) == TraceSwitchFlowTableWrite:
           # shadow table should agree with trace before op
@@ -146,7 +158,7 @@ class ShadowFlowTable(object):
     deps = self.get_RaW_data_dependencies(event.eid)
     if len(deps) > 0:
       self.data_deps[event.eid].extend(deps)
-      print "RaW dependencies (r <- [w]): {}  [{}]".format(event.eid,', '.join(str(k[1]) for k in enumerate(deps)))
+      print "RaW dependencies (r <- [w]): {}  [{}]".format(event.eid,', '.join(str(k) for k in deps))
 
     
     
