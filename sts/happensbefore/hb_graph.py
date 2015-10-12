@@ -1228,7 +1228,7 @@ class HappensBeforeGraph(object):
     sub_nodes = nodes_on_path + eids
     subg = self.g.subgraph(list(set(sub_nodes)))
     for i, k in race_edges:
-      subg.add_edge(i, k, rel='covered')
+      subg.add_edge(k, i, rel='covered')
     self.prep_draw(subg, True)
     nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
 
