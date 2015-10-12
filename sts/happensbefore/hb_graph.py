@@ -732,19 +732,19 @@ class HappensBeforeGraph(object):
                                                       str(send.packet.src),
                                                       str(send.packet.dst), send.eid))
 
-#   def add_harmful_edges(self, bidir=False):
-#     for race in self.race_detector.races_harmful:
-#       props = dict(rel='race', rtype=race.rtype, harmful=True)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-# 
-#   def add_commute_edges(self, bidir=False):
-#     for race in self.race_detector.races_commute:
-#       props = dict(rel='race', rtype=race.rtype, harmful=False)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+  def add_harmful_edges(self, bidir=False):
+    for race in self.race_detector.races_harmful:
+      props = dict(rel='race', rtype=race.rtype, harmful=True)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
+
+  def add_commute_edges(self, bidir=False):
+    for race in self.race_detector.races_commute:
+      props = dict(rel='race', rtype=race.rtype, harmful=False)
+      self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
+      if bidir:
+        self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
   def get_racing_events(self, trace, ignore_other_traces=True):
     """
@@ -865,7 +865,8 @@ class HappensBeforeGraph(object):
     data_dep_races = set()
     
     # check for monotonically increasing eids, i.e. the list must be sorted
-    assert all(self.events_with_reads_writes[i] < self.events_with_reads_writes[i+1] for i in xrange(len(self.events_with_reads_writes)-1))
+    assert all(x <= y for x, y in zip(self.events_with_reads_writes,
+                                      self.events_with_reads_writes[1:]))
     
     for eid in self.events_with_reads_writes:
       event = self.events_by_id[eid]
@@ -904,54 +905,10 @@ class HappensBeforeGraph(object):
                       # race is not a race anymore
                       covered_races[r] = (eid,write_eid)
     self.covered_races = covered_races
+    print "Covered races"
+    for r,v in self.covered_races.iteritems():
+      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
     return self.covered_races
-
-#   def check_covered(self, ordered_trace_events, races):
-#     # Cannot be covered if there is only one race
-#     if len(races) <= 1:
-#       return False
-# 
-#     # Collect reads and writes
-#     by_writes = {}
-#     by_reads = {}
-#     for race in races:
-#       if isinstance(race.i_op, TraceSwitchFlowTableWrite):
-#         wr = race.i_event.eid
-#         rd = race.k_event.eid
-#       else:
-#         rd = race.i_event.eid
-#         wr = race.k_event.eid
-#       if wr not in by_writes:
-#         by_writes[wr] = []
-#       if rd not in by_reads:
-#         by_reads[rd] = []
-#       by_writes[wr].append(rd)
-#       by_reads[rd].append(wr)
-# 
-#     ordered_racing_reads = []
-#     for eid in ordered_trace_events:
-#       if eid in by_reads:
-#         ordered_racing_reads.append(eid)
-# 
-#     # Try to find if the two writes have HB relations between them
-#     found_paths = []
-#     for i in range(1, len(ordered_racing_reads)):
-#       r1 = ordered_racing_reads[i-1]
-#       r2 = ordered_racing_reads[i]
-# 
-#       for wr1 in by_reads[r1]:
-#         for wr2 in by_reads[r2]:
-#           if not nx.has_path(self.g, wr2, wr1):
-#             found_paths.append((wr2, wr1))
-#     for wr2, wr1 in found_paths:
-#       write1 = self.g.node[wr1]['event']
-#       write2 = self.g.node[wr2]['event']
-#       delta = write1.operations[0].t - write2.operations[0].t
-#       if self.race_detector.add_hb_time and delta >= self.race_detector.ww_delta:
-#         continue # Covered because of time
-#       # TODO(AH): Now match the tables and check the network forwarding behaviour before w1
-#       return False
-#     return True
 
   def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
     """
@@ -991,6 +948,11 @@ class HappensBeforeGraph(object):
     def is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races=None):
       if covered_races is None:
         covered_races = set()
+      else:
+        covered_races = set(covered_races) # set of all keys of the dict covered_races
+        
+      # all elements of covered_races are of type Race()
+      assert type(covered_races) == set and all(type(i).__name__ == 'Race' for i in covered_races)
         
       # at most 1 uncovered race in races
       assert len(set(races).difference(set(covered_races))) == 1
@@ -1015,7 +977,7 @@ class HappensBeforeGraph(object):
       # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
-      if len(dpids_affected.intersection(none_racing_dpids)) > 0: # always returns a set, thus need to check len() 
+      if dpids_affected.intersection(none_racing_dpids):
         return True # inconsistent, the covered race is part of an update that affected earlier nodes
       else:
         return False # either inconsistent or consistent
@@ -1036,7 +998,7 @@ class HappensBeforeGraph(object):
           at_most_first_uncovered = True
           all_including_first_covered = True
           for idx,race in enumerate(races):
-            if race not in covered_races: # TODO (jm): check intersection like above, this is not correct\
+            if race not in covered_races:
               all_including_first_covered = False
               if idx > 0:
                 at_most_first_uncovered = False
