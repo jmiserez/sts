@@ -10,6 +10,7 @@ import csv
 import glob
 import os
 import matplotlib.pyplot as plt
+import re
 
 
 # Values we care about
@@ -46,8 +47,15 @@ timing_keys.append('per_packet_inconsistent_time_sec')
 timing_keys.append('find_inconsistent_update_time_sec')
 
 
+
+
 def main(result_dir):
-    
+  
+  def natural_keys(text):
+    def atoi(text):
+      return int(text) if text.isdigit() else text
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+ 
   def format_dat_to_csv(keys, infiles, outname):
     table = {}
     for key in keys:
@@ -80,7 +88,7 @@ def main(result_dir):
     with open(outname, 'w') as f:
       wr = csv.writer(f, delimiter=',')
       for key, values in table.iteritems():
-        row = ['key/t'] + list(reversed(sorted(values.keys())))
+        row = ['key/t'] + list(sorted(values.keys(), key=natural_keys))
         wr.writerow(row)
         break
       for key in keys:
