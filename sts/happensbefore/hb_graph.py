@@ -863,6 +863,18 @@ class HappensBeforeGraph(object):
     
     covered_races = dict()
     data_dep_races = set()
+    time_races = set()
+    remaining_harmful_races = set()
+    
+    # remove all races that were already removed due to time based rules
+    for r in self.race_detector.races_harmful:
+      if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
+        # race is not a race anymore
+        time_races.add(r)
+      else:
+        # race is still a race and can become covered when adding data deps
+        remaining_harmful_races.add(r)
+      
     
     # check for monotonically increasing eids, i.e. the list must be sorted
     assert all(x <= y for x, y in zip(self.events_with_reads_writes,
@@ -882,17 +894,17 @@ class HappensBeforeGraph(object):
           # add RaW dependencies (HB edge from event containing W -> event containing R)
           for write_eid in shadow_table.data_deps[event.eid]:
             write_event = self.events_by_id[write_eid]
-            try:
+            if self.g.has_edge(write_event.eid, event.eid):
+              assert self.g.get_edge_data(write_event.eid, event.eid)['rel'] == 'time'
+            else:
               self._add_edge(write_event, event, sanity_check=False, rel='dep_raw')
-            except ValueError:
-              continue
             
             # Should we check this after adding *all* dependencies or after each. E.g. for events with a read and a write.
             
             # includes write_eid itself
             write_succs = set(nx.dfs_preorder_nodes(self.g, write_eid))
             
-            for r in self.race_detector.races_harmful: # TODO(jm): get rid of this loop here, lots of unnecessary looping
+            for r in remaining_harmful_races: # TODO(jm): get rid of this loop here, lots of unnecessary looping
               # is there a path from our write to the the race
               if r.i_event.eid in write_succs or r.k_event.eid in write_succs:
                 # ignore races that we just removed using the data dep edge.
@@ -903,11 +915,8 @@ class HappensBeforeGraph(object):
                   if r not in covered_races and r not in data_dep_races:
                     if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True, use_path_cache=False):
                       # race is not a race anymore
-                      covered_races[r] = (eid,write_eid)
+                      covered_races[r] = (eid, write_eid)
     self.covered_races = covered_races
-    print "Covered races"
-    for r,v in self.covered_races.iteritems():
-      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
     return self.covered_races
 
   def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
@@ -922,6 +931,11 @@ class HappensBeforeGraph(object):
     all packet traces = all per-packet inconsistent traces +  Packet traces with races with first switch on version update
     summazied = all per-packet inconsistent traces - repeatd all per-packet inconsistent traces
     """
+
+
+    #    
+    # TODO(jm): We should add the covered races only for each packet trace, not for the whole graph.
+    #
     
     # list of (trace, races), ordered by trace order
     packet_races = self.get_all_packet_traces_with_races()
@@ -976,7 +990,7 @@ class HappensBeforeGraph(object):
       
       # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
-      print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
+#       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
       if dpids_affected.intersection(none_racing_dpids):
         return True # inconsistent, the covered race is part of an update that affected earlier nodes
       else:
@@ -1225,6 +1239,30 @@ class HappensBeforeGraph(object):
           pretty_match(getattr(node.msg, 'match', None)),\
           getattr(node.msg, 'actions', None)
 
+  def print_covered_races(self):
+    print "Covered races:"
+    eids = []
+    race_edges = []
+    nodes_on_path = []
+    for r,v in self.covered_races.iteritems():
+      print "Race (r/w): ", r.rtype, r.i_event.eid, r.k_event.eid, ", covered by data dep w -> r: ", v
+      eids.append(r.i_event.eid)
+      eids.append(r.k_event.eid)
+      race_edges.append((r.i_event.eid, r.k_event.eid))
+      eids.append(v[0])
+      eids.append(v[1])
+      for path in nx.all_simple_paths(self.g, r.i_event.eid, r.k_event.eid):
+        nodes_on_path.extend(path)
+      for path in nx.all_simple_paths(self.g, r.k_event.eid, r.i_event.eid):
+        nodes_on_path.extend(path)
+    nodes_on_path = list(set(nodes_on_path))
+    sub_nodes = nodes_on_path + eids
+    subg = self.g.subgraph(list(set(sub_nodes)))
+    for i, k in race_edges:
+      subg.add_edge(k, i, rel='covered')
+    self.prep_draw(subg, True)
+    nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
+
 
 class Main(object):
   
@@ -1315,8 +1353,8 @@ class Main(object):
     self.graph.save_races_graph(self.print_pkt)
 
 
-    self.graph.print_versions(versions)
-
+#     self.graph.print_versions(versions)
+#     self.graph.print_covered_races()
 
     print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
@@ -1347,11 +1385,11 @@ class Main(object):
     print "load_trace:", load_time, "s"
     print "detect_races:", detect_races_time, "s"
     print "extract_traces_time:", extract_traces_time, "s"
-    print "per_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
     print "find_reactive_cmds_time:", find_reactive_cmds_time, "s"
     print "find_proactive_cmds_time:", find_proactive_cmds_time, "s"
-    print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
     print "find_covered_races_time:", find_covered_races_time, "s"
+    print "per_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
+    print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
     #print "print_races:"+(str(t3-t2))+"s"
     #print "store_graph:"+(str(t4-t3))+"s"
     #print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
@@ -1362,9 +1400,9 @@ class Main(object):
     hbt = self.add_hb_time
     rw_delta = self.rw_delta if self.add_hb_time else 'inf'
     ww_delta = self.ww_delta if self.add_hb_time else 'inf'
-    file_name = "results_hbt_%s_rw_%s_ww_%s.dat" % (hbt, rw_delta, ww_delta)
+    file_name = "results_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
     file_name = os.path.join(self.results_dir, file_name)
-    timings_file_name = "timings_hbt_%s_rw_%s_ww_%s.dat" % (hbt, rw_delta, ww_delta)
+    timings_file_name = "timings_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
     timings_file_name = os.path.join(self.results_dir, timings_file_name)
 
 
@@ -1375,6 +1413,7 @@ class Main(object):
     num_harmful = len(self.graph.race_detector.races_harmful)
     num_commute = len(self.graph.race_detector.races_commute)
     num_races = num_harmful + num_commute
+    num_covered = len(covered_races)
 
     num_rw_time_edges = self.graph.race_detector.time_hb_rw_edges_counter
     num_ww_time_edges = self.graph.race_detector.time_hb_ww_edges_counter
@@ -1392,6 +1431,7 @@ class Main(object):
       f.write('rw_delta,%s\n' % rw_delta)
       f.write('ww_delta,%s\n' % ww_delta)
       f.write('alt_barrier,%s\n' % self.alt_barr)
+      f.write('data_deps,%s\n' % self.data_deps)
 
     with open(file_name, 'w') as f:
       write_general_info_to_file(f)
@@ -1410,6 +1450,7 @@ class Main(object):
       f.write('num_harmful,%d\n' % num_harmful)
       f.write('num_commute,%d\n' % num_commute)
       f.write('num_races,%d\n' % num_races)
+      f.write('num_covered,%d\n' % num_covered)
 
       # Inconsistency
       f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
@@ -1426,9 +1467,10 @@ class Main(object):
       f.write('load_time_sec,%f\n' % load_time )
       f.write('detect_races_time_sec,%f\n' % detect_races_time )
       f.write('extract_traces_time_sec,%f\n' % extract_traces_time )
-      f.write('per_packet_inconsistent_time_sec,%f\n' % per_packet_inconsistent_time )
       f.write('find_reactive_cmds_time_sec,%f\n' % find_reactive_cmds_time )
       f.write('find_proactive_cmds_time_sec,%f\n' % find_proactive_cmds_time )
+      f.write('find_covered_races_time,%f\n' % find_covered_races_time )
+      f.write('per_packet_inconsistent_time_sec,%f\n' % per_packet_inconsistent_time )
       f.write('find_inconsistent_update_time_sec,%f\n' % find_inconsistent_update_time )
 
 

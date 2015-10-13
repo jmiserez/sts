@@ -153,4 +153,4 @@ class ShadowFlowTable(object):
     deps = self.get_RaW_data_dependencies(event.eid)
     if deps > 0:
       self.data_deps[event.eid].extend(deps)
-      print "RaW dependencies (r <- [w]): {}  [{}]".format(event.eid,', '.join(str(k) for k in deps))
+#       print "RaW dependencies (r <- [w]): {}  [{}]".format(event.eid,', '.join(str(k) for k in deps))

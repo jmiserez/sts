@@ -19,10 +19,10 @@ run_per_trace_dir(){
   pushd "$1" > /dev/null
   # add results
   git add results_\*.dat
-  git add \*summary.csv
+  git add \*summary_results\*.csv
   # add timings
   git add timings_\*.dat
-  git add \*summary_timings.csv
+  git add \*summary_timings\*.csv
   # add plots
   git add num\*.pdf
   git add \*_pkt_consist.pdf
@@ -117,9 +117,5 @@ echo "NUM_CPU_CORES=$NUM_CPU_CORES"
 
 printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P 1 bash -c 'func_call_by_name run_per_trace_dir {}'
 
-if [ "$IS_SINGLE_JOB" = true ]
-  then
-    :
-  else
-    rm -rf "$CURRENT_TMP_DIR"
-fi
+rm -rf "$CURRENT_TMP_DIR"
+
