@@ -31,18 +31,6 @@ keys.append('num_per_pkt_inconsistent_covered')
 keys.append('num_per_pkt_race_version')
 keys.append('num_per_pkt_inconsistent_no_repeat')
 
-timing_keys = []
-timing_keys.append('total_time_sec')
-timing_keys.append('load_time_sec')
-timing_keys.append('detect_races_time_sec')
-timing_keys.append('extract_traces_time_sec')
-timing_keys.append('find_reactive_cmds_time_sec')
-timing_keys.append('find_proactive_cmds_time_sec')
-timing_keys.append('find_covered_races_time')
-timing_keys.append('per_packet_inconsistent_time_sec')
-timing_keys.append('find_inconsistent_update_time_sec')
-
-
 keys.append('total_time_sec')
 keys.append('load_time_sec')
 keys.append('detect_races_time_sec')
