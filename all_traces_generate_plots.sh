@@ -17,8 +17,8 @@ fi
 run_per_trace_dir() {
 #  echo "Generating plots for trace $1"
   pushd "$1" > /dev/null
-  echo "$STS_DIR/plot.py $STS_DIR/$1"
-  $STS_DIR/plot.py "$STS_DIR/$1"
+  echo "$STS_DIR/plot.py $1"
+  $STS_DIR/plot.py "$1"
   popd > /dev/null
 }
 export -f run_per_trace_dir
