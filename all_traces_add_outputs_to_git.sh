@@ -24,8 +24,7 @@ run_per_trace_dir(){
   git add timings_\*.dat
   git add \*summary_timings.csv
   # add plots
-  git add \*num\*.pdf
-  git add \*_pkt_consist.pdf
+  git add \*.pdf
   popd > /dev/null
 }
 export -f run_per_trace_dir
