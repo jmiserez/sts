@@ -849,6 +849,18 @@ class HappensBeforeGraph(object):
     
     covered_races = dict()
     data_dep_races = set()
+    time_races = set()
+    remaining_harmful_races = set()
+    
+    # remove all races that were already removed due to time based rules
+    for r in self.race_detector.races_harmful:
+      if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
+        # race is not a race anymore
+        time_races.add(r)
+      else:
+        # race is still a race and can become covered when adding data deps
+        remaining_harmful_races.add(r)
+      
     
     # check for monotonically increasing eids, i.e. the list must be sorted
     assert all(x <= y for x, y in zip(self.events_with_reads_writes,
@@ -878,7 +890,7 @@ class HappensBeforeGraph(object):
             # includes write_eid itself
             write_succs = set(nx.dfs_preorder_nodes(self.g, write_eid))
             
-            for r in self.race_detector.races_harmful: # TODO(jm): get rid of this loop here, lots of unnecessary looping
+            for r in remaining_harmful_races: # TODO(jm): get rid of this loop here, lots of unnecessary looping
               # is there a path from our write to the the race
               if r.i_event.eid in write_succs or r.k_event.eid in write_succs:
                 # ignore races that we just removed using the data dep edge.
@@ -1327,8 +1339,8 @@ class Main(object):
     self.graph.save_races_graph(self.print_pkt)
 
 
-    self.graph.print_versions(versions)
-    self.graph.print_covered_races()
+#     self.graph.print_versions(versions)
+#     self.graph.print_covered_races()
 
     print "Number of packet traces with races:", len(packet_races)
     print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
