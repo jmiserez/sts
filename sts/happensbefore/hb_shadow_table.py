@@ -25,6 +25,7 @@ class ShadowFlowTable(object):
     self.table = SwitchFlowTable()
     
     self.latest_event_eid = None
+    self.latest_event_was_async_expiry = False
     
     # entry -> entry id
     self.entry_ids = dict()
@@ -100,7 +101,10 @@ class ShadowFlowTable(object):
     pass
 
   def apply_event(self, event):
-    assert event.eid > self.latest_event_eid
+    # TODO(jm): hb_logger prints out higher eids for HbAsyncExpiry events than the ones that follow.
+    #           The trace order as it appears in the file is the correct order.
+    #           TODO: Fix this in hb_logger, so that the eids assigned to expiry events are correct.
+    assert event.eid > self.latest_event_eid or self.latest_event_was_async_expiry
     self.latest_event_eid = event.eid
     assert type(event) in [HbPacketHandle, HbMessageHandle, HbAsyncFlowExpiry]
     assert hasattr(event, "operations")
@@ -109,6 +113,7 @@ class ShadowFlowTable(object):
         assert hasattr(op, "flow_table")
         assert hasattr(op, "flow_mod")
         if type(op) == TraceSwitchFlowTableRead:
+          self.latest_event_was_async_expiry = False
           assert hasattr(op, "packet")
           assert hasattr(op, "in_port")
           assert hasattr(op, "entry")
@@ -134,22 +139,27 @@ class ShadowFlowTable(object):
             assert op.entry == None
           
         elif type(op) == TraceSwitchFlowTableWrite:
+          self.latest_event_was_async_expiry = False
           # shadow table should agree with trace before op
           assert compare_flow_table(self.table, op.flow_table)
           write_flow_table(self.table, op.flow_mod)
 
         elif type(op) == TraceSwitchFlowTableEntryExpiry:
+          self.latest_event_was_async_expiry = True
+          if not compare_flow_table(self.table, op.flow_table):
+            print self.table.table
+            print "--------------------"
+            print op.flow_table.table
+          assert compare_flow_table(self.table, op.flow_table)
           exact_matches = find_entries_in_flow_table(self.table, op.flow_mod)
-
           # it is impossible to add two entries with the *exact* same match and
           # priority to the flow table, so we should always get exactly one entry
+          if len(exact_matches) != 1:
+            print exact_matches
           assert len(exact_matches) == 1
           
           self.table.remove_entries(exact_matches)
 
-          # shadow table should now agree with trace after op
-          assert compare_flow_table(self.table, op.flow_table)
-          
     deps = self.get_RaW_data_dependencies(event.eid)
     if deps > 0:
       self.data_deps[event.eid].extend(deps)

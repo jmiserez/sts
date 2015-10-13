@@ -167,10 +167,17 @@ def read_flow_table(table, packet, in_port):
 def write_flow_table(table, flow_mod):
   return table.process_flow_mod(flow_mod)
 
-def find_entries_in_flow_table(table, flow_mod):
+def find_entries_in_flow_table(table, other_flow_mod):
+  other = ofp_flow_mod()
+  other.unpack(other_flow_mod.pack())
+  other.xid = 0
+  
   found = []
   for i in table.table:
-    if i.to_flow_mod() == flow_mod:
+    this_entry = ofp_flow_mod()
+    this_entry.unpack(i.to_flow_mod().pack())
+    this_entry.xid = 0
+    if this_entry == other:
       found.append(i)
   return found
 

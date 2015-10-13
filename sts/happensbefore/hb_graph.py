@@ -483,7 +483,12 @@ class HappensBeforeGraph(object):
     
     if hasattr(event, 'operations'):
       for op in event.operations:
-        if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
+        if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite]:
+          
+          # TODO(jm): Add TraceSwitchFlowTableEntryExpiry events here as well.
+          #           But before we can do that, we need to assign monotonicially increasing
+          #           eids to the expiry events as well in hb_logger
+          
           self.events_with_reads_writes.append(event.eid)
           break
 
