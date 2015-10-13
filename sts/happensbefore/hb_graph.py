@@ -485,6 +485,7 @@ class HappensBeforeGraph(object):
       for op in event.operations:
         if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
           self.events_with_reads_writes.append(event.eid)
+          break
 
     def _handle_HbAsyncFlowExpiry(event):
       if self.data_deps:
