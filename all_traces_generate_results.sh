@@ -19,8 +19,10 @@ run_per_trace_dir() {
   pushd "$STS_DIR" > /dev/null
   echo "./gen.sh $1"
   ./gen.sh "$1"
-  echo "./plot.py $1"
-  ./plot.py "$1"
+  popd > /dev/null
+  pushd "$1" > /dev/null
+  echo "$STS_DIR/plot.py $STS_DIR/$1"
+  "$STS_DIR/plot.py" "$STS_DIR/$1"
   popd > /dev/null
 }
 export -f run_per_trace_dir
@@ -65,7 +67,7 @@ export -f pidtree
 # create tmp directory
 export CURRENT_TMP_DIR=`mktemp -d`
 # set trap to cleanup upon exit/CTRL-C. Note: not triggered when using kill -9.
-trap 'for i in $CURRENT_TMP_DIR/*.pid; do kill $(pidtree $(basename "${i%.pid}")) >> /dev/null 2>&1; rm -f "$i"; done; rm -rf "$CURRENT_TMP_DIR"' EXIT
+trap 'echo "Received CTRL-C"; for i in $CURRENT_TMP_DIR/*.pid; do kill $(pidtree $(basename "${i%.pid}")) >> /dev/null 2>&1; rm -f "$i"; done; rm -rf "$CURRENT_TMP_DIR"' INT
 
 func_call_by_name(){
   if [ "$IS_SINGLE_JOB" = true ]
