@@ -167,6 +167,7 @@ class RaceDetector(object):
             first = i_event if i_op.t < k_op.t else k_event
             second = k_event if first == i_event else i_event
             assert first != second
+            # update_path_cache is False: This edge will not be considered until the path_cache is updated
             self.graph._add_edge(first, second, sanity_check=False, update_path_cache=False, rel='time')
         self.racing_events.add(i_event)
         self.racing_events.add(k_event)
@@ -209,6 +210,7 @@ class RaceDetector(object):
                 first = i_event if i_op.t < k_op.t else k_event
                 second = k_event if first == i_event else i_event
                 assert first != second
+                # update_path_cache is False: This edge will not be considered until the path_cache is updated
                 self.graph._add_edge(first, second, sanity_check=False, update_path_cache=False, rel='time')
             self.racing_events.add(i_event)
             self.racing_events.add(k_event)

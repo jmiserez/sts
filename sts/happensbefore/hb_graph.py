@@ -156,13 +156,16 @@ class HappensBeforeGraph(object):
     if event in self.events_pending_mid_in[event.mid_in]:
       self.events_pending_mid_in[event.mid_in].remove(event)
       
+  def update_path_cache(self):
+    print "Updating has_path path cache..."
+    self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
+      
   def has_path(self, src_eid, dst_eid, bidirectional=True, use_path_cache=True):  
     if self.disable_path_cache or not use_path_cache:
       return nx.has_path(self.g, src_eid, dst_eid) or (bidirectional and nx.has_path(self.g, dst_eid, src_eid))
     else:
       if self._cached_paths is None:
-        print "Updating has_path path cache..."
-        self._cached_paths = nx.all_pairs_shortest_path_length(self.g)
+        self.update_path_cache()
 
       if dst_eid in self._cached_paths[src_eid]:
         return True
@@ -1305,6 +1308,7 @@ class Main(object):
     t1 = time.time()
     
     self.graph.race_detector.detect_races(verbose=True)
+    self.graph.update_path_cache() # the race detector doesn't do it, so we do it ourself.
     t2 = time.time()
     
     packet_traces = self.graph.extract_traces(self.graph.g)
