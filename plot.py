@@ -45,9 +45,12 @@ keys.append('find_inconsistent_update_time_sec')
 per_pkt_consistenty =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
                         'num_per_pkt_inconsistent_covered',
                         'num_per_pkt_race_version']
+prefixes = ['True-','False-']
 
 def main(result_dirs):
   tables = {}
+  for p in prefixes:
+    tables[p] = {}
   for name in result_dirs:
     fname = name
     if not fname.endswith('.csv'):
@@ -55,28 +58,44 @@ def main(result_dirs):
     with open(fname) as csvfile:
       table = {}
       keys = []
-      data = csv.reader(csvfile, delimiter=',')
-      for row in data:
-        if row[0] == 'key/t':
-          row = [int(x) for x in row[1:] if x!= 'inf']
-          row = ['key/t', 11] + row
-        table[row[0]] = row[1:]
-      short_name = os.path.basename(os.path.normpath(name))
-      tables[short_name] = table
+      csviter = csv.reader(csvfile, delimiter=',')
+      csvdata = []
+      for row in csviter:
+        csvdata.append(row)
+      for p in prefixes:
+        table[p] = {}
+        cols_with_prefix = None
+        data = []
+        for row in csvdata:
+          copyrow = []
+          data.append(copyrow)
+          for i in row:
+            copyrow.append(i)
+        for row in data:
+          if cols_with_prefix is not None:
+            row[1:] = [row[x+1] for x in xrange(len(row[1:])) if cols_with_prefix[x] == 1]
+          if row[0] == 'key/t':
+            cols_with_prefix = [1 if str(x).startswith(p) else 0 for x in row[1:]]
+            row = [str(row[x+1]).partition(p)[2] for x in xrange(len(row[1:])) if cols_with_prefix[x] == 1 and str(row[x+1]).partition(p)[2] != 'inf']
+            row = ['key/t', 11] + row
+          table[p][row[0]] = row[1:]
+        short_name = os.path.basename(os.path.normpath(name))
+        tables[p][short_name] = table[p]
   
 
   keys_to_plot = ['num_harmful', 'num_commute', 'num_races', 'num_rw_time_edges', 'num_ww_time_edges',
             'num_per_pkt_races', 'num_per_pkt_inconsistent', 'num_per_pkt_inconsistent_covered', 'num_per_pkt_race_version', 'num_per_pkt_inconsistent_no_repeat']
 
   # Plot summaries for all values
-  for key in keys_to_plot:
-    plot_with_delta(tables, key, False)
-
-  for name in tables:
-    plot_with_delta_multiple(tables, name,
-                             out_name=get_short_name(name) + "_pkt_consist",
-                             keys=per_pkt_consistenty,
-                             use_log=False)
+  for p in prefixes:
+    for key in keys_to_plot:
+      plot_with_delta(tables[p], p, key, False)
+  
+    for name in tables[p]:
+      plot_with_delta_multiple(tables[p], p, name,
+                               out_name=get_short_name(name) + "_pkt_consist",
+                               keys=per_pkt_consistenty,
+                               use_log=False)
 
 
 def get_short_name(name):
@@ -104,7 +123,7 @@ def get_short_name(name):
   new_name = new_name.replace('BinaryLeafTreeTopology', 'BinTree')
   return new_name
 
-def plot_with_delta_multiple(tables, name, keys, out_name, use_log=True, formatter=int):
+def plot_with_delta_multiple(tables, prefix, name, keys, out_name, use_log=True, formatter=int):
   plt.clf()
   fig = plt.figure()
   fig.suptitle(name, fontsize=14, fontweight='bold')
@@ -132,14 +151,15 @@ def plot_with_delta_multiple(tables, name, keys, out_name, use_log=True, formatt
   ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1),
             fancybox=True, shadow=True, ncol=1, prop={'size':6})
 
-
-  pp = PdfPages('%s.pdf' % out_name)
+  fname = '%s%s.pdf' % (prefix, out_name)
+  print fname
+  pp = PdfPages(fname)
   fig.savefig(pp, format='pdf')
   #pp.savefig()
   pp.close()
+  plt.close(fig)
 
-
-def plot_with_delta(tables, key, use_log=True, formatter=int):
+def plot_with_delta(tables, prefix, key, use_log=True, formatter=int):
   plt.clf()
   fig = plt.figure()
   fig.suptitle(key, fontsize=14, fontweight='bold')
@@ -165,11 +185,13 @@ def plot_with_delta(tables, key, use_log=True, formatter=int):
   ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1),
             fancybox=True, shadow=True, ncol=1, prop={'size':6})
 
-
-  pp = PdfPages('%s.pdf' % key)
+  fname = '%s%s.pdf' % (prefix, key)
+  print fname
+  pp = PdfPages(fname)
   fig.savefig(pp, format='pdf')
   #pp.savefig()
   pp.close()
+  plt.close(fig)
 
 
 if __name__ == '__main__':
