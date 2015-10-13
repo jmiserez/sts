@@ -112,9 +112,5 @@ echo "NUM_CPU_CORES=$NUM_CPU_CORES"
 
 printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
 
-if [ "$IS_SINGLE_JOB" = true ]
-  then
-    :
-  else
-    rm -rf "$CURRENT_TMP_DIR"
-fi
+rm -rf "$CURRENT_TMP_DIR"
+

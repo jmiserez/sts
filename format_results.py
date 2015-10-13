@@ -25,6 +25,7 @@ keys.append('num_time_edges')
 keys.append('num_harmful')
 keys.append('num_commute')
 keys.append('num_races')
+keys.append('num_covered')
 
 keys.append('num_per_pkt_races')
 keys.append('num_per_pkt_inconsistent')
@@ -33,12 +34,15 @@ keys.append('num_per_pkt_race_version')
 keys.append('num_per_pkt_inconsistent_no_repeat')
 
 timing_keys = []
+
+timing_keys.append('total_time_sec')
 timing_keys.append('load_time_sec')
 timing_keys.append('detect_races_time_sec')
 timing_keys.append('extract_traces_time_sec')
-timing_keys.append('per_packet_inconsistent_time_sec')
 timing_keys.append('find_reactive_cmds_time_sec')
 timing_keys.append('find_proactive_cmds_time_sec')
+timing_keys.append('find_covered_races_time')
+timing_keys.append('per_packet_inconsistent_time_sec')
 timing_keys.append('find_inconsistent_update_time_sec')
 
 
@@ -61,6 +65,10 @@ def main(result_dir):
             if t is None:
               t = value
             else:
+              # TODO(jm): This is a really weird way of checking that rw_delta == ww_delta. 
+              #           We should make t a tuple (t_rw, t_ww) and print that out.
+              #           If this assertion fails you might need to delete any *.dat files
+              #           remaining from previous runs where rw_delta != ww_delta  
               assert t == value
           if key in table:
             table[key][t] = value
@@ -81,7 +89,7 @@ def main(result_dir):
   # results
   format_dat_to_csv(keys,
                     glob.glob(os.path.join(result_dir, 'results*.dat')),
-                    os.path.join(result_dir, 'summary.csv'))
+                    os.path.join(result_dir, 'summary_results.csv'))
   # results
   format_dat_to_csv(timing_keys,
                     glob.glob(os.path.join(result_dir, 'timings*.dat')),
