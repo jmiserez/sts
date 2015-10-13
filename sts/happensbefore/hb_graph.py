@@ -1434,7 +1434,7 @@ class Main(object):
       f.write('key,value\n')
       f.write('rw_delta,%s\n' % rw_delta)
       f.write('ww_delta,%s\n' % ww_delta)
-      f.write('alt_barrier,%s\n' % self.alt_barr)
+      f.write('alt_barr,%s\n' % self.alt_barr)
       f.write('data_deps,%s\n' % self.data_deps)
 
     with open(file_name, 'w') as f:

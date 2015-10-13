@@ -19,10 +19,10 @@ run_per_trace_dir(){
   pushd "$1" > /dev/null
   # add results
   git add results_\*.dat
-  git add \*summary_results\*.csv
+  git add \*summary.csv
   # add timings
   git add timings_\*.dat
-  git add \*summary_timings\*.csv
+  git add \*summary_timings.csv
   # add plots
   git add num\*.pdf
   git add \*_pkt_consist.pdf

@@ -57,8 +57,11 @@ def main(result_dir):
       with open(fname, 'r') as csvfile:
         data = csv.reader(csvfile, delimiter=',')
         t = None
+        ab = None
         for row in data:
           key, value = row[0].strip(), row[1].strip()
+          if key in ['alt_barr']:
+            ab = value
           if key in ['rw_delta', 'ww_delta']:
             if value != 'inf':
               value = int(value)
@@ -71,7 +74,7 @@ def main(result_dir):
               #           remaining from previous runs where rw_delta != ww_delta  
               assert t == value
           if key in table:
-            table[key][t] = value
+            table[key][str(ab) + '-' + str(t)] = value
   
     print "Saving results to", outname
     with open(outname, 'w') as f:
@@ -89,7 +92,7 @@ def main(result_dir):
   # results
   format_dat_to_csv(keys,
                     glob.glob(os.path.join(result_dir, 'results*.dat')),
-                    os.path.join(result_dir, 'summary_results.csv'))
+                    os.path.join(result_dir, 'summary.csv'))
   # results
   format_dat_to_csv(timing_keys,
                     glob.glob(os.path.join(result_dir, 'timings*.dat')),

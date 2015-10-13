@@ -51,7 +51,7 @@ def main(result_dirs):
   for name in result_dirs:
     fname = name
     if not fname.endswith('.csv'):
-      fname = os.path.join(name, 'summary_results.csv')
+      fname = os.path.join(name, 'summary.csv')
     with open(fname) as csvfile:
       table = {}
       keys = []
