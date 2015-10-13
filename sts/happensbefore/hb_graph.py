@@ -698,6 +698,9 @@ class HappensBeforeGraph(object):
           g.edge[src][dst]['style'] = 'bold'
         else:
           g.edge[src][dst]['style'] = 'dotted'
+      elif data['rel'] == 'covered':
+        g.edge[src][dst]['color'] = 'blue'
+        g.edge[src][dst]['style'] = 'bold'
 
   def extract_traces(self, g):
     """
@@ -818,7 +821,7 @@ class HappensBeforeGraph(object):
         result[key] = (trace, races, versions)
     return result.values()
 
-  def print_racing_packet_trace(self, trace, races, label):
+  def print_racing_packet_trace(self, trace, races, label, show_covered=True):
     """
     first is the trace
     second is the list of races
@@ -830,7 +833,22 @@ class HappensBeforeGraph(object):
         g.add_node(race.i_event.eid, event=race.i_event)
       if not g.has_node(race.k_event.eid):
         g.add_node(race.k_event.eid, event=race.k_event)
-      g.add_edge(race.i_event.eid, race.k_event.eid, rel='race', harmful=True)
+      if show_covered and race in self.covered_races:
+        for path in nx.all_simple_paths(self.g, race.i_event.eid, race.k_event.eid):
+          for src, dst in zip(path, path[1:]):
+            g.node[src] = self.g.node[src]
+            g.node[dst] = self.g.node[dst]
+            g.add_edge(src, dst, self.g.edge[src][dst])
+        for path in nx.all_simple_paths(self.g, race.k_event.eid, race.i_event.eid):
+          for src, dst in zip(path, path[1:]):
+            g.node[src] = self.g.node[src]
+            g.node[dst] = self.g.node[dst]
+            g.add_edge(src, dst, self.g.edge[src][dst])
+        g.add_edge(race.i_event.eid, race.k_event.eid, rel='covered', harmful=True)
+      else:
+        #if not g.has_edge(race.i_event.eid, race.k_event.eid) and not \
+        #      g.has_edge(race.k_event.eid, race.i_event.eid):
+        g.add_edge(race.i_event.eid, race.k_event.eid, rel='race', harmful=True)
 
     self.prep_draw(g, TraceSwitchPacketUpdateBegin)
     src = str(host_send.packet.src)
@@ -928,127 +946,82 @@ class HappensBeforeGraph(object):
     self.covered_races = covered_races
     return self.covered_races
 
+  def _get_versions_for_races(self, races):
+    # assume races is ordered!
+    assert all(races[i] < races[i+1] for i in xrange(len(races)-1))
+    versions_for_race = defaultdict(set)
+    for race in races:
+      # get versions for each race
+      for version, cmds in self.versions.iteritems():
+        if race.i_event.eid in cmds or race.k_event.eid in cmds:
+          versions_for_race[race].add(version)
+    return versions_for_race
+
+  def _is_inconsistent_packet_entry_version(self, trace, race, dpids_affected):
+      trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
+      trace_dpids = [getattr(self.g.node[node]['event'], 'dpid', None) for node in trace_nodes]
+      racing_dpid = race.i_event.dpid
+      # which switches/nodes does the packet traverse before hitting this 1 uncovered race?
+      none_racing_dpids = set([x for x in trace_dpids[:trace_dpids.index(racing_dpid)] if x is not None])
+      return not dpids_affected.intersection(none_racing_dpids)
+
   def find_per_packet_inconsistent(self, covered_races=None, summarize=True):
     """
     Returns the following sets of packet traces.
       1) all packet traces that race with a write event
-      2) all per-packet inconsistent traces (covered and uncovered)
+      2) all per-packet TRUE inconsistent traces
       3) Covered packet traces (trace with races cannot happen because of HB)
       4) Packet traces with races with first switch on version update
       5) Summarize traces after removing covered and trimming traces that races with the same writes
 
-    all packet traces = all per-packet inconsistent traces +  Packet traces with races with first switch on version update
+    all packet traces =TRUE inconsistent traces + covered + entry switch races
     summazied = all per-packet inconsistent traces - repeatd all per-packet inconsistent traces
     """
 
-
-    #    
-    # TODO(jm): We should add the covered races only for each packet trace, not for the whole graph.
-    #
-    
     # list of (trace, races), ordered by trace order
     packet_races = self.get_all_packet_traces_with_races()
     inconsistent_packet_traces = []
-    inconsistent_packet_traces_covered = []
-    inconsistent_packet_entry_version = []
+    consistent_packet_traces_covered = []
+    consistent_packet_entry_version = []
     summarized = []
 
     dpids_for_version = {}
     for version, cmds in self.versions.iteritems():
       dpids_for_version[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
 
-    def get_versions_for_races(races):
-      # assume races is ordered!
-      assert all(races[i] < races[i+1] for i in xrange(len(races)-1))
-      versions_for_race = defaultdict(set)
-      for race in races:
-        # get versions for each race
-        for version, cmds in self.versions.iteritems():
-          if race.i_event.eid in cmds or race.k_event.eid in cmds:
-            versions_for_race[race].add(version)
-      return versions_for_race # TODO(jm): should change this to ordered set, or make the requirement otherwise explicit
-    
-    def is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races=None):
-      if covered_races is None:
-        covered_races = set()
-      else:
-        covered_races = set(covered_races) # set of all keys of the dict covered_races
-        
-      # all elements of covered_races are of type Race()
-      assert type(covered_races) == set and all(type(i).__name__ == 'Race' for i in covered_races)
-        
-      # at most 1 uncovered race in races
-      assert len(set(races).difference(set(covered_races))) == 1
-      
-      uncovered_race = set(races).difference(covered_races).pop()
-      trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
-      trace_dpids = [getattr(self.g.node[node]['event'], 'dpid', None) for node in trace_nodes]
-      racing_dpid = uncovered_race.i_event.dpid
-      
-      # which switches/nodes does the packet traverse before hitting this 1 uncovered race?
-      none_racing_dpids = set([x for x in trace_dpids[:trace_dpids.index(racing_dpid)] if x is not None])
-      
-      # which version(s) is the write of this uncovered race part of?
-      versions_for_uncovered_race = versions_for_race[uncovered_race]
-      # as there is one write, this should be 1
-      assert len(versions_for_uncovered_race) == 1
-      racing_version = versions_for_uncovered_race.pop()
-      
-      # which dpids were affected by this version?
-      dpids_affected = set(dpids_for_version[racing_version])
-      
-      # is one of those dpids affected the one uncovered race (same dpids)?
-      # Check with the race on the first switch of the update
-#       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
-      if dpids_affected.intersection(none_racing_dpids):
-        return True # inconsistent, the covered race is part of an update that affected earlier nodes
-      else:
-        return False # either inconsistent or consistent
-      
     for trace, races in packet_races:
-      versions_for_race = get_versions_for_races(races)
+      uncovered_races = [race for race in races if race not in covered_races]
+      versions_for_race = self._get_versions_for_races(uncovered_races)
       racing_versions = sorted(list(set(versions_for_race.keys())))
-      
-      if len(races) == 0:
-        assert False
-      else:
-        if covered_races is not None:
-          # We consider a packet trace consistent if:
-          # 1. Contains at most one uncovered race
-          # 2. The uncovered race (if it exists) is the first one
-          # 3. The first uncovered race is not already inconsistent
-          # We need not check why the race is covered, i.e. which race covers it.
-          at_most_first_uncovered = True
-          all_including_first_covered = True
-          for idx,race in enumerate(races):
-            if race not in covered_races:
-              all_including_first_covered = False
-              if idx > 0:
-                at_most_first_uncovered = False
-                break
-          if all_including_first_covered:
-            # this is a consistent trace
-            inconsistent_packet_traces_covered.append((trace, races, racing_versions))
-          elif at_most_first_uncovered:
-            if is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races):
-              # the packet sees other versions before the first race, which makes it inconsistent
-              inconsistent_packet_entry_version.append((trace, races, racing_versions))
-            else:
-              # consistent due to covered races
-              inconsistent_packet_traces_covered.append((trace, races, racing_versions))
-          else:
-            inconsistent_packet_traces.append((trace, races, racing_versions))
-        else:
-          if is_inconsistent_packet_entry_version(trace, races, versions_for_race):
-            inconsistent_packet_entry_version.append((trace, races, racing_versions))
-          else:
-            inconsistent_packet_traces.append((trace, races, racing_versions))
 
+      # check if all the races are actually covered
+      if not uncovered_races:
+        consistent_packet_traces_covered.append((trace, races, racing_versions))
+      elif len(uncovered_races) == 1:
+        # check entry
+        race = uncovered_races[0]
+        version = list(versions_for_race[race])[0]
+        affected_dpids = dpids_for_version[version]
+        is_entry = self._is_inconsistent_packet_entry_version(trace, race, affected_dpids)
+        has_covered = len(races) > 1
+        if is_entry:
+          if has_covered:
+            consistent_packet_traces_covered.append((trace, races, racing_versions))
+          else:
+            consistent_packet_entry_version.append((trace, races, racing_versions))
+        else:
+          inconsistent_packet_traces.append((trace, races, racing_versions))
+      else:
+        inconsistent_packet_traces.append((trace, races, racing_versions))
     if summarize:
       summarized = self.summarize_per_packet_inconsistent(inconsistent_packet_traces)
+
+    assert len(packet_races) == len(inconsistent_packet_traces) + \
+                                len(consistent_packet_entry_version) + \
+                                len(consistent_packet_traces_covered)
     return packet_races, inconsistent_packet_traces, \
-           inconsistent_packet_traces_covered, \
-           inconsistent_packet_entry_version, summarized
+           consistent_packet_traces_covered, \
+           consistent_packet_entry_version, summarized
 
   def find_barrier_replies(self):
     barrier_replies = []
@@ -1351,7 +1324,7 @@ class Main(object):
 
     # Print traces
     for trace, races in packet_races:
-      self.graph.print_racing_packet_trace(trace, races, label='race')
+      self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
     for trace, races, _ in inconsistent_packet_traces:
       self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
     for trace, races, _ in inconsistent_packet_traces_covered:
