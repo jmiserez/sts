@@ -952,6 +952,43 @@ class HappensBeforeGraph(object):
     for version, cmds in self.versions.iteritems():
       dpids_for_version[version] = set([getattr(self.g.node[cmd]['event'], 'dpid', None) for cmd in cmds])
 
+    def covered_races_are_ordered_as_packet_trace(trace, races, covered_races):
+      """
+      For all covered races in the given packet trace, verify that there is a directed HB path
+      from the covered race write to at least one previous packet read on the path the packet took.
+      """
+      races_by_read_eid = dict()
+      for r in covered_races:
+        assert r.rtype == 'r/w'
+        read_eid = r.i_event.eid
+        write_eid = r.k_event.eid
+        races_by_read_eid[read_eid] = write_eid    
+      
+      seen_reads = set()
+      trace_nodes = nx.dfs_preorder_nodes(trace, trace.graph['host_send'].eid)
+      for eid in trace_nodes:
+        event = self.events_by_id[eid]
+        if hasattr(event, 'operations'):
+          for op in event.operations:
+            if type(op) in [TraceSwitchFlowTableRead]:
+              # check if a covered race is part of this read
+              if eid in races_by_read_eid:
+                racing_write_eid = races_by_read_eid[eid]
+                
+                # we need this racing_write_eid to be ordered before one of the reads that occurred in the trace before
+                is_ordered_as_packet_trace = False
+                for read_eid in seen_reads:
+                  # check if there exists a directed path from the write to the read
+                  if self.has_path(racing_write_eid, read_eid, bidirectional=False):
+                    is_ordered_as_packet_trace = True
+                    break
+                if not is_ordered_as_packet_trace:
+                  return False                    
+              else:
+                seen_reads.add(event.eid)
+              break
+      return True
+
     def get_versions_for_races(races):
       # assume races is ordered!
       assert all(races[i] < races[i+1] for i in xrange(len(races)-1))
@@ -991,7 +1028,7 @@ class HappensBeforeGraph(object):
       
       # which dpids were affected by this version?
       dpids_affected = set(dpids_for_version[racing_version])
-      
+       
       # is one of those dpids affected the one uncovered race (same dpids)?
       # Check with the race on the first switch of the update
 #       print dpids_affected, none_racing_dpids # TODO(jm): remove debug line
@@ -1023,14 +1060,20 @@ class HappensBeforeGraph(object):
                 break
           if all_including_first_covered:
             # this is a consistent trace
-            inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+            if covered_races_are_ordered_as_packet_trace(trace, races, covered_races):
+              inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+            else:
+              inconsistent_packet_traces.append((trace, races, racing_versions))
           elif at_most_first_uncovered:
             if is_inconsistent_packet_entry_version(trace, races, versions_for_race, covered_races):
               # the packet sees other versions before the first race, which makes it inconsistent
               inconsistent_packet_entry_version.append((trace, races, racing_versions))
             else:
               # consistent due to covered races
-              inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+              if covered_races_are_ordered_as_packet_trace(trace, races, covered_races):
+                inconsistent_packet_traces_covered.append((trace, races, racing_versions))
+              else:
+                inconsistent_packet_traces.append((trace, races, racing_versions))
           else:
             inconsistent_packet_traces.append((trace, races, racing_versions))
         else:
