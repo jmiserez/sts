@@ -1291,6 +1291,7 @@ class Main(object):
     t1 = time.time()
     
     self.graph.race_detector.detect_races(verbose=True)
+    self.graph.race_detector.print_races(self.verbose)
     t2 = time.time()
     
     packet_traces = self.graph.extract_traces(self.graph.g)
@@ -1320,7 +1321,6 @@ class Main(object):
     
     
 
-    self.graph.race_detector.print_races(self.verbose)
     self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
     self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
 
