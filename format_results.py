@@ -93,7 +93,7 @@ def main(result_dir):
         break
       for key in keys:
         values = table[key]
-        times = reversed(sorted(values.keys()))
+        times = sorted(values.keys(), key=natural_keys)
         row = [key] + [values[t] for t in times]
         wr.writerow(row)
         
