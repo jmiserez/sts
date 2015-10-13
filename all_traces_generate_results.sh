@@ -21,8 +21,9 @@ run_per_trace_dir() {
   ./gen.sh "$1"
   popd > /dev/null
   pushd "$1" > /dev/null
-  echo "$STS_DIR/plot.py $1"
-  "$STS_DIR/plot.py" "$1"
+  TRACE_DIR=$(readlink -f $1)
+  echo "$STS_DIR/plot.py $TRACE_DIR"
+  $STS_DIR/plot.py "$TRACE_DIR"
   popd > /dev/null
 }
 export -f run_per_trace_dir
