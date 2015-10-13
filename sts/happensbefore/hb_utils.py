@@ -169,7 +169,7 @@ def write_flow_table(table, flow_mod):
 
 def find_entries_in_flow_table(table, flow_mod):
   found = []
-  for i in table:
+  for i in table.table:
     if i.to_flow_mod() == flow_mod:
       found.append(i)
   return found
