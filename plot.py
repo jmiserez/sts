@@ -42,7 +42,7 @@ keys.append('per_packet_inconsistent_time_sec')
 keys.append('find_inconsistent_update_time_sec')
 
 
-per_pkt_consistenty =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
+per_pkt_consistency =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
                         'num_per_pkt_inconsistent_covered',
                         'num_per_pkt_entry_version_race']
 prefixes = ['True-','False-']
@@ -94,8 +94,20 @@ def main(result_dirs):
     for name in tables[p]:
       plot_with_delta_multiple(tables[p], p, name,
                                out_name=get_short_name(name) + "_pkt_consist",
-                               keys=per_pkt_consistenty,
+                               keys=per_pkt_consistency,
                                use_log=False)
+      plot_with_delta_multiple(tables[p], p, name,
+                               out_name=get_short_name(name) + "_overview_covered_races",
+                               keys=['num_harmful', 
+                                     'num_covered'],
+                               use_log=True)
+      plot_with_delta_multiple(tables[p], p, name,
+                               out_name=get_short_name(name) + "_overview_covered_traces",
+                               keys=['num_per_pkt_inconsistent',
+                                     'num_per_pkt_inconsistent_covered',
+                                     'num_per_pkt_entry_version_race',
+                                     'num_per_pkt_inconsistent_no_repeat'],
+                               use_log=True)
 
 
 def get_short_name(name):
@@ -104,7 +116,7 @@ def get_short_name(name):
   names['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps200'] = 'FL_FWD-BinTree1-steps200'
   names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps100'] = 'FL_FWD-BinTree2-steps100'
   names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps200'] = 'FL_FWD-BinTree2-steps200'
-
+ 
   names['trace_pox_ConsistencyTopology-False-False-steps100'] = 'pox_Inconsistent-Wait-steps100'
   names['trace_pox_ConsistencyTopology-False-False-steps200'] = 'pox_Inconsistent-Wait-steps200'
   names['trace_pox_ConsistencyTopology-False-True-steps100'] = 'pox_Inconsistent-Barriers-steps100'
@@ -193,6 +205,52 @@ def plot_with_delta(tables, prefix, key, use_log=True, formatter=int):
   pp.close()
   plt.close(fig)
 
+def plot_num_races():
+  """
+  x-axis: delta value
+  y-axis: number of races
+  lines: num_harmful, num_covered
+  """
+  plt.clf()
+  fig = plt.figure()
+  fig.suptitle(key, fontsize=14, fontweight='bold')
+  ax = fig.add_subplot(111)
+  ax.grid(True)
+
+  ax.set_xlabel('$\epsilon$')
+  ax.set_ylabel(key)
+  for name in tables:
+    values = [formatter(x) for x in tables[name][key]]
+    ax.plot(tables[name]['key/t'], values, label=get_short_name(name))
+
+  if use_log:
+    ax.set_yscale('log')
+  plt.legend(bbox_to_anchor=(1, 1), bbox_transform=plt.gcf().transFigure)
+
+  # Shrink current axis's height by 10% on the bottom
+  box = ax.get_position()
+  ax.set_position([box.x0, box.y0 + box.height * 0.2,
+                   box.width, box.height * 0.8])
+
+  # Put a legend below current axis
+  ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1),
+            fancybox=True, shadow=True, ncol=1, prop={'size':6})
+
+  fname = '%s%s.pdf' % (prefix, key)
+  print fname
+  pp = PdfPages(fname)
+  fig.savefig(pp, format='pdf')
+  #pp.savefig()
+  pp.close()
+  plt.close(fig)
+
+def plot_packet_traces():
+  """
+  x-axis: delta value
+  y-axis: number of packet traces
+  lines: num inconsistent, num covered consistent, num entry version
+  """
+  pass
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
