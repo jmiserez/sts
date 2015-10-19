@@ -152,6 +152,8 @@ def plot_with_delta_multiple(tables, prefix, name, keys, out_name, use_log=True,
 
   if use_log:
     ax.set_yscale('log')
+    ax.yaxis.set_major_formatter(ScalarFormatter())
+    ax.ticklabel_format(style='plain', axis='y')
   plt.legend(bbox_to_anchor=(1, 1), bbox_transform=plt.gcf().transFigure)
 
   # Shrink current axis's height by 10% on the bottom
