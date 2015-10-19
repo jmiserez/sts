@@ -28,7 +28,7 @@ keys.append('num_covered')
 keys.append('num_per_pkt_races')
 keys.append('num_per_pkt_inconsistent')
 keys.append('num_per_pkt_inconsistent_covered')
-keys.append('num_per_pkt_race_version')
+keys.append('num_per_pkt_entry_version_race')
 keys.append('num_per_pkt_inconsistent_no_repeat')
 
 keys.append('total_time_sec')
@@ -44,7 +44,7 @@ keys.append('find_inconsistent_update_time_sec')
 
 per_pkt_consistenty =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
                         'num_per_pkt_inconsistent_covered',
-                        'num_per_pkt_race_version']
+                        'num_per_pkt_entry_version_race']
 prefixes = ['True-','False-']
 
 def main(result_dirs):
@@ -84,7 +84,7 @@ def main(result_dirs):
   
 
   keys_to_plot = ['num_harmful', 'num_commute', 'num_races', 'num_rw_time_edges', 'num_ww_time_edges',
-            'num_per_pkt_races', 'num_per_pkt_inconsistent', 'num_per_pkt_inconsistent_covered', 'num_per_pkt_race_version', 'num_per_pkt_inconsistent_no_repeat']
+            'num_per_pkt_races', 'num_per_pkt_inconsistent', 'num_per_pkt_inconsistent_covered', 'num_per_pkt_entry_version_race', 'num_per_pkt_inconsistent_no_repeat']
 
   # Plot summaries for all values
   for p in prefixes:

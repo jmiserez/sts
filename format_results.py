@@ -31,7 +31,7 @@ keys.append('num_covered')
 keys.append('num_per_pkt_races')
 keys.append('num_per_pkt_inconsistent')
 keys.append('num_per_pkt_inconsistent_covered')
-keys.append('num_per_pkt_race_version')
+keys.append('num_per_pkt_entry_version_race')
 keys.append('num_per_pkt_inconsistent_no_repeat')
 
 timing_keys = []

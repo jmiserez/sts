@@ -1405,7 +1405,7 @@ class Main(object):
     num_per_pkt_races = len(packet_races)
     num_per_pkt_inconsistent = len(inconsistent_packet_traces)
     num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
-    num_per_pkt_race_version = len(inconsistent_packet_entry_version)
+    num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
     num_per_pkt_inconsistent_no_repeat = len(summarized)
 
     def write_general_info_to_file(f):
@@ -1439,7 +1439,7 @@ class Main(object):
       f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
       f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
       f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
-      f.write('num_per_pkt_race_version,%d\n' % num_per_pkt_race_version)
+      f.write('num_per_pkt_entry_version_race,%d\n' % num_per_pkt_entry_version_race)
       f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
 
     with open(timings_file_name, 'w') as f:
