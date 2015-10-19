@@ -205,53 +205,6 @@ def plot_with_delta(tables, prefix, key, use_log=True, formatter=int):
   pp.close()
   plt.close(fig)
 
-def plot_num_races():
-  """
-  x-axis: delta value
-  y-axis: number of races
-  lines: num_harmful, num_covered
-  """
-  plt.clf()
-  fig = plt.figure()
-  fig.suptitle(key, fontsize=14, fontweight='bold')
-  ax = fig.add_subplot(111)
-  ax.grid(True)
-
-  ax.set_xlabel('$\epsilon$')
-  ax.set_ylabel(key)
-  for name in tables:
-    values = [formatter(x) for x in tables[name][key]]
-    ax.plot(tables[name]['key/t'], values, label=get_short_name(name))
-
-  if use_log:
-    ax.set_yscale('log')
-  plt.legend(bbox_to_anchor=(1, 1), bbox_transform=plt.gcf().transFigure)
-
-  # Shrink current axis's height by 10% on the bottom
-  box = ax.get_position()
-  ax.set_position([box.x0, box.y0 + box.height * 0.2,
-                   box.width, box.height * 0.8])
-
-  # Put a legend below current axis
-  ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1),
-            fancybox=True, shadow=True, ncol=1, prop={'size':6})
-
-  fname = '%s%s.pdf' % (prefix, key)
-  print fname
-  pp = PdfPages(fname)
-  fig.savefig(pp, format='pdf')
-  #pp.savefig()
-  pp.close()
-  plt.close(fig)
-
-def plot_packet_traces():
-  """
-  x-axis: delta value
-  y-axis: number of packet traces
-  lines: num inconsistent, num covered consistent, num entry version
-  """
-  pass
-
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('result_dirs', nargs='+' )
