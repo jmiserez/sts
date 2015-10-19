@@ -8,7 +8,7 @@ export STS_DIR=$SCRIPTPATH
 
 if [ "$#" -lt 1 ]
 then
-  echo "Usage: ./$SCRIPTNAME <sdnracer-traces folder path> [<pattern for matching directories, default is \"trace_*\">]"
+  echo "Usage: ./$SCRIPTNAME [-t threads] <sdnracer-traces folder path> [<pattern for matching directories, default is \"trace_*\">]"
   echo "or     ./$SCRIPTNAME -i <single trace folder path>"
   exit 1
 fi
@@ -30,6 +30,7 @@ export -f run_per_trace_dir
 
 trace_dirs_array=()
 export IS_SINGLE_JOB=false
+IS_OVERRIDE_NUM_THREADS=false
 case "$1" in
   -i)
     if [ "$#" -eq 2 ]
@@ -41,6 +42,18 @@ case "$1" in
       exit 1
     fi
     ;;
+  -t)
+    if [ "$#" -eq 4 ]
+    then
+      IS_OVERRIDE_NUM_THREADS=true
+      NUM_THREADS=$2
+      shift # shift arguments to the left
+      shift
+    else
+      echo "Wrong number of arguments."
+      exit 1
+    fi
+    ;& #fallthrough
   *)
     WORKSPACE=$1
     # set default value if not set
@@ -53,7 +66,7 @@ case "$1" in
     ;;
 esac
 
-echo "Directories to be processed:"
+echo "${#trace_dirs_array[@]} directories to be processed:"
 for i in "${trace_dirs_array[@]}"; do
   echo "  " "$i"
 done;
@@ -100,18 +113,23 @@ export -f func_call_by_name
 
 NUM_CPU_CORES=$(cat /proc/cpuinfo | egrep ^processor | wc -l)
 case $NUM_CPU_CORES in
-    ''|*[!0-9]*)
-      # not a number, let's set it to 1
+  ''|*[!0-9]*)
+    # not a number, let's set it to 1
+    NUM_CPU_CORES=1
+    ;;
+  *)
+    if [ "$NUM_CPU_CORES" -lt 1 ]
+    then
       NUM_CPU_CORES=1
-      ;;
-    *)
-      if [ "$NUM_CPU_CORES" -lt 1 ]
-      then
-        NUM_CPU_CORES=1
-      fi
-      ;;
+    fi
+    ;;
 esac
-echo "NUM_CPU_CORES=$NUM_CPU_CORES"
+
+if [ "$IS_OVERRIDE_NUM_THREADS" = false ]
+  then
+    NUM_THREADS=$NUM_CPU_CORES
+fi
+echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 
 printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
 

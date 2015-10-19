@@ -31,6 +31,7 @@ export -f run_per_trace_dir
 
 trace_dirs_array=()
 export IS_SINGLE_JOB=false
+IS_OVERRIDE_NUM_THREADS=false
 case "$1" in
   -i)
     if [ "$#" -eq 2 ]
@@ -42,6 +43,17 @@ case "$1" in
       exit 1
     fi
     ;;
+  -t)
+    if [ "$#" -eq 4 ]
+    then
+      echo "-t Argument ignored"
+      shift # shift arguments to the left
+      shift
+    else
+      echo "Wrong number of arguments."
+      exit 1
+    fi
+    ;& #fallthrough
   *)
     WORKSPACE=$1
     # set default value if not set
@@ -54,7 +66,7 @@ case "$1" in
     ;;
 esac
 
-echo "Directories to be processed:"
+echo "${#trace_dirs_array[@]} directories to be processed:"
 for i in "${trace_dirs_array[@]}"; do
   echo "  " "$i"
 done;
