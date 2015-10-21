@@ -423,7 +423,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
         packet.next = vlan(prev = packet.next)
         packet.next.eth_type = packet.type
         packet.type = ethernet.VLAN_TYPE
-      packet.id = action.vlan_id
+      packet.id = action.vlan_vid
       return packet
     def set_vlan_pcp(action, packet):
       if not isinstance(packet.next, vlan):
