@@ -8,19 +8,20 @@ from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 
 
-
 consistent = True
 barriers= True
 
+
 # Use POX as our controller
 start_cmd = ('''./pox.py --verbose '''
-             ''' forwarding.consistency --consistent=%s --deny=False '''
-             ''' --update_wait=10 --update_once=True --consistent_sleep=10 --barriers=%s '''
+             ''' forwarding.consistency --consistent=%s --deny=True '''
+             ''' --update_wait=10 --update_once=False --consistent_wait=10 --barriers=%s '''
+             ''' --in_flight_wait=5 --slow_update_wait=10 --update_wait=20 '''
              ''' openflow.of_01 --address=__address__ --port=__port__ ''' % (consistent, barriers))
 
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 
-steps = 200
+steps = 400
 topology_class = ConsistencyTopology
 topology_params = ""
 
