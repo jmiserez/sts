@@ -5,6 +5,7 @@ import argparse
 import csv
 import glob
 import os
+import itertools
 from pylab import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -46,6 +47,40 @@ per_pkt_consistency =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
                         'num_per_pkt_inconsistent_covered',
                         'num_per_pkt_entry_version_race']
 prefixes = ['True-','False-']
+
+# http://matplotlib.org/api/markers_api.html
+markers = ['x',
+           '+',
+           '.',
+           'o',
+           '*',
+#            ',',
+           '1',
+           '2',
+           '3',
+           '4',
+           '8',
+           '<',
+           '>',
+           'D',
+           'H',
+           '^',
+           '_',
+           'd',
+           'h',
+           'p',
+           's',
+           'v',
+           '|',
+           0,
+           1,
+           2,
+           3,
+           4,
+           5,
+           6,
+           7,]
+
 
 def main(result_dirs):
   tables = {}
@@ -142,13 +177,14 @@ def plot_with_delta_multiple(tables, prefix, name, keys, out_name, use_log=True,
   ax = fig.add_subplot(111)
   ax.grid(True)
 
+  marker = itertools.cycle(markers) # repeat forever
 
   ax.set_xlabel('$\epsilon$')
   #ax.set_ylabel(key)
   table = tables[name]
   for key in keys:
     values = [formatter(x) for x in table[key]]
-    ax.plot(table['key/t'], values, label=get_short_name(key), marker='x')
+    ax.plot(table['key/t'], values, label=get_short_name(key), marker=marker.next())
 
   if use_log:
     ax.set_yscale('log')
@@ -179,15 +215,19 @@ def plot_with_delta(tables, prefix, key, use_log=True, formatter=int):
   fig.suptitle(key, fontsize=14, fontweight='bold')
   ax = fig.add_subplot(111)
   ax.grid(True)
+  
+  marker = itertools.cycle(markers) # repeat forever
 
   ax.set_xlabel('$\epsilon$')
   ax.set_ylabel(key)
   for name in tables:
     values = [formatter(x) for x in tables[name][key]]
-    ax.plot(tables[name]['key/t'], values, label=get_short_name(name))
+    ax.plot(tables[name]['key/t'], values, label=get_short_name(name), marker=marker.next())
 
   if use_log:
     ax.set_yscale('log')
+    ax.yaxis.set_major_formatter(ScalarFormatter())
+    ax.ticklabel_format(style='plain', axis='y')
   plt.legend(bbox_to_anchor=(1, 1), bbox_transform=plt.gcf().transFigure)
 
   # Shrink current axis's height by 10% on the bottom
