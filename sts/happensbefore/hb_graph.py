@@ -1257,7 +1257,8 @@ class Main(object):
   def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
-               verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False):
+               verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False,
+               no_dot_files=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -1275,6 +1276,7 @@ class Main(object):
     self.ignore_first = ignore_first
     self.disable_path_cache = disable_path_cache
     self.data_deps = data_deps
+    self.no_dot_files = no_dot_files
 
   def run(self):
     self.graph = HappensBeforeGraph(results_dir=self.results_dir,
@@ -1322,24 +1324,22 @@ class Main(object):
     racing_versions = self.graph.find_inconsistent_updates()
     t8 = time.time()
     
-    
-
-    self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
-    self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
-
-
-    # Print traces
-    for trace, races in packet_races:
-      self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
-    for trace, races, _ in inconsistent_packet_traces:
-      self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
-    for trace, races, _ in inconsistent_packet_traces_covered:
-      self.graph.print_racing_packet_trace(trace, races, label='covered')
-    for trace, races, _ in inconsistent_packet_entry_version:
-      self.graph.print_racing_packet_trace(trace, races, label='entry')
-    for trace, races, _ in summarized:
-      self.graph.print_racing_packet_trace(trace, races, label='summarized')
-    self.graph.save_races_graph(self.print_pkt)
+    if not self.no_dot_files:
+      self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
+      self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
+   
+      # Print traces
+      for trace, races in packet_races:
+        self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
+      for trace, races, _ in inconsistent_packet_traces:
+        self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
+      for trace, races, _ in inconsistent_packet_traces_covered:
+        self.graph.print_racing_packet_trace(trace, races, label='covered')
+      for trace, races, _ in inconsistent_packet_entry_version:
+        self.graph.print_racing_packet_trace(trace, races, label='entry')
+      for trace, races, _ in summarized:
+        self.graph.print_racing_packet_trace(trace, races, label='summarized')
+      self.graph.save_races_graph(self.print_pkt)
 
 
 #     self.graph.print_versions(versions)
@@ -1500,6 +1500,8 @@ if __name__ == '__main__':
                       default=False, help="Disable using all_pairs_shortest_path_length() preprocessing.")
   parser.add_argument('--data-deps', dest='data_deps', action='store_true',
                       default=False, help="Use shadow tables for adding data dependency edges between reads/writes.")
+  parser.add_argument('--no-dot-files', dest='no_dot_files', action='store_true',
+                      default=False, help="Do not write any .dot files to the disk.")
 
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
@@ -1509,5 +1511,5 @@ if __name__ == '__main__':
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
               ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache, 
-              data_deps=args.data_deps)
+              data_deps=args.data_deps, no_dot_files=args.no_dot_files)
   main.run()
