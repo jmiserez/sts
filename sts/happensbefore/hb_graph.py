@@ -1009,7 +1009,7 @@ class HappensBeforeGraph(object):
           # are one switch, one of them makes this trace inconsistent.
           if not is_entry:
             break
-        has_covered = len(races) > 1
+        has_covered = len(races) > len(uncovered_races)
         if is_entry:
           if has_covered:
             consistent_packet_traces_covered.append((trace, races, racing_versions))
