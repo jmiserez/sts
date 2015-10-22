@@ -991,18 +991,24 @@ class HappensBeforeGraph(object):
 
     for trace, races in packet_races:
       uncovered_races = [race for race in races if race not in covered_races]
+      uncovered_races_dpids = list(set([race.i_event.dpid for race in uncovered_races]))
       versions_for_race = self._get_versions_for_races(uncovered_races)
       racing_versions = sorted(list(set(versions_for_race.keys())))
 
       # check if all the races are actually covered
       if not uncovered_races:
         consistent_packet_traces_covered.append((trace, races, racing_versions))
-      elif len(uncovered_races) == 1:
+      elif len(uncovered_races_dpids) == 1:
         # check entry
-        race = uncovered_races[0]
-        version = list(versions_for_race[race])[0]
-        affected_dpids = dpids_for_version[version]
-        is_entry = self._is_inconsistent_packet_entry_version(trace, race, affected_dpids)
+        is_entry = True
+        for race in uncovered_races:
+          version = list(versions_for_race[race])[0]
+          affected_dpids = dpids_for_version[version]
+          is_entry = self._is_inconsistent_packet_entry_version(trace, race, affected_dpids)
+          # If only one of the races is not entry then even though the races
+          # are one switch, one of them makes this trace inconsistent.
+          if not is_entry:
+            break
         has_covered = len(races) > 1
         if is_entry:
           if has_covered:
