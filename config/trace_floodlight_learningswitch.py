@@ -28,7 +28,7 @@ num = 1
 topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
-steps = 100
+steps = 200
 results_dir = "traces/trace_floodlight_learningswitch-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = None
