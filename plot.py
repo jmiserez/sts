@@ -206,15 +206,18 @@ def main(result_dirs, no_plots=False, no_summary=False):
       crosstrace_table.append(row)
       row = ['Trace', 'Races commuting', 'Races covered', 'Races true harmful', 'Pkt with races', 'Pkt inconsistent (unique)', 'Pkt inconsistent', 'Pkt covered', 'Pkt entry version']
       crosstrace_table.append(row)
-      for name in base_names:
-        p = get_correct_alt_barr_prefix(name)
+      for base_name in base_names:
+        p = get_correct_alt_barr_prefix(base_name)
         if p:
           row = []
-          row.append(get_short_name(name))
+          row.append(get_short_name(base_name))
           assert p in prefixes
           col_name = p + t
           # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
           
+          if col_name not in lookup_tables[base_name]:
+            print base_name
+            import pdb; pdb.set_trace()
           num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
           num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
           num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
@@ -241,7 +244,7 @@ def main(result_dirs, no_plots=False, no_summary=False):
           
           crosstrace_table.append(row)
         else:
-          print "Ignoring trace " + name + " for " + fname + "."
+          print "Ignoring trace " + base_name + " for " + fname + "."
       row = []
       crosstrace_table.append(row)
       
@@ -279,10 +282,10 @@ def get_correct_alt_barr_prefix(name):
   prefix_for_name['trace_pox_ConsistencyTopology-True-False-steps200'] = True
   prefix_for_name['trace_pox_ConsistencyTopology-True-True-steps200'] = True
   
-  prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology1-steps200'] = True
-  prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology2-steps200'] = True
-  prefix_for_name['trace_pox_l2_multi-StarTopology2-steps200'] = True
-  prefix_for_name['trace_pox_l2_multi-StarTopology4-steps200'] = True
+#   prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology1-steps200'] = True
+#   prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology2-steps200'] = True
+#   prefix_for_name['trace_pox_l2_multi-StarTopology2-steps200'] = True
+#   prefix_for_name['trace_pox_l2_multi-StarTopology4-steps200'] = True
   
   if name in prefix_for_name:
     if prefix_for_name[name]:
