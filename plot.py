@@ -204,20 +204,30 @@ def main(result_dirs, no_plots=False, no_summary=False):
     for t,t_int in sorted_timing_values:
       row = ['t: '+t]
       crosstrace_table.append(row)
-      row = ['Trace', 'Races commuting', 'Races covered', 'Races true harmful', 'Pkt with races', 'Pkt inconsistent (unique)', 'Pkt inconsistent', 'Pkt covered', 'Pkt entry version']
+      row = ['Trace', 
+             'Races commuting', 
+             'Races covered', 
+             'Races true harmful', 
+             'Trace', 
+             'Races covered', 
+             'Races true harmful', 
+             'Trace',
+             'Pkt with races', 
+             'Pkt inconsistent (unique)', 
+             'Pkt inconsistent',
+             'Trace', 
+             'Pkt inconsistent',
+             'Pkt covered',
+             'Pkt entry version']
       crosstrace_table.append(row)
       for base_name in base_names:
         p = get_correct_alt_barr_prefix(base_name)
         if p:
           row = []
-          row.append(get_short_name(base_name))
           assert p in prefixes
           col_name = p + t
           # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
           
-          if col_name not in lookup_tables[base_name]:
-            print base_name
-            import pdb; pdb.set_trace()
           num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
           num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
           num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
@@ -233,11 +243,21 @@ def main(result_dirs, no_plots=False, no_summary=False):
           total_covered = num_covered
           total_races = num_commute + total_trueharmful + total_covered
           
+          row.append(get_short_name(base_name))
           row.append(total_commute)
           row.append(total_covered)
           row.append(total_trueharmful)
+          
+          row.append(get_short_name(base_name))
+          row.append(total_covered)
+          row.append(total_trueharmful)
+          
+          row.append(get_short_name(base_name))
           row.append(num_per_pkt_races)
           row.append(num_per_pkt_inconsistent_no_repeat)
+          row.append(num_per_pkt_inconsistent)
+
+          row.append(get_short_name(base_name))
           row.append(num_per_pkt_inconsistent)
           row.append(num_per_pkt_inconsistent_covered)
           row.append(num_per_pkt_entry_version_race)
