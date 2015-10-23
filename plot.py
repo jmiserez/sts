@@ -63,6 +63,8 @@ timing_values = {'0': 0,
                  'inf': 11, # hack for plots
                  }
 
+sorted_timing_values = sorted(timing_values.items(), key=lambda x: x[1])
+
 # http://matplotlib.org/api/markers_api.html
 markers = ['x',
            '+',
@@ -97,7 +99,7 @@ markers = ['x',
            7,]
 
 
-def main(result_dirs):
+def main(result_dirs, no_plots=False):
   tables = {}
   base_names = []
   lookup_tables = {}
@@ -170,28 +172,125 @@ def main(result_dirs):
   keys_to_plot = ['num_harmful', 'num_commute', 'num_races', 'num_rw_time_edges', 'num_ww_time_edges',
             'num_per_pkt_races', 'num_per_pkt_inconsistent', 'num_per_pkt_inconsistent_covered', 'num_per_pkt_entry_version_race', 'num_per_pkt_inconsistent_no_repeat']
 
-  # Plot summaries for all values
-  for p in prefixes:
-    for key in keys_to_plot:
-      plot_with_delta(tables[p], p, key, False)
+  if not no_plots:
+    # Plot summaries for all values
+    for p in prefixes:
+      for key in keys_to_plot:
+        plot_with_delta(tables[p], p, key, False)
+      
+      for name in tables[p]:
+        plot_with_delta_multiple(tables[p], p, name,
+                                 out_name=get_short_name(name) + "_pkt_consist",
+                                 keys=per_pkt_consistency,
+                                 use_log=False)
+        plot_with_delta_multiple(tables[p], p, name,
+                                 out_name=get_short_name(name) + "_overview_covered_races",
+                                 keys=['num_harmful', 
+                                       'num_covered'],
+                                 use_log=True)
+        plot_with_delta_multiple(tables[p], p, name,
+                                 out_name=get_short_name(name) + "_overview_covered_traces",
+                                 keys=['num_per_pkt_inconsistent',
+                                       'num_per_pkt_inconsistent_covered',
+                                       'num_per_pkt_entry_version_race',
+                                       'num_per_pkt_inconsistent_no_repeat'],
+                                 use_log=True)
+      
+  # Create aggregate csv over multiple summary.csv files
+  crosstrace_table = []
+  fname = 'cross_summary.csv'
+  
+  for t,t_int in sorted_timing_values:
+    row = ['t: '+t]
+    crosstrace_table.append(row)
+    row = ['Trace', 'Races commuting', 'Races covered', 'Races true harmful', 'Pkt with races', 'Pkt inconsistent (unique)', 'Pkt inconsistent', 'Pkt covered', 'Pkt entry version']
+    crosstrace_table.append(row)
+    for name in base_names:
+      p = get_correct_alt_barr_prefix(name)
+      if p:
+        row = []
+        row.append(get_short_name(name))
+        assert p in prefixes
+        col_name = p + t
+        # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
+        
+        num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
+        num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
+        num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
+        
+        num_per_pkt_races = int(lookup_tables[base_name][col_name]['num_per_pkt_races'])
+        num_per_pkt_inconsistent = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent'])
+        num_per_pkt_inconsistent_covered = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_covered'])
+        num_per_pkt_entry_version_race = int(lookup_tables[base_name][col_name]['num_per_pkt_entry_version_race'])
+        num_per_pkt_inconsistent_no_repeat = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_no_repeat'])
+        
+        total_commute = num_commute
+        total_trueharmful = num_harmful - num_covered
+        total_covered = num_covered
+        total_races = num_commute + total_trueharmful + total_covered
+        
+        row.append(total_commute)
+        row.append(total_covered)
+        row.append(total_trueharmful)
+        row.append(num_per_pkt_races)
+        row.append(num_per_pkt_inconsistent_no_repeat)
+        row.append(num_per_pkt_inconsistent)
+        row.append(num_per_pkt_inconsistent_covered)
+        row.append(num_per_pkt_entry_version_race)
+        
+        crosstrace_table.append(row)
+      else:
+        print "Ignoring trace " + name + " for " + fname + "."
+    row = []
+    crosstrace_table.append(row)
     
-    for name in tables[p]:
-      plot_with_delta_multiple(tables[p], p, name,
-                               out_name=get_short_name(name) + "_pkt_consist",
-                               keys=per_pkt_consistency,
-                               use_log=False)
-      plot_with_delta_multiple(tables[p], p, name,
-                               out_name=get_short_name(name) + "_overview_covered_races",
-                               keys=['num_harmful', 
-                                     'num_covered'],
-                               use_log=True)
-      plot_with_delta_multiple(tables[p], p, name,
-                               out_name=get_short_name(name) + "_overview_covered_traces",
-                               keys=['num_per_pkt_inconsistent',
-                                     'num_per_pkt_inconsistent_covered',
-                                     'num_per_pkt_entry_version_race',
-                                     'num_per_pkt_inconsistent_no_repeat'],
-                               use_log=True)
+  print fname  
+    
+  with open(fname, 'wb') as f:
+    writer = csv.writer(f)
+    writer.writerows(crosstrace_table)
+
+def get_correct_alt_barr_prefix(name):
+  """
+  Whether to use alt-barr results or not. Should be True for purely reactive controllers, and False for proactive controllers that use barriers.
+  """
+  prefix_for_name = {}
+  prefix_for_name['trace_floodlight_learningswitch-StarTopology2-steps200'] = True
+  prefix_for_name['trace_floodlight_learningswitch-StarTopology4-steps200'] = True
+  prefix_for_name['trace_floodlight_learningswitch-StarTopology8-steps200'] = True
+  prefix_for_name['trace_floodlight_learningswitch-BinaryLeafTreeTopology1-steps200'] = True
+  prefix_for_name['trace_floodlight_learningswitch-BinaryLeafTreeTopology2-steps200'] = True
+  
+  prefix_for_name['trace_floodlight_forwarding-StarTopology2-steps200'] = True
+  prefix_for_name['trace_floodlight_forwarding-StarTopology4-steps200'] = True
+  prefix_for_name['trace_floodlight_forwarding-StarTopology8-steps200'] = True
+  prefix_for_name['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps200'] = True
+  prefix_for_name['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps200'] = True
+  
+  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200'] = False
+  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps400'] = False
+  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology2-steps200'] = False
+  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology2-steps400'] = False
+
+  # consistent, barriers
+  prefix_for_name['trace_pox_ConsistencyTopology-False-False-steps200'] = True
+  prefix_for_name['trace_pox_ConsistencyTopology-False-True-steps200'] = True
+  prefix_for_name['trace_pox_ConsistencyTopology-True-False-steps200'] = True
+  prefix_for_name['trace_pox_ConsistencyTopology-True-True-steps200'] = True
+  
+  prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology1-steps200'] = True
+  prefix_for_name['trace_pox_l2_multi-BinaryLeafTreeTopology2-steps200'] = True
+  prefix_for_name['trace_pox_l2_multi-StarTopology2-steps200'] = True
+  prefix_for_name['trace_pox_l2_multi-StarTopology4-steps200'] = True
+  
+  if name in prefix_for_name:
+    if prefix_for_name[name]:
+      return 'True-'
+    else:
+      return 'False-'
+  else:
+    print "get_correct_alt_barr_prefix() unknown for " + name
+    return # nothing
 
 def get_short_name(name):
   names = {}
@@ -298,8 +397,10 @@ def plot_with_delta(tables, prefix, key, use_log=True, formatter=int):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('result_dirs', nargs='+' )
+  parser.add_argument('--no-plots', dest='no_plots', action='store_true',
+                      default=False, help="Do not write any plots to the disk.")
   args = parser.parse_args()
-  main(args.result_dirs)
+  main(args.result_dirs, args.no_plots)
 
 
     
