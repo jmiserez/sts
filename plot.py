@@ -318,19 +318,19 @@ def get_correct_alt_barr_prefix(name):
 
 def get_short_name(name):
   names = {}
-  names['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps100'] = 'FL_FWD-BinTree1-steps100'
-  names['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps200'] = 'FL_FWD-BinTree1-steps200'
-  names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps100'] = 'FL_FWD-BinTree2-steps100'
-  names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps200'] = 'FL_FWD-BinTree2-steps200'
- 
-  names['trace_pox_ConsistencyTopology-False-False-steps100'] = 'pox_Inconsistent-Wait-steps100'
-  names['trace_pox_ConsistencyTopology-False-False-steps200'] = 'pox_Inconsistent-Wait-steps200'
-  names['trace_pox_ConsistencyTopology-False-True-steps100'] = 'pox_Inconsistent-Barriers-steps100'
-  names['trace_pox_ConsistencyTopology-False-True-steps200'] = 'pox_Inconsistent-Barriers-steps200'
-  names['trace_pox_ConsistencyTopology-True-False-steps100'] = 'pox_Consistent-Wait-steps100'
-  names['trace_pox_ConsistencyTopology-True-False-steps200'] = 'pox_Consistent-Wait-steps200'
-  names['trace_pox_ConsistencyTopology-True-True-steps100'] = 'pox_Consistent-Barriers-steps100'
-  names['trace_pox_ConsistencyTopology-True-True-steps200'] = 'pox_Consistent-Barriers-steps200'
+#   names['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps100'] = 'FL_FWD-BinTree1-steps100'
+#   names['trace_floodlight_forwarding-BinaryLeafTreeTopology1-steps200'] = 'FL_FWD-BinTree1-steps200'
+#   names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps100'] = 'FL_FWD-BinTree2-steps100'
+#   names['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps200'] = 'FL_FWD-BinTree2-steps200'
+#  
+#   names['trace_pox_ConsistencyTopology-False-False-steps100'] = 'pox_Inconsistent-Wait-steps100'
+#   names['trace_pox_ConsistencyTopology-False-False-steps200'] = 'pox_Inconsistent-Wait-steps200'
+#   names['trace_pox_ConsistencyTopology-False-True-steps100'] = 'pox_Inconsistent-Barriers-steps100'
+#   names['trace_pox_ConsistencyTopology-False-True-steps200'] = 'pox_Inconsistent-Barriers-steps200'
+#   names['trace_pox_ConsistencyTopology-True-False-steps100'] = 'pox_Consistent-Wait-steps100'
+#   names['trace_pox_ConsistencyTopology-True-False-steps200'] = 'pox_Consistent-Wait-steps200'
+#   names['trace_pox_ConsistencyTopology-True-True-steps100'] = 'pox_Consistent-Barriers-steps100'
+#   names['trace_pox_ConsistencyTopology-True-True-steps200'] = 'pox_Consistent-Barriers-steps200'
 
   if name in names:
     return names[name]
@@ -338,7 +338,22 @@ def get_short_name(name):
   new_name = name
   new_name = new_name.replace('trace_', '')
   new_name = new_name.replace('floodlight', 'FL')
-  new_name = new_name.replace('BinaryLeafTreeTopology', 'BinTree')
+  new_name = new_name.replace('pox', 'PX')
+  new_name = new_name.replace('BinaryLeafTreeTopology', 'bt')
+  new_name = new_name.replace('ConsistencyTopology', 'ct')
+  new_name = new_name.replace('StarTopology', 'st')
+#   new_name = new_name.replace('False', 'F')
+#   new_name = new_name.replace('True', 'T')
+  new_name = new_name.replace('False-False', 'IW')
+  new_name = new_name.replace('False-True', 'IB')
+  new_name = new_name.replace('True-False', 'CW')
+  new_name = new_name.replace('True-True', 'CB')
+  new_name = new_name.replace('forwarding', 'fwd')
+  new_name = new_name.replace('learningswitch', 'lrn')
+  new_name = new_name.replace('circuitpusher', 'crc')
+  new_name = new_name.replace('l2_multi', 'l2m')
+  new_name = new_name.replace('-steps100', '-100')
+  new_name = new_name.replace('-steps200', '-200')
   return new_name
 
 def plot_with_delta_multiple(tables, prefix, name, keys, out_name, use_log=True, formatter=int):
