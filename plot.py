@@ -213,8 +213,8 @@ def main(result_dirs, no_plots=False, no_summary=False):
              'Races true harmful', 
              'Trace',
              'Pkt with races', 
-             'Pkt inconsistent (unique)', 
              'Pkt inconsistent',
+             'Pkt inconsistent (unique)', 
              'Trace', 
              'Pkt inconsistent',
              'Pkt covered',
@@ -254,8 +254,8 @@ def main(result_dirs, no_plots=False, no_summary=False):
           
           row.append(get_short_name(base_name))
           row.append(num_per_pkt_races)
-          row.append(num_per_pkt_inconsistent_no_repeat)
           row.append(num_per_pkt_inconsistent)
+          row.append(num_per_pkt_inconsistent_no_repeat)
 
           row.append(get_short_name(base_name))
           row.append(num_per_pkt_inconsistent)
@@ -292,9 +292,9 @@ def get_correct_alt_barr_prefix(name):
   prefix_for_name['trace_floodlight_forwarding-BinaryLeafTreeTopology2-steps200'] = True
   
   prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200'] = False
-  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps400'] = False
+#   prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps400'] = False
   prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology2-steps200'] = False
-  prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology2-steps400'] = False
+#   prefix_for_name['trace_floodlight_circuitpusher-BinaryLeafTreeTopology2-steps400'] = False
 
   # consistent, barriers
   prefix_for_name['trace_pox_ConsistencyTopology-False-False-steps200'] = True
