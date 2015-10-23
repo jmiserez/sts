@@ -18,8 +18,8 @@ run_per_trace_dir() {
 #  echo "Generating plots for trace $1"
   pushd "$1" > /dev/null
   TRACE_DIR=$(readlink -f $1)
-  echo "$STS_DIR/plot.py $TRACE_DIR"
-  $STS_DIR/plot.py "$TRACE_DIR"
+  echo "$STS_DIR/plot.py --no-summary $TRACE_DIR"
+  $STS_DIR/plot.py --no-summary "$TRACE_DIR"
   popd > /dev/null
 }
 export -f run_per_trace_dir
