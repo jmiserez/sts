@@ -99,7 +99,7 @@ markers = ['x',
            7,]
 
 
-def main(result_dirs, no_plots=False):
+def main(result_dirs, no_plots=False, no_summary=False):
   tables = {}
   base_names = []
   lookup_tables = {}
@@ -196,59 +196,60 @@ def main(result_dirs, no_plots=False):
                                        'num_per_pkt_inconsistent_no_repeat'],
                                  use_log=True)
       
-  # Create aggregate csv over multiple summary.csv files
-  crosstrace_table = []
-  fname = 'cross_summary.csv'
-  
-  for t,t_int in sorted_timing_values:
-    row = ['t: '+t]
-    crosstrace_table.append(row)
-    row = ['Trace', 'Races commuting', 'Races covered', 'Races true harmful', 'Pkt with races', 'Pkt inconsistent (unique)', 'Pkt inconsistent', 'Pkt covered', 'Pkt entry version']
-    crosstrace_table.append(row)
-    for name in base_names:
-      p = get_correct_alt_barr_prefix(name)
-      if p:
-        row = []
-        row.append(get_short_name(name))
-        assert p in prefixes
-        col_name = p + t
-        # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
-        
-        num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
-        num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
-        num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
-        
-        num_per_pkt_races = int(lookup_tables[base_name][col_name]['num_per_pkt_races'])
-        num_per_pkt_inconsistent = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent'])
-        num_per_pkt_inconsistent_covered = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_covered'])
-        num_per_pkt_entry_version_race = int(lookup_tables[base_name][col_name]['num_per_pkt_entry_version_race'])
-        num_per_pkt_inconsistent_no_repeat = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_no_repeat'])
-        
-        total_commute = num_commute
-        total_trueharmful = num_harmful - num_covered
-        total_covered = num_covered
-        total_races = num_commute + total_trueharmful + total_covered
-        
-        row.append(total_commute)
-        row.append(total_covered)
-        row.append(total_trueharmful)
-        row.append(num_per_pkt_races)
-        row.append(num_per_pkt_inconsistent_no_repeat)
-        row.append(num_per_pkt_inconsistent)
-        row.append(num_per_pkt_inconsistent_covered)
-        row.append(num_per_pkt_entry_version_race)
-        
-        crosstrace_table.append(row)
-      else:
-        print "Ignoring trace " + name + " for " + fname + "."
-    row = []
-    crosstrace_table.append(row)
+  if not no_summary:
+    # Create aggregate csv over multiple summary.csv files
+    crosstrace_table = []
+    fname = 'cross_summary.csv'
     
-  print fname  
-    
-  with open(fname, 'wb') as f:
-    writer = csv.writer(f)
-    writer.writerows(crosstrace_table)
+    for t,t_int in sorted_timing_values:
+      row = ['t: '+t]
+      crosstrace_table.append(row)
+      row = ['Trace', 'Races commuting', 'Races covered', 'Races true harmful', 'Pkt with races', 'Pkt inconsistent (unique)', 'Pkt inconsistent', 'Pkt covered', 'Pkt entry version']
+      crosstrace_table.append(row)
+      for name in base_names:
+        p = get_correct_alt_barr_prefix(name)
+        if p:
+          row = []
+          row.append(get_short_name(name))
+          assert p in prefixes
+          col_name = p + t
+          # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
+          
+          num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
+          num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
+          num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
+          
+          num_per_pkt_races = int(lookup_tables[base_name][col_name]['num_per_pkt_races'])
+          num_per_pkt_inconsistent = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent'])
+          num_per_pkt_inconsistent_covered = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_covered'])
+          num_per_pkt_entry_version_race = int(lookup_tables[base_name][col_name]['num_per_pkt_entry_version_race'])
+          num_per_pkt_inconsistent_no_repeat = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_no_repeat'])
+          
+          total_commute = num_commute
+          total_trueharmful = num_harmful - num_covered
+          total_covered = num_covered
+          total_races = num_commute + total_trueharmful + total_covered
+          
+          row.append(total_commute)
+          row.append(total_covered)
+          row.append(total_trueharmful)
+          row.append(num_per_pkt_races)
+          row.append(num_per_pkt_inconsistent_no_repeat)
+          row.append(num_per_pkt_inconsistent)
+          row.append(num_per_pkt_inconsistent_covered)
+          row.append(num_per_pkt_entry_version_race)
+          
+          crosstrace_table.append(row)
+        else:
+          print "Ignoring trace " + name + " for " + fname + "."
+      row = []
+      crosstrace_table.append(row)
+      
+    print fname  
+      
+    with open(fname, 'wb') as f:
+      writer = csv.writer(f)
+      writer.writerows(crosstrace_table)
 
 def get_correct_alt_barr_prefix(name):
   """
@@ -398,9 +399,11 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('result_dirs', nargs='+' )
   parser.add_argument('--no-plots', dest='no_plots', action='store_true',
-                      default=False, help="Do not write any plots to the disk.")
+                      default=False, help="Do not write any plot PDFs to the disk.")
+  parser.add_argument('--no-summary', dest='no_summary', action='store_true',
+                      default=False, help="Do not write any summary CSVs to the disk.")
   args = parser.parse_args()
-  main(args.result_dirs, args.no_plots)
+  main(args.result_dirs, args.no_plots, args.no_summary)
 
 
     

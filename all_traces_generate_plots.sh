@@ -127,6 +127,12 @@ if [ "$IS_OVERRIDE_NUM_THREADS" = false ]
 fi
 echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 
+pushd "$WORKSPACE" > /dev/null
+echo "plot.py --no-plots"
+pushd "$1" > /dev/null
+find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
+popd > /dev/null
+
 printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_THREADS bash -c 'func_call_by_name run_per_trace_dir {}'
 
 rm -rf "$CURRENT_TMP_DIR"
