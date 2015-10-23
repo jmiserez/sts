@@ -9,6 +9,7 @@ import itertools
 from pylab import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from asyncore import loop
 
 
 # Values we care about
@@ -48,6 +49,20 @@ per_pkt_consistency =  ['num_per_pkt_races', 'num_per_pkt_inconsistent',
                         'num_per_pkt_entry_version_race']
 prefixes = ['True-','False-']
 
+timing_values = {'0': 0,
+                 '1': 1,
+                 '2': 2,
+                 '3': 3,
+                 '4': 4,
+                 '5': 5,
+                 '6': 6,
+                 '7': 7,
+                 '8': 8,
+                 '9': 9,
+                 '10': 10,
+                 'inf': 11, # hack for plots
+                 }
+
 # http://matplotlib.org/api/markers_api.html
 markers = ['x',
            '+',
@@ -84,6 +99,10 @@ markers = ['x',
 
 def main(result_dirs):
   tables = {}
+  base_names = []
+  lookup_tables = {}
+  row_mapping = {}
+  col_mapping = {}
   for p in prefixes:
     tables[p] = {}
   for name in result_dirs:
@@ -93,31 +112,61 @@ def main(result_dirs):
     with open(fname) as csvfile:
       table = {}
       keys = []
+      base_name = os.path.basename(os.path.normpath(name))
+      assert base_name not in base_names
+      base_names.append(base_name)
       csviter = csv.reader(csvfile, delimiter=',')
       csvdata = []
       for row in csviter:
         csvdata.append(row)
+      
+      lookup_tables[base_name] = {}
+      row_mapping[base_name] = {}
+      for ridx,row in enumerate(csvdata):
+        # first row has to contain header
+        # generate a lookup table
+        key = row[0]
+        if ridx == 0:
+          assert key == 'key/t'
+          row_mapping[base_name][ridx] = key
+          col_mapping[base_name] = {}
+          for cidx, col_name in enumerate(row):
+            col_mapping[base_name][cidx] = col_name
+            lookup_tables[base_name][col_name] = {}
+        else:
+          assert base_name in col_mapping
+          row_mapping[base_name][ridx] = key
+          for cidx, field_value in enumerate(row):
+            col_name = col_mapping[base_name][cidx]
+            lookup_tables[base_name][col_name][key] = field_value
+    
       for p in prefixes:
         table[p] = {}
-        cols_with_prefix = None
-        data = []
-        for row in csvdata:
-          copyrow = []
-          data.append(copyrow)
-          for i in row:
-            copyrow.append(i)
-        for row in data:
-          if cols_with_prefix is not None:
-            row[1:] = [row[x+1] for x in xrange(len(row[1:])) if cols_with_prefix[x] == 1]
-          if row[0] == 'key/t':
-            cols_with_prefix = [1 if str(x).startswith(p) else 0 for x in row[1:]]
-            row = [str(row[x+1]).partition(p)[2] for x in xrange(len(row[1:])) if cols_with_prefix[x] == 1 and str(row[x+1]).partition(p)[2] != 'inf']
-            row = ['key/t', 11] + row
-          table[p][row[0]] = row[1:]
-        short_name = os.path.basename(os.path.normpath(name))
-        tables[p][short_name] = table[p]
+        
+        col_names_with_prefix = {}
+        for col_name in lookup_tables[base_name]:
+          if col_name != 'key/t' and str(col_name).startswith(p):
+            timing_str = str(col_name).partition(p)[2]
+            assert timing_str in timing_values
+            timing_as_integer = timing_values[timing_str]
+            col_names_with_prefix[col_name] = timing_as_integer
+            
+        # sort by timing so that pyplot can understand it, tuples of (key, value)
+        sorted_col_names_with_prefix = sorted(col_names_with_prefix.items(), key=lambda x: x[1])
+        
+        for ridx,key in row_mapping[base_name].iteritems():
+          row_values = []
+          if ridx == 0:
+            for col_name, timing in sorted_col_names_with_prefix:
+              row_values.append(timing)
+            table[p][key] = row_values
+          else:
+            for col_name, timing in sorted_col_names_with_prefix:
+              field_value = lookup_tables[base_name][col_name][key]
+              row_values.append(field_value)
+            table[p][key] = row_values
+        tables[p][base_name] = table[p]
   
-
   keys_to_plot = ['num_harmful', 'num_commute', 'num_races', 'num_rw_time_edges', 'num_ww_time_edges',
             'num_per_pkt_races', 'num_per_pkt_inconsistent', 'num_per_pkt_inconsistent_covered', 'num_per_pkt_entry_version_race', 'num_per_pkt_inconsistent_no_repeat']
 
@@ -125,7 +174,7 @@ def main(result_dirs):
   for p in prefixes:
     for key in keys_to_plot:
       plot_with_delta(tables[p], p, key, False)
-  
+    
     for name in tables[p]:
       plot_with_delta_multiple(tables[p], p, name,
                                out_name=get_short_name(name) + "_pkt_consist",
@@ -143,7 +192,6 @@ def main(result_dirs):
                                      'num_per_pkt_entry_version_race',
                                      'num_per_pkt_inconsistent_no_repeat'],
                                use_log=True)
-
 
 def get_short_name(name):
   names = {}
