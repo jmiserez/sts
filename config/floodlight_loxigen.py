@@ -10,7 +10,7 @@ from config.application_events import AppCircuitPusher
 
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-loxi-trace.xml -jar '''
              '''./target/floodlight.jar '''
-              '''-cf ./src/main/resources/floodlightdefault_loxi_local.properties''')
+              '''-cf ./src/main/resources/circuitpusher_loxi.properties''')
 
 # controllers = [ControllerConfig(start_cmd, cwd='../../floodlight/floodlight', address="127.0.0.1", port=6653)]
 
@@ -32,6 +32,8 @@ steps = 400
 results_dir = "traces/floodlight_loxigen-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = []
+# apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
+
 
 simulation_config = SimulationConfig(controller_configs=controllers,
                                      topology_class=topology_class,
