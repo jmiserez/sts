@@ -116,6 +116,7 @@ name_to_invariant_check = {
   "check_for_flow_entry" : check_for_flow_entry,
   "check_for_two_loop_or_connectivity" : check_for_two_loop_or_connectivity,
   "time_out_on_connectivity" : TimeOutOnConnectivity(),
+  "InvariantChecker.check_noop" : InvariantChecker.check_noop,
   "InvariantChecker.check_liveness" : InvariantChecker.check_liveness,
   "InvariantChecker.check_loops" : InvariantChecker.check_loops,
   "InvariantChecker.python_check_loops" : InvariantChecker.python_check_loops,
