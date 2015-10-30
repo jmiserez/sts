@@ -337,7 +337,7 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       # out_port will not be OFPP_TABLE
       self.process_packet_internally(packet, in_port)
     else:
-      raise("Unsupported virtual output port: %x" % out_port)
+      raise RuntimeError("Unsupported virtual output port: %x" % out_port)
   
   def process_packet_internally(self, packet, in_port):
     assert_type("packet", packet, ethernet, none_ok=False)

@@ -42,6 +42,10 @@ class InvariantChecker(object):
   # determinstic (viz., always sort sets, hashes)
 
   @staticmethod
+  def check_noop(simulation):
+    return []
+
+  @staticmethod
   def all_controllers_dead(simulation):
     simulation.controller_manager.check_controller_status()
     if simulation.controller_manager.all_controllers_down():

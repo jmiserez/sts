@@ -12,11 +12,11 @@ start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logbac
              '''./target/floodlight.jar '''
               '''-cf ./src/main/resources/circuitpusher_loxi.properties''')
 
-# controllers = [ControllerConfig(start_cmd, cwd='../../floodlight/floodlight', address="127.0.0.1", port=6653)]
+controllers = [ControllerConfig(start_cmd, cwd='../../floodlight/floodlight', address="127.0.0.1", port=6653)]
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
-start_cmd = '''echo "no-op"'''
-controllers = [ControllerConfig(start_cmd, cwd='../../floodlight/floodlight', address="127.0.0.1", port=6653, controller_type='dummy')]
+# start_cmd = '''echo "no-op"'''
+# controllers = [ControllerConfig(start_cmd, cwd='../../floodlight/floodlight', address="127.0.0.1", port=6653, controller_type='dummy')]
 
 num = 2
 topology_class = StarTopology
