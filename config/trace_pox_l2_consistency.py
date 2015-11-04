@@ -14,9 +14,9 @@ barriers= True
 
 # Use POX as our controller
 start_cmd = ('''./pox.py --verbose '''
-             ''' forwarding.consistency --consistent=%s --deny=True '''
+             ''' forwarding.consistency --consistent=%s --deny=False '''
              ''' --update_wait=10 --update_once=False --consistent_wait=10 --barriers=%s '''
-             ''' --in_flight_wait=5 --slow_update_wait=10 --update_wait=20 '''
+             ''' --in_flight_wait=5 --slow_update_wait=10 --update_wait=10 '''
              ''' openflow.of_01 --address=__address__ --port=__port__ ''' % (consistent, barriers))
 
 controllers = [ControllerConfig(start_cmd, cwd="pox/")]
