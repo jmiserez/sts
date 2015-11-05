@@ -34,12 +34,13 @@ function read_files {
     fi
   else
     HEADER=$header
-    echo "app,controller,${header}" > ${outfile}
+    echo "app,controller,topology,steps,${header}" > ${outfile}
   fi
 
   app=$(basename "${folder}")
   app="${app/trace_/}"
   controller="UNKNOWN"
+  topology="UNKOWN"
   case $app in
    *"pox_eel"*)
     controller='POX_EEL'
@@ -54,6 +55,30 @@ function read_files {
     app="${app/floodlight_/}"
    ;;
   esac
+
+  case $app in
+   *"StarTopology2"*)
+    topology="Star2"
+    app="${app/StarTopology2-/}"
+    ;;
+   *"MeshTopology2"*)
+    topology="Mesh2"
+    app="${app/MeshTopology2-/}"
+    ;;
+   *"BinaryLeafTreeTopology1"*)
+    topology="BinTree1"
+    app="${app/BinaryLeafTreeTopology1-/}"
+    ;;
+   *"BinaryLeafTreeTopology2"*)
+    topology="BinTree2"
+    app="${app/BinaryLeafTreeTopology2-/}"
+    ;;
+   esac
+
+ steps="${app/*-steps/}"
+ app="${app/-steps[[:digit:]]*/}"
+ app="${app/l2_multi/forwarding}"
+
  # Actually read the file
   while read -r line
   do
@@ -61,7 +86,7 @@ function read_files {
       # Skip header
       continue;
     fi
-    echo "${app},${controller},${line}" >> ${outfile}
+    echo "${app},${controller},${topology},${steps},${line}" >> ${outfile}
   done < ${folder}/${file}
 }
 
