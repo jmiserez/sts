@@ -6,6 +6,7 @@ SUMMARY_FILE=summary_tbl.csv
 TIMINGS_FILE=summary_timings_tbl.csv
 CROSS_FILE=cross_summary.csv
 CROSS_TIMINGS_FILE=cross_summary_timings.csv
+HEADER=
 
 # Clear previous files
 rm ${CROSS_FILE}
@@ -18,7 +19,6 @@ function read_files {
  folder=$1
  file=$2
  outfile=$3
- HEADER=
 
  >&2 echo "Reading ${folder}/${file}"
  >&2 echo "Saving to ${outfile}"
@@ -75,5 +75,17 @@ do
   fi
 
   read_files $trace $SUMMARY_FILE $CROSS_FILE
+done;
+
+HEADER=
+
+for trace in $TRACES;
+do
+  if [ ! -e ${trace}/${TIMINGS_FILE} ];
+  then
+    >&2 echo "no timing summary in ${trace}"
+    continue
+  fi
+
   read_files $trace $TIMINGS_FILE $CROSS_TIMINGS_FILE
 done;
