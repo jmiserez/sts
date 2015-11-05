@@ -165,7 +165,6 @@ def main(result_dir):
   save_to_csv(timing_keys, timings_table,
               os.path.join(result_dir, 'summary_timings.csv'))
 
-  print table_tbl
   save_to_csv_table(table_tbl, os.path.join(result_dir, 'summary_tbl.csv'))
   save_to_csv_table(timings_tbl, os.path.join(result_dir, 'summary_timings_tbl.csv'))
 
