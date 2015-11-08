@@ -22,8 +22,8 @@ run_per_trace_dir() {
   popd > /dev/null
   pushd "$1" > /dev/null
   TRACE_DIR=$(readlink -f $1)
-  echo "$STS_DIR/plot.py --no-summary $TRACE_DIR"
-  $STS_DIR/plot.py --no-summary "$TRACE_DIR"
+  echo "$STS_DIR/plot.py $TRACE_DIR"
+  $STS_DIR/plot.py "$TRACE_DIR"
   popd > /dev/null
 }
 export -f run_per_trace_dir
@@ -139,9 +139,9 @@ if [ "$NUM_THREADS" -gt 0 ]
 then
   printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
   pushd "$WORKSPACE" > /dev/null
-  echo "plot.py --no-plots"
+  echo "cross_summary.sh"
   pushd "$1" > /dev/null
-  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
+  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 -n "${#trace_dirs_array[@]}" -x $STS_DIR/cross_summary.sh
   popd > /dev/null
 fi
 

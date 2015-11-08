@@ -20,9 +20,11 @@ run_per_trace_dir(){
   # add results
   git add results_\*.dat
   git add \*summary.csv
+  git add \*summary_tbl.csv
   # add timings
   git add timings_\*.dat
   git add \*summary_timings.csv
+  git add \*summary_timings_tbl.csv
   # add plots
   git add \*.pdf
   popd > /dev/null
@@ -89,6 +91,7 @@ export -f func_call_by_name
 
 pushd "$WORKSPACE" > /dev/null
 git add cross_summary.csv
+git add cross_summary_timings.csv
 popd > /dev/null
 
 if [ "${#trace_dirs_array[@]}" -gt 0 ]

@@ -18,8 +18,8 @@ run_per_trace_dir() {
 #  echo "Generating plots for trace $1"
   pushd "$1" > /dev/null
   TRACE_DIR=$(readlink -f $1)
-  echo "$STS_DIR/plot.py --no-summary $TRACE_DIR"
-  $STS_DIR/plot.py --no-summary "$TRACE_DIR"
+  echo "$STS_DIR/plot.py $TRACE_DIR"
+  $STS_DIR/plot.py "$TRACE_DIR"
   popd > /dev/null
 }
 export -f run_per_trace_dir
@@ -131,11 +131,14 @@ then
 fi
 echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 
-pushd "$WORKSPACE" > /dev/null
-echo "plot.py --no-plots"
-pushd "$1" > /dev/null
-find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
-popd > /dev/null
+if [ "${#trace_dirs_array[@]}" -gt 0 ]
+then
+  pushd "$WORKSPACE" > /dev/null
+  echo "cross_summary.sh"
+  pushd "$1" > /dev/null
+  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 -n "${#trace_dirs_array[@]}" -x $STS_DIR/cross_summary.sh
+  popd > /dev/null
+fi
 
 if [ "$NUM_THREADS" -gt 0 ]
 then
