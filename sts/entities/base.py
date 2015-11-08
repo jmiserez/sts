@@ -405,11 +405,11 @@ class LocalEntity(object):
     process = popen_filtered("[%s]" % self.label, cmd, self.cwd,
                              shell=True, redirect_output=self.redirect_output)
     output = ""
+    if self.redirect_output:
+      return ''
     while True:
       recv = process.stdout.read(100)  # arbitrary
       output += recv
       if recv == '' and process.poll() is not None:
         break
-    if self.redirect_output:
-      return ''
     return output

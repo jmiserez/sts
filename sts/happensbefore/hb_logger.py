@@ -621,7 +621,7 @@ class HappensBeforeLogger(EventMixin):
       in_dpid = self.swid_to_dpid(in_swid)
       if in_dpid is None:
         # the controller did not supply the dpid, no way for us to ever match it
-        print 'Error: Discarding controller line: ' + line
+        print 'Error: Discarding controller line: ' + str(line)
         return True
       else:
         # we know this switch
