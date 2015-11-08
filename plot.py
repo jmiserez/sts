@@ -307,6 +307,16 @@ def get_correct_alt_barr_prefix(name):
 #   prefix_for_name['trace_pox_l2_multi-StarTopology2-steps200'] = True
 #   prefix_for_name['trace_pox_l2_multi-StarTopology4-steps200'] = True
   
+  prefix_for_name['trace_onos-ifwd-StarTopology2-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-MeshTopology2-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-BinaryLeafTreeTopology1-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-BinaryLeafTreeTopology2-steps200'] = False
+
+  prefix_for_name['trace_onos-noinstr-ifwd-StarTopology2-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-MeshTopology2-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-BinaryLeafTreeTopology1-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-BinaryLeafTreeTopology2-steps200'] = False
+
   if name in prefix_for_name:
     if prefix_for_name[name]:
       return 'True-'
@@ -339,6 +349,9 @@ def get_short_name(name):
   new_name = new_name.replace('trace_', '')
   new_name = new_name.replace('floodlight', 'FL')
   new_name = new_name.replace('pox', 'PX')
+  new_name = new_name.replace('onos', 'ON')
+  new_name = new_name.replace('MeshTopology', 'me')
+  new_name = new_name.replace('GridTopology', 'gr')
   new_name = new_name.replace('BinaryLeafTreeTopology', 'bt')
   new_name = new_name.replace('ConsistencyTopology', 'ct')
   new_name = new_name.replace('StarTopology', 'st')
