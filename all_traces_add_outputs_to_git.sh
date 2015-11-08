@@ -91,7 +91,10 @@ pushd "$WORKSPACE" > /dev/null
 git add cross_summary.csv
 popd > /dev/null
 
-printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P 1 bash -c 'func_call_by_name run_per_trace_dir {}'
-
+if [ "${#trace_dirs_array[@]}" -gt 0 ]
+then
+  printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P 1 bash -c 'func_call_by_name run_per_trace_dir {}'
+fi
+echo "Done."
 
 

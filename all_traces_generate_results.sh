@@ -126,18 +126,25 @@ case $NUM_CPU_CORES in
 esac
 
 if [ "$IS_OVERRIDE_NUM_THREADS" = false ]
-  then
-    NUM_THREADS=$NUM_CPU_CORES
+then
+  NUM_THREADS=$NUM_CPU_CORES
+fi
+if [ "${#trace_dirs_array[@]}" -lt "$NUM_THREADS" ]
+then
+  NUM_THREADS="${#trace_dirs_array[@]}"
 fi
 echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 
-printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
-
-pushd "$WORKSPACE" > /dev/null
-echo "plot.py --no-plots"
-pushd "$1" > /dev/null
-find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
-popd > /dev/null
+if [ "$NUM_THREADS" -gt 0 ]
+then
+  printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
+  pushd "$WORKSPACE" > /dev/null
+  echo "plot.py --no-plots"
+  pushd "$1" > /dev/null
+  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
+  popd > /dev/null
+fi
 
 rm -rf "$CURRENT_TMP_DIR"
+echo "Done."
 
