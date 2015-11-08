@@ -666,6 +666,8 @@ class HappensBeforeGraph(object):
             label += "\\nt: " + repr(x.t)
             shape = 'box'
             break
+          if getattr(event.msg, 'actions', None):
+            op = "\\nActions: " + str(event.msg.actions)
       cmd_type = data.get('cmd_type')
       if cmd_type:
         label += "\\n%s" % cmd_type
@@ -1340,7 +1342,6 @@ class Main(object):
       for trace, races, _ in summarized:
         self.graph.print_racing_packet_trace(trace, races, label='summarized')
       self.graph.save_races_graph(self.print_pkt)
-
 
 #     self.graph.print_versions(versions)
 #     self.graph.print_covered_races()
