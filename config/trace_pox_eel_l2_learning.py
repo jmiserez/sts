@@ -1,32 +1,37 @@
 from config.experiment_config_lib import ControllerConfig
-from sts.topology import BufferedPatchPanel
-from sts.topology import ConsistencyTopology
+from sts.topology import StarTopology, BufferedPatchPanel, MeshTopology, GridTopology, BinaryLeafTreeTopology
 from sts.controller_manager import UserSpaceControllerPatchPanel
 from sts.control_flow.fuzzer import Fuzzer
+from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
+from config.application_events import AppCircuitPusher
 
-
-consistent = True
-barriers= True
 
 
 # Use POX as our controller
 start_cmd = ('''./pox.py --verbose '''
-             ''' forwarding.consistency --consistent=%s --deny=False '''
-             ''' --update_wait=10 --update_once=False --consistent_wait=10 --barriers=%s '''
-             ''' --in_flight_wait=5 --slow_update_wait=10 --update_wait=10 '''
-             ''' openflow.of_01 --address=__address__ --port=__port__ ''' % (consistent, barriers))
+              '''forwarding.l2_learning '''
+             '''openflow.of_01 --address=__address__ --port=__port__ ''')
 
-controllers = [ControllerConfig(start_cmd, cwd="pox/")]
+controllers = [ControllerConfig(start_cmd, cwd="../pox/")]
 
-steps = 400
-topology_class = ConsistencyTopology
-topology_params = ""
 
+
+num = 1
+topology_class = StarTopology
+topology_params = "num_hosts=%d" % num
+# topology_class = MeshTopology
+# topology_params = "num_switches=%d" % num
+# topology_class = GridTopology
+# topology_params = "num_rows=3, num_columns=3"
+topology_class = BinaryLeafTreeTopology
+topology_params = "num_levels=%d" % num
+
+steps = 200
 # Where should the output files be written to
-results_dir = "traces/trace_pox_%s-%s-%s-steps%d" % (topology_class.__name__, consistent, barriers, steps)
+results_dir = "traces/trace_pox_eel_l2_learning-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = None
 
@@ -58,7 +63,6 @@ control_flow = Fuzzer(simulation_config,
                       delay=0.1,
                       halt_on_violation=True,
                       steps=steps,
-                      send_init_packets=False,
 #                       invariant_check_name="check_everything",
                       invariant_check_name="InvariantChecker.check_liveness",
                       apps=apps)
