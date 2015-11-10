@@ -36,7 +36,7 @@ from sts.util.network_namespace import bind_pcap
 from sts.util.convenience import IPAddressSpace
 from sts.util.convenience import deprecated
 
-from sts.entities.base import SSHEntity
+from sts.entities.base import SSHEntity, LocalEntity
 from sts.entities.sts_entities import SnapshotPopen
 
 
@@ -879,6 +879,46 @@ class DummyController(Controller):
   def start(self, multiplex_sockets=False):
     """Starts the controller"""
     return True
+
+  def block_peer(self, peer_controller):
+    """Ignore traffic to/from the given peer controller
+    """
+    raise NotImplementedError
+
+  def unblock_peer(self, peer_controller):
+    """Stop ignoring traffic to/from the given peer controller"""
+    raise NotImplementedError()
+
+  def check_status(self, simulation):
+    return (True, 'ok')
+  
+class LogfileController(Controller):
+  def __init__(self, controller_config, sync_connection_manager=None,
+               snapshot_service=None):
+    super(LogfileController, self).__init__(controller_config,
+                                            sync_connection_manager,
+                                            snapshot_service)
+    self.state = ControllerState.ALIVE
+
+  @property
+  def is_remote(self):
+    return False
+
+  @property
+  def blocked_peers(self):
+    """Return a list of blocked peer controllers (if any)"""
+    return None
+
+  def start(self, multiplex_sockets=False):
+    """Starts the controller"""
+    self.cmd_executor = LocalEntity(cwd=getattr(self.config, "cwd", None),
+                                    redirect_output=True)
+    assert hasattr(self.cmd_executor, "execute_command")
+    self.cmd_executor.execute_command(self.config.start_cmd)
+    return True
+    
+  def kill(self):
+    self.state = ControllerState.DEAD
 
   def block_peer(self, peer_controller):
     """Ignore traffic to/from the given peer controller

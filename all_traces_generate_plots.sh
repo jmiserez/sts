@@ -18,8 +18,8 @@ run_per_trace_dir() {
 #  echo "Generating plots for trace $1"
   pushd "$1" > /dev/null
   TRACE_DIR=$(readlink -f $1)
-  echo "$STS_DIR/plot.py --no-summary $TRACE_DIR"
-  $STS_DIR/plot.py --no-summary "$TRACE_DIR"
+  echo "$STS_DIR/plot.py $TRACE_DIR"
+  $STS_DIR/plot.py "$TRACE_DIR"
   popd > /dev/null
 }
 export -f run_per_trace_dir
@@ -125,14 +125,25 @@ if [ "$IS_OVERRIDE_NUM_THREADS" = false ]
   then
     NUM_THREADS=$NUM_CPU_CORES
 fi
+if [ "${#trace_dirs_array[@]}" -lt "$NUM_THREADS" ]
+then
+  NUM_THREADS="${#trace_dirs_array[@]}"
+fi
 echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 
-pushd "$WORKSPACE" > /dev/null
-echo "plot.py --no-plots"
-pushd "$1" > /dev/null
-find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 $STS_DIR/plot.py --no-plots
-popd > /dev/null
+if [ "${#trace_dirs_array[@]}" -gt 0 ]
+then
+  pushd "$WORKSPACE" > /dev/null
+  echo "cross_summary.sh"
+  pushd "$1" > /dev/null
+  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 -n "${#trace_dirs_array[@]}" -x $STS_DIR/cross_summary.sh
+  popd > /dev/null
+fi
 
-printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_THREADS bash -c 'func_call_by_name run_per_trace_dir {}'
+if [ "$NUM_THREADS" -gt 0 ]
+then
+  printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_THREADS bash -c 'func_call_by_name run_per_trace_dir {}'
+fi
 
 rm -rf "$CURRENT_TMP_DIR"
+echo "Done."

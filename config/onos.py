@@ -10,28 +10,23 @@ from config.application_events import AppCircuitPusher
 
 
 
-# start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
-#              '''./target/floodlight.jar '''
-#               '''-cf ./src/main/resources/hb_learningswitch.properties''')
-
-# Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
-start_cmd = '''echo "no-op"'''
+start_cmd = '''tail -f "/home/jeremie/Applications/apache-karaf-3.0.3/data/log/karaf.log"'''
 
 # controllers = [ControllerConfig(start_cmd, controller_type='dummy', cwd='./', address="192.168.56.101", port=6633)]
-controllers = [ControllerConfig(start_cmd, controller_type='dummy', cwd='./', address="127.0.0.1", port=6633)]
+controllers = [ControllerConfig(start_cmd, controller_type='logfile', cwd='./')]
 
-num = 4
+num = 2
 topology_class = StarTopology
 topology_params = "num_hosts=%d" % num
-#topology_class = MeshTopology
-#topology_params = "num_switches=%d" % num
+# topology_class = MeshTopology
+# topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
 # topology_class = BinaryLeafTreeTopology
 # topology_params = "num_levels=%d" % num
 
-steps = None
-results_dir = "traces/onos-%s%d-steps%s" % (topology_class.__name__, num, steps)
+steps = 200
+results_dir = "traces/trace_onos-ifwd-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = None
 

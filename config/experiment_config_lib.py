@@ -22,7 +22,7 @@ import re
 import time
 from sts.util.convenience import address_is_ip, find_port, IPAddressSpace
 from sts.entities import Controller, POXController, BigSwitchController, ONOSController
-from sts.entities.controllers import DummyController
+from sts.entities.controllers import DummyController, LogfileController
 from collections import defaultdict
 
 log = logging.getLogger("controller-config")
@@ -32,6 +32,7 @@ controller_type_map = {
   "bsc": BigSwitchController,
   "onos": ONOSController,
   "dummy": DummyController,
+  "logfile": LogfileController,
 }
 
 class ControllerConfig(object):

@@ -99,7 +99,7 @@ markers = ['x',
            7,]
 
 
-def main(result_dirs, no_plots=False, no_summary=False):
+def main(result_dirs, no_plots=False):
   tables = {}
   base_names = []
   lookup_tables = {}
@@ -195,84 +195,6 @@ def main(result_dirs, no_plots=False, no_summary=False):
                                        'num_per_pkt_entry_version_race',
                                        'num_per_pkt_inconsistent_no_repeat'],
                                  use_log=True)
-      
-  if not no_summary:
-    # Create aggregate csv over multiple summary.csv files
-    crosstrace_table = []
-    fname = 'cross_summary.csv'
-    
-    for t,t_int in sorted_timing_values:
-      row = ['t: '+t]
-      crosstrace_table.append(row)
-      row = ['Trace', 
-             'Races commuting', 
-             'Races covered', 
-             'Races true harmful', 
-             'Trace', 
-             'Races covered', 
-             'Races true harmful', 
-             'Trace',
-             'Pkt with races', 
-             'Pkt inconsistent',
-             'Pkt inconsistent (unique)', 
-             'Trace', 
-             'Pkt inconsistent',
-             'Pkt covered',
-             'Pkt entry version']
-      crosstrace_table.append(row)
-      for base_name in base_names:
-        p = get_correct_alt_barr_prefix(base_name)
-        if p:
-          row = []
-          assert p in prefixes
-          col_name = p + t
-          # get # of races: 1) Commute, 2) (Harmful-Covered) == "True Harmful", 3) Covered
-          
-          num_commute = int(lookup_tables[base_name][col_name]['num_commute'])
-          num_harmful = int(lookup_tables[base_name][col_name]['num_harmful'])
-          num_covered = int(lookup_tables[base_name][col_name]['num_covered'])
-          
-          num_per_pkt_races = int(lookup_tables[base_name][col_name]['num_per_pkt_races'])
-          num_per_pkt_inconsistent = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent'])
-          num_per_pkt_inconsistent_covered = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_covered'])
-          num_per_pkt_entry_version_race = int(lookup_tables[base_name][col_name]['num_per_pkt_entry_version_race'])
-          num_per_pkt_inconsistent_no_repeat = int(lookup_tables[base_name][col_name]['num_per_pkt_inconsistent_no_repeat'])
-          
-          total_commute = num_commute
-          total_trueharmful = num_harmful - num_covered
-          total_covered = num_covered
-          total_races = num_commute + total_trueharmful + total_covered
-          
-          row.append(get_short_name(base_name))
-          row.append(total_commute)
-          row.append(total_covered)
-          row.append(total_trueharmful)
-          
-          row.append(get_short_name(base_name))
-          row.append(total_covered)
-          row.append(total_trueharmful)
-          
-          row.append(get_short_name(base_name))
-          row.append(num_per_pkt_races)
-          row.append(num_per_pkt_inconsistent)
-          row.append(num_per_pkt_inconsistent_no_repeat)
-
-          row.append(get_short_name(base_name))
-          row.append(num_per_pkt_inconsistent)
-          row.append(num_per_pkt_inconsistent_covered)
-          row.append(num_per_pkt_entry_version_race)
-          
-          crosstrace_table.append(row)
-        else:
-          print "Ignoring trace " + base_name + " for " + fname + "."
-      row = []
-      crosstrace_table.append(row)
-      
-    print fname  
-      
-    with open(fname, 'wb') as f:
-      writer = csv.writer(f)
-      writer.writerows(crosstrace_table)
 
 def get_correct_alt_barr_prefix(name):
   """
@@ -307,6 +229,16 @@ def get_correct_alt_barr_prefix(name):
 #   prefix_for_name['trace_pox_l2_multi-StarTopology2-steps200'] = True
 #   prefix_for_name['trace_pox_l2_multi-StarTopology4-steps200'] = True
   
+  prefix_for_name['trace_onos-ifwd-StarTopology2-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-MeshTopology2-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-BinaryLeafTreeTopology1-steps200'] = False
+  prefix_for_name['trace_onos-ifwd-BinaryLeafTreeTopology2-steps200'] = False
+
+  prefix_for_name['trace_onos-noinstr-ifwd-StarTopology2-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-MeshTopology2-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-BinaryLeafTreeTopology1-steps200'] = False
+  prefix_for_name['trace_onos-noinstr-ifwd-BinaryLeafTreeTopology2-steps200'] = False
+
   if name in prefix_for_name:
     if prefix_for_name[name]:
       return 'True-'
@@ -339,6 +271,9 @@ def get_short_name(name):
   new_name = new_name.replace('trace_', '')
   new_name = new_name.replace('floodlight', 'FL')
   new_name = new_name.replace('pox', 'PX')
+  new_name = new_name.replace('onos', 'ON')
+  new_name = new_name.replace('MeshTopology', 'me')
+  new_name = new_name.replace('GridTopology', 'gr')
   new_name = new_name.replace('BinaryLeafTreeTopology', 'bt')
   new_name = new_name.replace('ConsistencyTopology', 'ct')
   new_name = new_name.replace('StarTopology', 'st')
@@ -438,10 +373,8 @@ if __name__ == '__main__':
   parser.add_argument('result_dirs', nargs='+' )
   parser.add_argument('--no-plots', dest='no_plots', action='store_true',
                       default=False, help="Do not write any plot PDFs to the disk.")
-  parser.add_argument('--no-summary', dest='no_summary', action='store_true',
-                      default=False, help="Do not write any summary CSVs to the disk.")
   args = parser.parse_args()
-  main(args.result_dirs, args.no_plots, args.no_summary)
+  main(args.result_dirs, args.no_plots)
 
 
     

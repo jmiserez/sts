@@ -20,9 +20,11 @@ run_per_trace_dir(){
   # add results
   git add results_\*.dat
   git add \*summary.csv
+  git add \*summary_tbl.csv
   # add timings
   git add timings_\*.dat
   git add \*summary_timings.csv
+  git add \*summary_timings_tbl.csv
   # add plots
   git add \*.pdf
   popd > /dev/null
@@ -89,9 +91,13 @@ export -f func_call_by_name
 
 pushd "$WORKSPACE" > /dev/null
 git add cross_summary.csv
+git add cross_summary_timings.csv
 popd > /dev/null
 
-printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P 1 bash -c 'func_call_by_name run_per_trace_dir {}'
-
+if [ "${#trace_dirs_array[@]}" -gt 0 ]
+then
+  printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P 1 bash -c 'func_call_by_name run_per_trace_dir {}'
+fi
+echo "Done."
 
 

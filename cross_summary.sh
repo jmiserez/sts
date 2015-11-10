@@ -54,6 +54,10 @@ function read_files {
     controller='floodlight'
     app="${app/floodlight_/}"
    ;;
+   *"onos"*)
+    controller='onos'
+    app="${app/onos_/}"
+   ;;
   esac
 
   case $app in
