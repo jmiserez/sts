@@ -33,6 +33,8 @@ keys.append('num_per_pkt_inconsistent')
 keys.append('num_per_pkt_inconsistent_covered')
 keys.append('num_per_pkt_entry_version_race')
 keys.append('num_per_pkt_inconsistent_no_repeat')
+keys.append('num_versions')
+keys.append('num_racing_versions')
 
 
 table_keys = ['rw_delta', 'ww_delta', 'alt_barr', 'data_deps']
