@@ -1184,7 +1184,8 @@ class HappensBeforeGraph(object):
     versions = self.find_versions()
 
     # TODO(jm): Could we check the races directly instead of creating the ww_races variable?
-    
+    racing_versions_tuples = []
+
     ww_races = defaultdict(list)
     for race in self.race_detector.races_harmful:
       if race.rtype == 'w/w':
@@ -1208,7 +1209,9 @@ class HappensBeforeGraph(object):
         if eid2 in cmds:
           v2 = version
       racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
-    return racing_versions
+      if set([v1, v2]) not in racing_versions_tuples:
+        racing_versions_tuples.append(set([v1, v2]))
+    return racing_versions, racing_versions_tuples
 
   def print_versions(self, versions):
     # Printing versions
@@ -1323,7 +1326,7 @@ class Main(object):
       self.graph.find_per_packet_inconsistent(covered_races, True)
     t7 = time.time()
 
-    racing_versions = self.graph.find_inconsistent_updates()
+    racing_versions, racing_versions_tuples = self.graph.find_inconsistent_updates()
     t8 = time.time()
     
     if not self.no_dot_files:
@@ -1356,7 +1359,8 @@ class Main(object):
     print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
     print "Number of covered races: ", len(covered_races)
-    print "Inconsistent updates:", len(racing_versions)
+    print "Number of versions:", len(versions)
+    print "Inconsistent updates:", len(racing_versions_tuples)
 
     load_time = t1 - t0
     detect_races_time = t2 - t1
@@ -1448,6 +1452,8 @@ class Main(object):
       f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
       f.write('num_per_pkt_entry_version_race,%d\n' % num_per_pkt_entry_version_race)
       f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
+      f.write('num_versions,%d\n' % len(versions))
+      f.write('num_racing_versions,%d\n' % len(racing_versions_tuples))
 
     with open(timings_file_name, 'w') as f:
       write_general_info_to_file(f)
