@@ -1433,6 +1433,8 @@ class Main(object):
       write_general_info_to_file(f)
 
       # Operations
+      f.write('num_events,%d\n' % self.graph.g.number_of_nodes())
+      f.write('num_edges,%d\n' % self.graph.g.number_of_edges())
       f.write('num_read,%d\n' % num_read)
       f.write('num_writes,%d\n' % num_writes)
       f.write('num_ops,%d\n' % num_ops)
