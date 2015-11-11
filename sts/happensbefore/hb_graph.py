@@ -666,7 +666,7 @@ class HappensBeforeGraph(object):
             label += "\\nt: " + repr(x.t)
             shape = 'box'
             break
-          if getattr(event.msg, 'actions', None):
+          if hasattr(event, 'msg') and getattr(event.msg, 'actions', None):
             op = "\\nActions: " + str(event.msg.actions)
       cmd_type = data.get('cmd_type')
       if cmd_type:
