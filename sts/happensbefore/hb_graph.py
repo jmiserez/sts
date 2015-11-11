@@ -1355,7 +1355,8 @@ class Main(object):
     print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
-    print "Number of races: ", str(len(self.graph.race_detector.races_commute)+len(self.graph.race_detector.races_harmful))
+    print "Number of races: ", self.graph.race_detector.total_races
+    print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
     print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
     print "Number of covered races: ", len(covered_races)
@@ -1404,14 +1405,13 @@ class Main(object):
     num_read = len(self.graph.race_detector.read_operations)
     num_ops = num_writes + num_read
 
-    num_harmful = len(self.graph.race_detector.races_harmful)
-    num_commute = len(self.graph.race_detector.races_commute)
-    num_races = num_harmful + num_commute
+    num_harmful = self.graph.race_detector.total_harmful
+    num_commute = self.graph.race_detector.total_commute
+    num_races = self.graph.race_detector.total_races
+    num_time_fitlered_races = self.graph.race_detector.total_time_filtered_races
     num_covered = len(covered_races)
 
-    num_rw_time_edges = self.graph.race_detector.time_hb_rw_edges_counter
-    num_ww_time_edges = self.graph.race_detector.time_hb_ww_edges_counter
-    num_time_edges = num_rw_time_edges + num_ww_time_edges
+    num_time_edges = self.graph.race_detector.time_edges_counter
 
     num_per_pkt_races = len(packet_races)
     num_per_pkt_inconsistent = len(inconsistent_packet_traces)
@@ -1436,14 +1436,13 @@ class Main(object):
       f.write('num_ops,%d\n' % num_ops)
 
       # HB time edges
-      f.write('num_rw_time_edges,%d\n' % num_rw_time_edges)
-      f.write('num_ww_time_edges,%d\n' % num_ww_time_edges)
       f.write('num_time_edges,%d\n' % num_time_edges)
 
       # Races info
+      f.write('num_races,%d\n' % num_races)
       f.write('num_harmful,%d\n' % num_harmful)
       f.write('num_commute,%d\n' % num_commute)
-      f.write('num_races,%d\n' % num_races)
+      f.write('num_time_fitlered_races,%d' % num_time_fitlered_races)
       f.write('num_covered,%d\n' % num_covered)
 
       # Inconsistency
