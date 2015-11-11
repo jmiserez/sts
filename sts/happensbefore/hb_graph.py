@@ -1475,6 +1475,7 @@ def auto_int(x):
 
 
 if __name__ == '__main__':
+  empty_delta = 1000000
   parser = argparse.ArgumentParser()
   parser.add_argument('trace_file')
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
@@ -1486,6 +1487,8 @@ if __name__ == '__main__':
   parser.add_argument('--hbt', dest='hbt', action='store_true', default=False,
                       help="Add HB edges based on tqime")
   parser.add_argument('--rw_delta', dest='rw_delta', default=5, type=int,
+                      help="delta time (in secs) for adding HB edges based on time")
+  parser.add_argument('--time-delta', dest='delta', default=empty_delta, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--ww_delta', dest='ww_delta', default=5, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
@@ -1512,6 +1515,11 @@ if __name__ == '__main__':
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
   args = parser.parse_args()
+  if args.hbt:
+    if args.delta == empty_delta:
+      assert args.rw_delta == args.ww_delta
+    else:
+      args.rw_delta = args.ww_delta = args.delta
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
