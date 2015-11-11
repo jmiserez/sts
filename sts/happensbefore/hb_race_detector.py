@@ -68,6 +68,7 @@ class RaceDetector(object):
     self.racing_events = set()
     self.racing_events_harmful = set()
     self.total_filtered = 0
+    self.covered_races = []
 
     self.commutativity_checker = CommutativityChecker()
 
@@ -92,8 +93,12 @@ class RaceDetector(object):
     return len(self.races_commute)
 
   @property
+  def total_covered(self):
+    return len(self.covered_races)
+
+  @property
   def total_races(self):
-    assert len(self.all_races) == self.total_harmful + self.total_commute + self.total_time_filtered_races
+    assert len(self.all_races) == self.total_harmful + self.total_commute + self.total_time_filtered_races + self.total_covered
     return len(self.all_races)
 
   @property
