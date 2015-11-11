@@ -1450,6 +1450,9 @@ class Main(object):
       f.write('num_covered,%d\n' % num_covered)
 
       # Inconsistency
+      f.write('num_pkts,%d\n' % len(self.graph.host_sends))
+      assert len(self.graph.host_sends) >= num_per_pkt_races
+      assert num_per_pkt_races == num_per_pkt_inconsistent + num_per_pkt_inconsistent_covered + num_per_pkt_entry_version_race
       f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
       f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
       f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
