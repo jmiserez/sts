@@ -1410,7 +1410,7 @@ class Main(object):
     num_harmful = self.graph.race_detector.total_harmful
     num_commute = self.graph.race_detector.total_commute
     num_races = self.graph.race_detector.total_races
-    num_time_fitlered_races = self.graph.race_detector.total_time_filtered_races
+    num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
     num_covered = self.graph.race_detector.total_covered
 
     num_time_edges = self.graph.race_detector.time_edges_counter
@@ -1442,11 +1442,11 @@ class Main(object):
 
       # Races info
       # One last check
-      assert num_races == num_commute + num_covered + num_harmful + num_time_fitlered_races
+      assert num_races == num_commute + num_covered + num_harmful + num_time_filtered_races
       f.write('num_races,%d\n' % num_races)
       f.write('num_harmful,%d\n' % num_harmful)
       f.write('num_commute,%d\n' % num_commute)
-      f.write('num_time_fitlered_races,%d' % num_time_fitlered_races)
+      f.write('num_time_filtered_races,%d\n' % num_time_filtered_races)
       f.write('num_covered,%d\n' % num_covered)
 
       # Inconsistency
