@@ -42,6 +42,12 @@ format_results(){
   rm -f "${result_dir}/summary_timings_tbl.csv"
 
   ./format_results.py ${result_dir}
+
+  if [[ ${INRUN} ]];
+  then
+    echo "Backing up"
+    mv "${result_dir}/summary_timings_tbl.csv" "${result_dir}/summary_timings_tbl_run_${INRUN}.csv"
+  fi
 }
 
 case "$1" in
