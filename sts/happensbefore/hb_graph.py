@@ -775,7 +775,7 @@ class HappensBeforeGraph(object):
     # will get us the other event that has been part of the race
     
     rw_races_with_trace = list()
-    for race in self.race_detector.races_harmful:
+    for race in self.race_detector.races_harmful_with_covered:
       if race.rtype == 'r/w':
         # i_event is read, k_event is write
         if race.i_event.eid in racing_eids or race.k_event.eid in racing_eids:
@@ -896,7 +896,7 @@ class HappensBeforeGraph(object):
     remaining_harmful_races = set()
     
     # remove all races that were already removed due to time based rules
-    for r in self.race_detector.races_harmful:
+    for r in self.race_detector.races_harmful_with_covered:
       if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
         # race is not a race anymore
         time_races.add(r)
@@ -1189,7 +1189,7 @@ class HappensBeforeGraph(object):
     racing_versions_tuples = []
 
     ww_races = defaultdict(list)
-    for race in self.race_detector.races_harmful:
+    for race in self.race_detector.races_harmful_with_covered:
       if race.rtype == 'w/w':
         ww_races[race.i_event.eid].append(race.k_event.eid)
         ww_races[race.k_event.eid].append(race.i_event.eid)

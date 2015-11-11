@@ -110,6 +110,10 @@ class RaceDetector(object):
     return self._races_harmful
 
   @property
+  def races_harmful_with_covered(self):
+    return list(set(self.races_harmful).union(set(self.covered_races)))
+  
+  @property
   def time_edges_counter(self):
     return self._time_edges_counter
 
