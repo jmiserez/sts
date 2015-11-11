@@ -18,15 +18,13 @@ keys.append('num_read')
 keys.append('num_writes')
 keys.append('num_ops')
 
-
-keys.append('num_rw_time_edges')
-keys.append('num_ww_time_edges')
 keys.append('num_time_edges')
 
+keys.append('num_races')
 keys.append('num_harmful')
 keys.append('num_commute')
-keys.append('num_races')
 keys.append('num_covered')
+keys.append('num_time_filtered_races')
 
 keys.append('num_per_pkt_races')
 keys.append('num_per_pkt_inconsistent')
