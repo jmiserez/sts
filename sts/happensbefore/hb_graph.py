@@ -311,13 +311,16 @@ class HappensBeforeGraph(object):
       duration = expiry.duration_sec*10^9 + expiry.duration_nsec      
       
       # create "dummy" operation that acts as a strict delete 
-      del_event = ofp_flow_mod(match=flow_mod.match,priority=flow_mod.priority,command=OFPFC_DELETE_STRICT)
+      class DummyObject(object):
+        pass
+      dummy_event = DummyObject()
+      dummy_op = DummyObject()
+      dummy_event.eid = event.eid
+      dummy_op.flow_mod = ofp_flow_mod(match=flow_mod.match,priority=flow_mod.priority,command=OFPFC_DELETE_STRICT)
       
-      i_ops = [expiry]
-  
       # Find other write events in the graph.
       for e in self.events:
-        if e == del_event:
+        if e == event:
           continue
         # Skip none switch event
         if type(e) != HbMessageHandle:
@@ -333,34 +336,26 @@ class HappensBeforeGraph(object):
         if (not kw_ops) and (not kr_ops):
           continue
         # Make the edge
-        done = False
-        for i_op in i_ops:
-          if done:
+        for kw_op in kw_ops:
+          # Skip if events commute anyway
+          if self.race_detector.commutativity_checker.check_commutativity_ww(
+                  e, kw_op, dummy_event, dummy_op):
+            continue
+          delta = abs(expiry.t - kw_op.t)
+          if delta > self.ww_delta:
+            self._time_hb_ww_edges_counter += 1
+            self._add_edge(e, event, sanity_check=False, rel='time')
             break
-          for kw_op in kw_ops:
-            # Skip if events commute anyway
-            if self.race_detector.commutativity_checker.check_commutativity_ww(
-                    del_event, i_op, e, kw_op):
-              continue
-            delta = abs(i_op.t - kw_op.t)
-            if delta > self.ww_delta:
-              self._time_hb_ww_edges_counter += 1
-              self._add_edge(e, event, sanity_check=False, rel='time')
-              done = True
-              break
-          if done:
+        for kr_op in kr_ops:
+          # Skip if events commute anyway
+          if self.race_detector.commutativity_checker.check_commutativity_rw(
+                  e, kr_op, dummy_event, dummy_op):
+            continue
+          delta = abs(expiry.t - kr_op.t)
+          if delta > self.rw_delta:
+            self._time_hb_rw_edges_counter += 1
+            self._add_edge(e, event, sanity_check=False, rel='time')
             break
-          for kr_op in kr_ops:
-            # Skip if events commute anyway
-            if self.race_detector.commutativity_checker.check_commutativity_rw(
-                    del_event, i_op, e, kr_op):
-              continue
-            delta = abs(i_op.t - kr_op.t)
-            if delta > self.ww_delta:
-              self._time_hb_rw_edges_counter += 1
-              self._add_edge(e, event, sanity_check=False, rel='time')
-              done = True
-              break
     
   def _rule_06_time_rw(self, event):
     if type(event) not in [HbPacketHandle]:

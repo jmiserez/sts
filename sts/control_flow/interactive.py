@@ -235,7 +235,8 @@ class Interactive(ControlFlow):
   checking for invariants at the users' discretion
   '''
   def __init__(self, simulation_cfg, input_logger=None,
-               pass_through_of_messages=True, default_dp_permit=True):
+               pass_through_of_messages=True, default_dp_permit=True,
+               apps=None):
     ControlFlow.__init__(self, simulation_cfg)
     self.sync_callback = RecordingSyncCallback(input_logger)
     self.logical_time = 0
@@ -257,6 +258,10 @@ class Interactive(ControlFlow):
     #   EVERYTHING  # The user controls everything, including message ordering
     # ]
     self.results_dir=None
+    # add apps
+    self.apps = apps
+    if self.apps is None:
+      self.apps = []
 
   def _log_input_event(self, event, **kws):
     # TODO(cs): redundant with Fuzzer._log_input_event
@@ -284,6 +289,8 @@ class Interactive(ControlFlow):
         self.default_connect_to_controllers(self.simulation)
       else:
         connect_to_controllers(self.simulation)
+      for app in self.apps:
+        app.controller_connected()
     else:
       self.simulation = simulation
 
@@ -292,6 +299,7 @@ class Interactive(ControlFlow):
 
     self._forwarded_this_step = 0
     self.traffic_generator.set_topology(self.simulation.topology)
+    
     try:
       c = STSConsole(default_command=self.default_command)
       c.cmd_group("Simulation State")

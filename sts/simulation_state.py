@@ -138,12 +138,11 @@ class SimulationConfig(object):
       self.interpose_on_controllers = False
     self._hb_logger_class = hb_logger_class
     self._hb_logger_params = hb_logger_params
-    self.apps = {}
-    if apps is not None: # mapping name -> app
-      for k in apps:
-        assert k.app_name not in self.apps
-        k.start()
-        self.apps[k.app_name] = k
+    self.apps = apps
+    if self.apps is None:
+      self.apps = []
+    for app in self.apps:
+      app.initialize()
 
   def bootstrap(self, sync_callback=None, boot_controllers=default_boot_controllers,
                 results_dir=None):
@@ -243,7 +242,9 @@ class SimulationConfig(object):
     # Connect up MuxSelect if enabled
     (mux_select, demuxers) = monkeypatch_select(self.multiplex_sockets,
                                                 controller_manager)
-
+    for app in self.apps:
+      app.bootstrap()
+    
     simulation = Simulation(topology, controller_manager, dataplane_trace,
                             openflow_buffer, io_master, controller_patch_panel,
                             patch_panel, sync_callback, mux_select, demuxers,
@@ -303,6 +304,8 @@ class Simulation(object):
     self.demuxers = demuxers
     self.hb_logger = hb_logger
     self.apps = apps
+    if self.apps is None:
+      self.apps = []
 
   def set_exit_code(self, code):
     self.exit_code = code
@@ -345,7 +348,10 @@ class Simulation(object):
     msg.unset_io_master()
     if self._io_master is not None:
       self._io_master.close_all()
+    for app in self.apps:
+      app.simulation_clean_up()
     self.hb_logger.close()
+    
 
   @property
   def io_master(self):

@@ -143,9 +143,9 @@ class Fuzzer(ControlFlow):
     self.delay_flow_mods = False
     self.send_init_packets = send_init_packets
     # add apps
-    if apps is None:
-      apps = []
     self.apps = apps
+    if self.apps is None:
+      self.apps = []
     
 
   def _log_input_event(self, event, **kws):
@@ -243,12 +243,17 @@ class Fuzzer(ControlFlow):
       # Always connect to controllers explicitly
       self._log_input_event(ConnectToControllers())
       self.simulation.connect_to_controllers()
+      for app in self.apps:
+        app.controller_connected()
 
       if self.delay_startup:
         # Wait until the first OpenFlow message is received
         log.info("Waiting until first OpenFlow message received..")
         while len(self.simulation.openflow_buffer.pending_receives) == 0:
           self.simulation.io_master.select(self.delay)
+          
+      for app in self.apps:
+        app.check_app_beginning(self)
 
       while self.logical_time < end_time:
         self.logical_time += 1
@@ -565,11 +570,19 @@ class Fuzzer(ControlFlow):
       for host in self.simulation.topology.hosts:
         if self.random.random() < self.params.traffic_generation_rate:
           if len(host.interfaces) > 0:
-            msg.event("Injecting a random packet")
-            traffic_type = "icmp_ping"
-            (dp_event, send) = self.traffic_generator.generate(traffic_type, host)
-            self._log_input_event(TrafficInjection(dp_event=dp_event))
-            send()
+            if len(self.params.vip_ip_list) > 0 and self.random.random() < self.params.vip_traffic_percentage:
+              dst_ip = IPAddr(random.choice(self.params.vip_ip_list))
+              msg.event("Injecting a random VIP packet to "+str(dst_ip))
+              traffic_type = "icmp_ping"
+              (dp_event, send) = self.traffic_generator.generate_ip(traffic_type, host, dst_ip)
+              self._log_input_event(TrafficInjection(dp_event=dp_event))
+              send()
+            else:
+              msg.event("Injecting a random packet")
+              traffic_type = "icmp_ping"
+              (dp_event, send) = self.traffic_generator.generate(traffic_type, host)
+              self._log_input_event(TrafficInjection(dp_event=dp_event))
+              send()
 
   def check_controllers(self):
     def crash_controllers():
