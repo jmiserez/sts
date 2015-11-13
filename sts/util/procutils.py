@@ -139,8 +139,11 @@ def _prefix_thread(f, func):
       prefixThreadOutputMatcher.match_line(line)
       if not line:
         break
-      with printlock:
-        print func(line)
+#       with printlock:
+#         print func(line)
+      # NOTE(jm): The printlock caused hangs with ONOS. This seems to "work". 
+      #           see: https://stackoverflow.com/questions/3029816/how-do-i-get-a-thread-safe-print-in-python-2-6
+      sys.stdout.write(str(func(line))+'\n')
     try:
       sys.stderr.write("Closing fd %d\n" % f)
       f.close() # idempotent, in case the f.closed broke out of the while loop
