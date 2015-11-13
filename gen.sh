@@ -5,7 +5,7 @@ generate_results(){
 
   rm -f "${result_dir}"/*.dat
 
-  teefile="${result_dir}/gen_sh_output.out"
+  teefile="${result_dir}/gen_sh_generate_results.out"
   rm -f "$teefile"
 
 
@@ -37,6 +37,10 @@ generate_results(){
 
 format_results(){
   if [ -z "$result_dir" ]; then exit 1; fi
+  
+  teefile="${result_dir}/gen_sh_format_results.out"
+  rm -f "$teefile"
+
   echo "Formatting results"
 
   rm -f "${result_dir}/summary.csv"
@@ -44,7 +48,7 @@ format_results(){
   rm -f "${result_dir}/summary_tbl.csv"
   rm -f "${result_dir}/summary_timings_tbl.csv"
 
-  ./format_results.py ${result_dir}
+  ./format_results.py ${result_dir} 2>&1 | tee -a "$teefile"
 
   if [[ ${INRUN} ]];
   then
