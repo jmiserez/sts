@@ -71,6 +71,9 @@ class HappensBeforeLogger(EventMixin):
     self.controller_packetin_mid_out_to_HbControllerHandle = dict() # mid_out -> HbControllerHandle
     self.controller_packetin_mid_out_to_temporary_tag = dict() # mid_out -> HbControllerHandle
     
+    self.decoded_msg_to_rxbase64 = dict()
+    self.decoded_line_msg = dict()
+    
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_in)
     prefixThreadOutputMatcher.add_string_to_match(self.controller_hb_msg_out)
     prefixThreadOutputMatcher.addListener(PrefixThreadLineMatch, self.handle_no_exceptions)
@@ -578,7 +581,15 @@ class HappensBeforeLogger(EventMixin):
     '''
     timestamp, mid_out, msg = unmatched_entry #tuple
     # TODO(jm): performance: do not decode every time we do the comparison, only decode once
-    if self.compare_msg(msg, base64_decode_openflow(line_msg)):
+    
+    # TODO(jm): hack: we add caching to to this, but it really should be done somewhere else
+    if line_msg in self.decoded_line_msg:
+      decoded_line_msg = self.decoded_line_msg[line_msg]
+    else:
+      decoded_line_msg = base64_decode_openflow(line_msg)
+      self.decoded_line_msg[line_msg] = decoded_line_msg
+    
+    if self.compare_msg(msg, decoded_line_msg):
       self.controller_packetin_to_mid_out[(dpid,line_msg)] = mid_out
       temporary_tag = self.mids.generate_unused_tag()
       event = HbControllerHandle(mid_out, temporary_tag)
@@ -598,7 +609,20 @@ class HappensBeforeLogger(EventMixin):
     timestamp, mid_in, msg = unmatched_entry #tuple
     # TODO(jm): performance: do not decode every time we do the comparison, only decode once
     # TODO(jm): performance: do not fetch rxbase64 every time, only do it once
-    if self.compare_msg(base64_decode_openflow(self._get_rxbase64(msg)), base64_decode_openflow(line_msg)):
+    
+    # TODO(jm): hack: we add caching to to this, but it really should be done somewhere else
+    if msg in self.decoded_msg_to_rxbase64:
+      decoded_msg = self.decoded_msg_to_rxbase64[msg]
+    else:
+      decoded_msg = base64_decode_openflow(self._get_rxbase64(msg))
+      self.decoded_msg_to_rxbase64[msg] = decoded_msg
+    if line_msg in self.decoded_line_msg:
+      decoded_line_msg = self.decoded_line_msg[line_msg]
+    else:
+      decoded_line_msg = base64_decode_openflow(line_msg)
+      self.decoded_line_msg[line_msg] = decoded_line_msg
+    
+    if self.compare_msg(decoded_msg, decoded_line_msg):
       first_event = self.controller_packetin_mid_out_to_HbControllerHandle[mid_out]
       temporary_tag = self.controller_packetin_mid_out_to_temporary_tag[mid_out]
       second_event = HbControllerSend(temporary_tag, mid_in)
