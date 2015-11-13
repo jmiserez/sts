@@ -20,11 +20,6 @@ run_per_trace_dir() {
   echo "./gen.sh $1"
   ./gen.sh "$1"
   popd > /dev/null
-  pushd "$1" > /dev/null
-  TRACE_DIR=$(readlink -f $1)
-  echo "$STS_DIR/plot.py $TRACE_DIR"
-  $STS_DIR/plot.py "$TRACE_DIR"
-  popd > /dev/null
 }
 export -f run_per_trace_dir
 
@@ -138,11 +133,6 @@ echo "NUM_CPU_CORES=$NUM_CPU_CORES, NUM_THREADS=$NUM_THREADS"
 if [ "$NUM_THREADS" -gt 0 ]
 then
   printf "%s\x00" "${trace_dirs_array[@]}" | xargs -0 -I{} -n 1 -P $NUM_CPU_CORES bash -c 'func_call_by_name run_per_trace_dir {}'
-  pushd "$WORKSPACE" > /dev/null
-  echo "cross_summary.sh"
-  pushd "$1" > /dev/null
-  find "$WORKSPACE" -maxdepth 1 -type d -name "$MATCHPATTERN" -print0 | sort -nz | xargs -0 -n "${#trace_dirs_array[@]}" -x $STS_DIR/cross_summary.sh
-  popd > /dev/null
 fi
 
 rm -rf "$CURRENT_TMP_DIR"

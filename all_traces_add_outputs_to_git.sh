@@ -21,12 +21,6 @@ run_per_trace_dir(){
   git add results_\*.dat
   git add \*summary.csv
   git add \*summary_tbl.csv
-  # add timings
-  git add timings_\*.dat
-  git add \*summary_timings.csv
-  git add \*summary_timings_tbl.csv
-  # add plots
-  git add \*.pdf
   popd > /dev/null
 }
 export -f run_per_trace_dir
@@ -88,11 +82,6 @@ export -f func_call_by_name
 #    -i use {}
 #    -n 1 pass at most 1 entry from the array to each process
 #    -P N run N processes in parallel
-
-pushd "$WORKSPACE" > /dev/null
-git add cross_summary.csv
-git add cross_summary_timings.csv
-popd > /dev/null
 
 if [ "${#trace_dirs_array[@]}" -gt 0 ]
 then
