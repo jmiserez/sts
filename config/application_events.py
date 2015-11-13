@@ -375,6 +375,7 @@ class AppFloodlightLoadBalancer(ControllerApp):
           pools.append(current_pool)
           current_pool = list()
       # last pool may be smaller
+      pools.append(current_pool)
       
       while len(pools) > 0:
         c = pools.pop()
@@ -408,8 +409,7 @@ class AppFloodlightLoadBalancer(ControllerApp):
                                        '{"id": "%s",'
                                        ' "name": "pool%s",'
                                        ' "protocol": "icmp",'
-                                       ' "vip_id": "%s",'
-                                       ' "port":"8"'
+                                       ' "vip_id": "%s"'
                                        '}\''
                                        % (self.controller,
                                           pool_id,
