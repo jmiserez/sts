@@ -3,7 +3,7 @@ Shadow flow table for tracking read-after-write dependencies
 """
 
 from collections import defaultdict
-from bisect import bisect
+from bisect import bisect_left
 
 from pox.openflow.flow_table import FlowTableModification
 
@@ -84,7 +84,7 @@ class ShadowFlowTable(object):
       
       if modifying_eids:
         # only consider events that happened before this read, i.e. strictly less than eid
-        i = bisect.bisect_left(modifying_eids, eid)
+        i = bisect_left(modifying_eids, eid)
         if i:
           deps.append(modifying_eids[i-1])
       else:
