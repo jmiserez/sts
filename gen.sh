@@ -3,19 +3,20 @@
 generate_results(){
   if [ -z "$result_dir" ]; then exit 1; fi
 
-  rm -f "${result_dir}/*.dat"
+  rm -f "${result_dir}"/*.dat
 
-  echo "==============================================="
-  echo "Running HB Graph with alt-barr and delta=inf"
-  echo "==============================================="
-  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --alt-barr --data-deps
-  for x in {0..10};
-  do
-    echo "=============================================="
-    echo "Running HB Graph with alt-barr and delta=$x"
-    echo "=============================================="
-    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --alt-barr --hbt --data-deps
-  done
+
+#  echo "==============================================="
+#  echo "Running HB Graph with alt-barr and delta=inf"
+#  echo "==============================================="
+#  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --alt-barr --data-deps
+#  for x in {0..10};
+#  do
+#    echo "=============================================="
+#    echo "Running HB Graph with alt-barr and delta=$x"
+#    echo "=============================================="
+#    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --alt-barr --hbt --data-deps
+#  done
 
   echo "==============================================="
   echo "Running HB Graph WITHOUT alt-barr and delta=inf"
@@ -41,6 +42,12 @@ format_results(){
   rm -f "${result_dir}/summary_timings_tbl.csv"
 
   ./format_results.py ${result_dir}
+
+  if [[ ${INRUN} ]];
+  then
+    echo "Backing up"
+    mv "${result_dir}/summary_timings_tbl.csv" "${result_dir}/summary_timings_tbl_run_${INRUN}.csv"
+  fi
 }
 
 case "$1" in

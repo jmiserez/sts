@@ -661,7 +661,7 @@ class HappensBeforeGraph(object):
             label += "\\nt: " + repr(x.t)
             shape = 'box'
             break
-          if getattr(event.msg, 'actions', None):
+          if hasattr(event, 'msg') and getattr(event.msg, 'actions', None):
             op = "\\nActions: " + str(event.msg.actions)
       cmd_type = data.get('cmd_type')
       if cmd_type:
@@ -770,7 +770,7 @@ class HappensBeforeGraph(object):
     # will get us the other event that has been part of the race
     
     rw_races_with_trace = list()
-    for race in self.race_detector.races_harmful:
+    for race in self.race_detector.races_harmful_with_covered:
       if race.rtype == 'r/w':
         # i_event is read, k_event is write
         if race.i_event.eid in racing_eids or race.k_event.eid in racing_eids:
@@ -891,7 +891,7 @@ class HappensBeforeGraph(object):
     remaining_harmful_races = set()
     
     # remove all races that were already removed due to time based rules
-    for r in self.race_detector.races_harmful:
+    for r in self.race_detector.races_harmful_with_covered:
       if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True):
         # race is not a race anymore
         time_races.add(r)
@@ -939,6 +939,8 @@ class HappensBeforeGraph(object):
                   if r not in covered_races and r not in data_dep_races:
                     if self.has_path(r.i_event.eid, r.k_event.eid, bidirectional=True, use_path_cache=False):
                       # race is not a race anymore
+                      self.race_detector._races_harmful.remove(r)
+                      self.race_detector.covered_races.append(r)
                       covered_races[r] = (eid, write_eid)
     self.covered_races = covered_races
     return self.covered_races
@@ -1182,7 +1184,7 @@ class HappensBeforeGraph(object):
     racing_versions_tuples = []
 
     ww_races = defaultdict(list)
-    for race in self.race_detector.races_harmful:
+    for race in self.race_detector.races_harmful_with_covered:
       if race.rtype == 'w/w':
         ww_races[race.i_event.eid].append(race.k_event.eid)
         ww_races[race.k_event.eid].append(race.i_event.eid)
@@ -1350,10 +1352,11 @@ class Main(object):
     print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
     print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
     print "Number of packet inconsistent updates: ", len(racing_versions)
-    print "Number of races: ", str(len(self.graph.race_detector.races_commute)+len(self.graph.race_detector.races_harmful))
+    print "Number of races: ", self.graph.race_detector.total_races
+    print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
     print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
     print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-    print "Number of covered races: ", len(covered_races)
+    print "Number of covered races: ", self.graph.race_detector.total_covered
     print "Number of versions:", len(versions)
     print "Inconsistent updates:", len(racing_versions_tuples)
 
@@ -1399,14 +1402,13 @@ class Main(object):
     num_read = len(self.graph.race_detector.read_operations)
     num_ops = num_writes + num_read
 
-    num_harmful = len(self.graph.race_detector.races_harmful)
-    num_commute = len(self.graph.race_detector.races_commute)
-    num_races = num_harmful + num_commute
-    num_covered = len(covered_races)
+    num_harmful = self.graph.race_detector.total_harmful
+    num_commute = self.graph.race_detector.total_commute
+    num_races = self.graph.race_detector.total_races
+    num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
+    num_covered = self.graph.race_detector.total_covered
 
-    num_rw_time_edges = self.graph.race_detector.time_hb_rw_edges_counter
-    num_ww_time_edges = self.graph.race_detector.time_hb_ww_edges_counter
-    num_time_edges = num_rw_time_edges + num_ww_time_edges
+    num_time_edges = self.graph.race_detector.time_edges_counter
 
     num_per_pkt_races = len(packet_races)
     num_per_pkt_inconsistent = len(inconsistent_packet_traces)
@@ -1426,22 +1428,28 @@ class Main(object):
       write_general_info_to_file(f)
 
       # Operations
+      f.write('num_events,%d\n' % self.graph.g.number_of_nodes())
+      f.write('num_edges,%d\n' % self.graph.g.number_of_edges())
       f.write('num_read,%d\n' % num_read)
       f.write('num_writes,%d\n' % num_writes)
       f.write('num_ops,%d\n' % num_ops)
 
       # HB time edges
-      f.write('num_rw_time_edges,%d\n' % num_rw_time_edges)
-      f.write('num_ww_time_edges,%d\n' % num_ww_time_edges)
       f.write('num_time_edges,%d\n' % num_time_edges)
 
       # Races info
+      # One last check
+      assert num_races == num_commute + num_covered + num_harmful + num_time_filtered_races
+      f.write('num_races,%d\n' % num_races)
       f.write('num_harmful,%d\n' % num_harmful)
       f.write('num_commute,%d\n' % num_commute)
-      f.write('num_races,%d\n' % num_races)
+      f.write('num_time_filtered_races,%d\n' % num_time_filtered_races)
       f.write('num_covered,%d\n' % num_covered)
 
       # Inconsistency
+      f.write('num_pkts,%d\n' % len(self.graph.host_sends))
+      assert len(self.graph.host_sends) >= num_per_pkt_races
+      assert num_per_pkt_races == num_per_pkt_inconsistent + num_per_pkt_inconsistent_covered + num_per_pkt_entry_version_race
       f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
       f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
       f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
@@ -1471,6 +1479,7 @@ def auto_int(x):
 
 
 if __name__ == '__main__':
+  empty_delta = 1000000
   parser = argparse.ArgumentParser()
   parser.add_argument('trace_file')
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
@@ -1482,6 +1491,8 @@ if __name__ == '__main__':
   parser.add_argument('--hbt', dest='hbt', action='store_true', default=False,
                       help="Add HB edges based on tqime")
   parser.add_argument('--rw_delta', dest='rw_delta', default=5, type=int,
+                      help="delta time (in secs) for adding HB edges based on time")
+  parser.add_argument('--time-delta', dest='delta', default=empty_delta, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--ww_delta', dest='ww_delta', default=5, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
@@ -1508,6 +1519,11 @@ if __name__ == '__main__':
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
   args = parser.parse_args()
+  if args.hbt:
+    if args.delta == empty_delta:
+      assert args.rw_delta == args.ww_delta
+    else:
+      args.rw_delta = args.ww_delta = args.delta
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
               add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
