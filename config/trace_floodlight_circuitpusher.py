@@ -6,7 +6,7 @@ from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
-from config.application_events import AppCircuitPusher
+from config.application_events import AppFloodlightCircuitPusher
 
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
              '''./target/floodlight.jar '''
@@ -18,9 +18,9 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 # start_cmd = '''echo "no-op"'''
 # controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633, controller_type='dummy')]
 
-num = 1
-#topology_class = StarTopology
-#topology_params = "num_hosts=%d" % num
+num = 2
+topology_class = StarTopology
+topology_params = "num_hosts=%d" % num
 #topology_class = MeshTopology
 #topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
@@ -28,10 +28,10 @@ num = 1
 topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
-steps = 100
+steps = 200
 results_dir = "traces/trace_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
-apps = [AppCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
+apps = [AppFloodlightCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
 simulation_config = SimulationConfig(controller_configs=controllers,
                                      topology_class=topology_class,
