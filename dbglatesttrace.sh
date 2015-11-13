@@ -10,6 +10,12 @@ function mytracefun() {
   cat $TRACEDIR/simulator.out | wc -l
   echo -n "simulator.out rounds: "
   cat $TRACEDIR/simulator.out | grep Round | tail -n 1 | cut -d' ' -f1,2
+  echo -n "simulator.out # of: warn "
+  cat $TRACEDIR/simulator.out | grep -i -c warn
+  echo -n "simulator.out # of: error "
+  cat $TRACEDIR/simulator.out | grep -i -c error
+  echo -n "simulator.out # of: assertion "
+  cat $TRACEDIR/simulator.out | grep -i -c assertion
 }
 export -f mytracefun
 watch -n 1 bash -c "mytracefun"
