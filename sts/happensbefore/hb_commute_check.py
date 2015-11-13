@@ -248,11 +248,12 @@ class CommutativityChecker(object):
     if self.is_add(k_fm):
       return not self.nocommute_read_add(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
 
-    # mod
+    # del
     if self.is_del(k_fm):
       return not self.nocommute_read_del(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
 
-    # del
+    # mod
+    if self.is_mod(k_fm):
       return not self.nocommute_read_mod(pkt_match, i_retval, k_fm, i_event.eid, k_event.eid)
 
     print "Warning: Unhandled r/w commutativity case!"
