@@ -18,6 +18,7 @@ run_per_trace_dir(){
   echo "Add to git in $1"
   pushd "$1" > /dev/null
   # add results
+  git add gen_sh_output.out
   git add results_\*.dat
   git add \*summary.csv
   git add \*summary_tbl.csv

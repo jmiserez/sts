@@ -5,29 +5,32 @@ generate_results(){
 
   rm -f "${result_dir}"/*.dat
 
+  teefile="${result_dir}/gen_sh_output.out"
+  rm -f "$teefile"
+
 
 #  echo "==============================================="
 #  echo "Running HB Graph with alt-barr and delta=inf"
 #  echo "==============================================="
-#  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --alt-barr --data-deps
+#  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --alt-barr --data-deps 2>&1 | tee -a "$teefile"
 #  for x in {0..10};
 #  do
 #    echo "=============================================="
 #    echo "Running HB Graph with alt-barr and delta=$x"
 #    echo "=============================================="
-#    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --alt-barr --hbt --data-deps
+#    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --alt-barr --hbt --data-deps 2>&1 | tee -a "$teefile"
 #  done
 
   echo "==============================================="
   echo "Running HB Graph WITHOUT alt-barr and delta=inf"
   echo "==============================================="
-  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --data-deps
+  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --data-deps 2>&1 | tee -a "$teefile"
   for x in {0..10};
   do
     echo "=============================================="
     echo "Running HB Graph WITHOUT alt-barr and delta=$x"
     echo "=============================================="
-    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --hbt --data-deps
+    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --hbt --data-deps 2>&1 | tee -a "$teefile"
   done
 
 }
