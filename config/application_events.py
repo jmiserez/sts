@@ -264,19 +264,6 @@ class AppFloodlightFirewall(ControllerApp):
                                      ' -d \''
                                      '{"src-ip": "%s/32",'
                                      ' "dst-ip": "%s/32",'
-                                     ' "dl-type": "IPv4"'
-                                     '}\''
-                                     % (self.controller,
-                                        str(c[0].toStr()),
-                                        str(c[1].toStr())
-                                        )
-                                     )
-                     )
-      cmdlist.append(cmdline_to_args('curl -s -X POST'
-                                     ' http://%s/wm/firewall/rules/json'
-                                     ' -d \''
-                                     '{"src-ip": "%s/32",'
-                                     ' "dst-ip": "%s/32",'
                                      ' "dl-type": "ARP"'
                                      '}\''
                                      % (self.controller,
@@ -295,6 +282,45 @@ class AppFloodlightFirewall(ControllerApp):
                                      % (self.controller,
                                         str(c[1].toStr()),
                                         str(c[0].toStr())
+                                        )
+                                     )
+                     )
+      cmdlist.append(cmdline_to_args('curl -s -X POST'
+                                     ' http://%s/wm/firewall/rules/json'
+                                     ' -d \''
+                                     '{"src-ip": "%s/32",'
+                                     ' "dst-ip": "%s/32",'
+                                     ' "dl-type": "IPv4"'
+                                     '}\''
+                                     % (self.controller,
+                                        str(c[0].toStr()),
+                                        str(c[1].toStr())
+                                        )
+                                     )
+                     )
+      cmdlist.append(cmdline_to_args('curl -s -X POST'
+                                     ' http://%s/wm/firewall/rules/json'
+                                     ' -d \''
+                                     '{"src-ip": "%s/32",'
+                                     ' "dst-ip": "%s/32",'
+                                     ' "nw-proto": "ICMP"'
+                                     '}\''
+                                     % (self.controller,
+                                        str(c[1].toStr()),
+                                        str(c[0].toStr())
+                                        )
+                                     )
+                     )
+      cmdlist.append(cmdline_to_args('curl -s -X POST'
+                                     ' http://%s/wm/firewall/rules/json'
+                                     ' -d \''
+                                     '{"src-ip": "%s/32",'
+                                     ' "dst-ip": "%s/32",'
+                                     ' "nw-proto": "ICMP"'
+                                     '}\''
+                                     % (self.controller,
+                                        str(c[0].toStr()),
+                                        str(c[1].toStr())
                                         )
                                      )
                      )

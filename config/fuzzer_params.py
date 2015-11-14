@@ -21,5 +21,5 @@ app_floodlight_circuitpusher_add_rate = 0.5
 app_floodlight_circuitpusher_add_parallelism = 1
 app_floodlight_circuitpusher_del_rate = 0.1
 app_floodlight_circuitpusher_del_parallelism = 1
-app_floodlight_firewall_allow_percentage = 0.5
+app_floodlight_firewall_allow_percentage = 0.8
 app_floodlight_load_balancer_pool_size = 2
