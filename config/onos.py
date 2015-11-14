@@ -6,7 +6,6 @@ from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
-from config.application_events import AppCircuitPusher
 
 
 
@@ -16,17 +15,17 @@ start_cmd = '''tail -f "/home/jeremie/Applications/apache-karaf-3.0.3/data/log/k
 controllers = [ControllerConfig(start_cmd, controller_type='logfile', cwd='./')]
 
 num = 2
-topology_class = StarTopology
-topology_params = "num_hosts=%d" % num
+# topology_class = StarTopology
+# topology_params = "num_hosts=%d" % num
 # topology_class = MeshTopology
 # topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
-# topology_class = BinaryLeafTreeTopology
-# topology_params = "num_levels=%d" % num
+topology_class = BinaryLeafTreeTopology
+topology_params = "num_levels=%d" % num
 
 steps = 200
-results_dir = "traces/trace_onos-ifwd-%s%d-steps%s" % (topology_class.__name__, num, steps)
+results_dir = "traces/trace_onos_ifwdnoinstr-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = None
 

@@ -19,8 +19,8 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 # controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633, controller_type='dummy')]
 
 num = 2
-topology_class = StarTopology
-topology_params = "num_hosts=%d" % num
+# topology_class = StarTopology
+# topology_params = "num_hosts=%d" % num
 #topology_class = MeshTopology
 #topology_params = "num_switches=%d" % num
 # topology_class = GridTopology

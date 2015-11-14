@@ -11,26 +11,26 @@ from config.application_events import AppFloodlightFirewall
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
              '''./target/floodlight.jar '''
               '''-cf ./src/main/resources/trace_firewall.properties''')
-
+  
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
 # start_cmd = '''echo "no-op"'''
 # controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633, controller_type='dummy')]
 
-num = 1
+num = 4
 # topology_class = StarTopology
 # topology_params = "num_hosts=%d" % num
-# topology_class = MeshTopology
-# topology_params = "num_switches=%d" % num
+topology_class = MeshTopology
+topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
-topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=%d" % num
+# topology_class = BinaryLeafTreeTopology
+# topology_params = "num_levels=%d" % num
 
 steps = 200
 results_dir = "traces/trace_floodlight_firewall-%s%d-steps%s" % (topology_class.__name__, num, steps)
-
+# results_dir = "xtraces/trace_floodlight_firewall-%s%d-small" % (topology_class.__name__, num)
 apps = [AppFloodlightFirewall('firewall', cwd='./', controller='localhost:8080')]
 
 simulation_config = SimulationConfig(controller_configs=controllers,

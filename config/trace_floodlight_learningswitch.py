@@ -6,7 +6,6 @@ from sts.control_flow.interactive import Interactive
 from sts.input_traces.input_logger import InputLogger
 from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
-from config.application_events import AppCircuitPusher
 
 start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
              '''./target/floodlight.jar '''
@@ -18,7 +17,7 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 # start_cmd = '''echo "no-op"'''
 # controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633, controller_type='dummy')]
 
-num = 1
+num = 2
 # topology_class = StarTopology
 # topology_params = "num_hosts=%d" % num
 #topology_class = MeshTopology
