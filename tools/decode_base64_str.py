@@ -17,6 +17,7 @@ from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.icmp import icmp
 from pox.lib.packet.ipv4 import ipv4
 from pox.openflow.flow_table import TableEntry
+import pox.openflow.libopenflow_01 as of
 
 """
 Sample usages:
@@ -89,6 +90,18 @@ def main(args):
 #     print "recursive print:"
 #     print "=========="
 #     recursive_print(msg, depth=args.depth)
+    print msg.header_type
+    if msg.header_type in (of.ofp_type_rev_map['OFPT_PACKET_IN'],
+                      of.ofp_type_rev_map['OFPT_PACKET_OUT']):
+      pkt = ethernet(raw=msg.data)
+      print "=========="
+      print "data -> pkt_info:"
+      print "=========="
+      print hbu.pkt_info(pkt)
+#       print "=========="
+#       print "recursive pkt print:"
+#       print "=========="
+#       recursive_print(pkt, depth=args.depth)
 
   def print_flowmod(fm):
     fm = hbu.decode_flow_mod(fm)
