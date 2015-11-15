@@ -19,11 +19,11 @@ controllers = [ControllerConfig(start_cmd, cwd="../pox/")]
 
 
 
-num = 1
-topology_class = StarTopology
-topology_params = "num_hosts=%d" % num
-# topology_class = MeshTopology
-# topology_params = "num_switches=%d" % num
+num = 2
+#topology_class = StarTopology
+#topology_params = "num_hosts=%d" % num
+#topology_class = MeshTopology
+#topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
 topology_class = BinaryLeafTreeTopology
@@ -31,7 +31,7 @@ topology_params = "num_levels=%d" % num
 
 steps = 200
 # Where should the output files be written to
-results_dir = "traces/trace_pox_eel_l2_learning-%s%d-steps%s" % (topology_class.__name__, num, steps)
+results_dir = "traces/trace_pox_eel_learningswitch-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = None
 
