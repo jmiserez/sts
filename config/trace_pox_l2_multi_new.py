@@ -15,17 +15,17 @@ from sts.happensbefore.hb_logger import HappensBeforeLogger
 # Use POX as our controller
 
 
-start_cmd = (" ./pox.py --verbose openflow.of_01 --address=__address__ --port=__port__  openflow.discovery forwarding.l2_multi_orig")
+start_cmd = (" ./pox.py --verbose openflow.of_01 --address=__address__ --port=__port__  openflow.discovery forwarding.l2_multi")
 
 #start_cmd = '''echo "no-op"'''
 #controllers = [ControllerConfig(start_cmd, cwd="pox/", address="192.168.56.1", port=6633, controller_type='dummy')]
 controllers = [ControllerConfig(start_cmd, cwd="/home/ahassany/repos/pox/", port=6633)]
 
 num = 2
-topology_class = StarTopology
-topology_params = "num_hosts=%d" % num
-topology_class = MeshTopology
-topology_params = "num_switches=%d" % num
+#topology_class = StarTopology
+#topology_params = "num_hosts=%d" % num
+#topology_class = MeshTopology
+#topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
 topology_class = BinaryLeafTreeTopology
@@ -33,7 +33,7 @@ topology_params = "num_levels=%d" % num
 
 steps = 200
 # Where should the output files be written to
-results_dir = "traces/trace_pox_eel_l2_multi-%s%d-steps%s" % (topology_class.__name__, num, steps)
+results_dir = "traces/trace_pox_eel_l2_multi_fixed-%s%d-steps%s" % (topology_class.__name__, num, steps)
 #results_dir = "traces/ff_fixed"
 
 apps = None
