@@ -1174,6 +1174,7 @@ class HappensBeforeGraph(object):
     # Sort cmds by time, just to make it nicer
     for version in versions:
       versions[version].sort(key=lambda x: self.g.node[x]['event'].operations[0].t)
+    versions = dict([k, v] for k, v in versions.iteritems() if v)
     self.versions = versions
     return versions
 
