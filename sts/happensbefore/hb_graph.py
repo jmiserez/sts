@@ -1103,7 +1103,7 @@ class HappensBeforeGraph(object):
     from scipy.cluster.hierarchy import fclusterdata
     # TODO(jm): Should we add a setting for the threshold, or use STS rounds instead of time?
     features = [[e.operations[0].t] for e in cmds]
-    result = fclusterdata(features, 1, criterion="distance")
+    result = fclusterdata(features, 0.8, criterion="distance")
     clustered = defaultdict(list)
     for i in range(len(cmds)):
       clustered[result[i]].append(cmds[i])
