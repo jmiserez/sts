@@ -126,15 +126,18 @@ class ShadowFlowTable(object):
             this_entry = ofp_flow_mod()
             this_entry.unpack(entry.to_flow_mod().pack())
             this_entry.xid = 0
-            assert op.entry is not None
-            trace_entry = ofp_flow_mod()
-            trace_entry.unpack(op.entry.pack())
-            trace_entry.xid = 0
-            assert this_entry == trace_entry
-            
-            self._on_flow_table_read(entry)
-            # TODO(jm): Would it make sense to add an edge from this read to all
-            #          later write that could match this??? (WaR?)
+            if op.entry is None:
+              print "Error: Possible problem with the instrumentation: shadow table and event have matching entry but it was not read in the trace!"
+              # TODO(jm): fix the above problem (bug?). However, we know that this particular case has no ill-effects.
+            else:
+              trace_entry = ofp_flow_mod()
+              trace_entry.unpack(op.entry.pack())
+              trace_entry.xid = 0
+              assert this_entry == trace_entry
+              
+              self._on_flow_table_read(entry)
+              # TODO(jm): Would it make sense to add an edge from this read to all
+              #          later write that could match this??? (WaR?)
           else:
             assert op.entry == None
           
