@@ -8,10 +8,10 @@ from sts.simulation_state import SimulationConfig
 from sts.happensbefore.hb_logger import HappensBeforeLogger
 from config.application_events import AppFloodlightLoadBalancer
 
-start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-trace.xml -jar '''
+start_cmd = ('''java -ea -Dlogback.configurationFile=./src/main/resources/logback-test-trace.xml -jar '''
              '''./target/floodlight.jar '''
               '''-cf ./src/main/resources/trace_loadbalancer.properties''')
-
+ 
 controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0.1", port=6633)]
 
 # Uncomment this if you are running Floodlight separately, e.g. for debugging in Eclipse. There must be a controller listening on port 6633.
@@ -29,7 +29,7 @@ topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
 steps = 200
-results_dir = "traces/trace_floodlight_loadbalancer-%s%d-steps%s" % (topology_class.__name__, num, steps)
+results_dir = "paper/trace_floodlight_loadbalancer-fixed-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = [AppFloodlightLoadBalancer('loadbalancer', cwd='./', controller='localhost:8080')]
 

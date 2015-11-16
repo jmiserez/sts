@@ -335,11 +335,11 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       # between switch<->controller
       # Note that this isn't infinite recursion, since the table entry's
       # out_port will not be OFPP_TABLE
-      self.process_packet_internally(packet, in_port)
+      self.process_packet_internally(packet, in_port, cause_is_ofpp_table=True)
     else:
       raise RuntimeError("Unsupported virtual output port: %x" % out_port)
   
-  def process_packet_internally(self, packet, in_port):
+  def process_packet_internally(self, packet, in_port, cause_is_ofpp_table=False):
     assert_type("packet", packet, ethernet, none_ok=False)
     assert_type("in_port", in_port, int, none_ok=False)
     
@@ -352,6 +352,8 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
       entry.touch_packet(plen, now)
       self._process_actions_for_packet(entry.actions, packet, in_port)
     else:
+      if cause_is_ofpp_table:
+        self.log.warn("Switch-controller recursion: out_port is OFPP_TABLE, but no entry was found and packet is going back to switch as packet in.")
       # no matching entry
       self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, self.table, None, None, None))
       buffer_id = self._buffer_packet(packet, in_port)
