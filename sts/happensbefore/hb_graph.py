@@ -467,7 +467,7 @@ class HappensBeforeGraph(object):
       if type(event) == HbMessageHandle and getattr(event.msg, 'data', None):
         packet = ethernet(event.msg.data)
       if packet and packet.type in self.ignore_ethertypes:
-        print "Filtered PKT in ignore_ethertypes"
+#         print "Filtered PKT in ignore_ethertypes"
         return
 
     msg_type = getattr(event, 'msg_type', None)
