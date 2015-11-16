@@ -52,7 +52,7 @@ class ControllerApp(object):
     pass
   
 class AppFloodlightCircuitPusher(ControllerApp):
-  def __init__(self, app_name, cwd, runtime, script, controller):
+  def __init__(self, app_name, cwd, runtime, script, controller, background_process=False, wait_secs=0):
     super(AppFloodlightCircuitPusher, self).__init__(app_name)
     self._ids = itertools.count(0)
     self.cwd = cwd
@@ -63,8 +63,17 @@ class AppFloodlightCircuitPusher(ControllerApp):
     self.pending_install = []
     self.installed = []
     self.pending_removal = []
+    
+    self.ip_pair_for_id = dict()
+    self.free_ip_pairs = None
+    self.circuited_ip_pairs = []
   
     self.ids = dict() # ids -> tuples
+    
+    self.background_process = background_process
+    
+    self.wait_secs = wait_secs
+    self.last_action_time = None
     
     self.reentrantlock = RLock()    
     popenTerminationPublisher.addListener(PopenTerminationEvent, self._process_terminated)
@@ -74,6 +83,21 @@ class AppFloodlightCircuitPusher(ControllerApp):
   def init_clean_up(self):
     args = cmdline_to_args('/bin/bash -c "rm -f circuits.json"')
     cmd = popen_simple(args, self.cwd)
+  
+  def _has_free_ip_pairs(self):
+    return len(self.free_ip_pairs) > 0
+  
+  def _allocate_ip_pair(self, rng, circuit_id):
+    chosen_pair = rng.choice(self.free_ip_pairs)
+    self.free_ip_pairs.remove(chosen_pair)
+    self.circuited_ip_pairs.append(chosen_pair)
+    self.ip_pair_for_id[circuit_id] = chosen_pair
+    return chosen_pair
+    
+  def _release_ip_pair(self, circuit_id):
+    chosen_pair = self.ip_pair_for_id[circuit_id]
+    self.circuited_ip_pairs.remove(chosen_pair)
+    self.free_ip_pairs.append(chosen_pair)
     
   def _process_terminated(self, event):
     """
@@ -96,6 +120,7 @@ class AppFloodlightCircuitPusher(ControllerApp):
         if event.return_code == 0:
           self.pending_removal.remove(circuit_id)
           del self.ids[circuit_id]
+          self._release_ip_pair(circuit_id)
           print "Removed circuit: " + str(circuit_id)
         else:
           # error
@@ -104,7 +129,60 @@ class AppFloodlightCircuitPusher(ControllerApp):
         
   def _install_circuits(self, fuzzer, num_circuits):
     with self.reentrantlock:
-      candidate_ip_pairs = set()
+      num_remaining = num_circuits
+      while self._has_free_ip_pairs() and num_remaining > 0:
+        circuit_id = self._ids.next()
+        c = self._allocate_ip_pair(fuzzer.random, circuit_id)
+        print c
+        self.ids[circuit_id] = c
+        
+        args = cmdline_to_args(self.runtime + ' ' + self.script + ' --controller ' + self.controller + 
+                               ' --type ip --src ' + str(c[0].toStr()) + ' --dst ' + str(c[1].toStr()) + ' --add --name ' + str(circuit_id))
+
+        if self.background_process:
+          popen_background(circuit_id, args, self.cwd)
+          print "Installing circuit in background: "+str(c[0].toStr()) + " <-> " + str(c[1].toStr() + " (id: " + str(circuit_id) + ")")
+          # we will get notified when it is done
+          self.pending_install.append(circuit_id)
+        else:
+          self.pending_install.append(circuit_id)
+          print "Installing circuit (blocking): "+str(c[0].toStr()) + " <-> " + str(c[1].toStr() + " (id: " + str(circuit_id) + ")")
+          event = popen_blocking(circuit_id, args, self.cwd)
+          self._process_terminated(event)
+        data = {'action' : 'add', 'args' : args, 'id' : circuit_id}
+        fuzzer._log_input_event(sts.replay_event.AppEvent(self.app_name, data))
+        num_remaining -= 1
+          
+  def _remove_circuits(self, fuzzer, num_circuits):
+    with self.reentrantlock:
+      num_remaining = num_circuits
+      while len(self.installed) > 0 and num_remaining > 0:
+        circuit_id = fuzzer.random.choice(self.installed)
+        assert circuit_id not in self.pending_install
+        assert circuit_id not in self.pending_removal
+        assert circuit_id in self.installed
+        
+        args = cmdline_to_args(self.runtime + ' ' + self.script + ' --controller ' + self.controller + 
+                               ' --delete --name ' + str(circuit_id))
+        if self.background_process:
+          cmd = popen_background(circuit_id, args, self.cwd)
+          print "Removing circuit in background: " + str(circuit_id)
+          # we will get notified when it is done
+          self.pending_removal.append(circuit_id)
+          self.installed.remove(circuit_id)
+        else:
+          self.pending_removal.append(circuit_id)
+          self.installed.remove(circuit_id)
+          print "Removing circuit (blocking): " + str(circuit_id)
+          event = popen_blocking(circuit_id, args, self.cwd)
+          self._process_terminated(event)
+        data = {'action' : 'del', 'args' : args, 'id' : circuit_id}
+        fuzzer._log_input_event(sts.replay_event.AppEvent(self.app_name, data))
+        num_remaining -= 1
+
+  def check_app_beginning(self, fuzzer):
+    self.free_ip_pairs = []
+    with self.reentrantlock:
       host_pairs = itertools.combinations(fuzzer.simulation.topology.hosts, 2)
       for p in host_pairs:
         h1 = p[0]
@@ -117,59 +195,22 @@ class AppFloodlightCircuitPusher(ControllerApp):
             if i1 is not None and hasattr(i1, 'ips') and i2 is not None and hasattr(i2, 'ips') and len(i1.ips) > 0 and len(i2.ips) > 0:
               ip_pairs = itertools.product(i1.ips, i2.ips)
               for candidate in ip_pairs:
-                inverse = (candidate[1], candidate[0])
-                if (candidate not in self.ids.items() and
-                    inverse not in self.ids.items()):
-                  candidate_ip_pairs.add(candidate)
-      num_remaining = num_circuits
-      while len(candidate_ip_pairs) > 0 and num_remaining > 0:
-        c = fuzzer.random.choice(tuple(candidate_ip_pairs))
-        candidate_ip_pairs.remove(c)
-        circuit_id = self._ids.next()
-        self.ids[circuit_id] = c
-        
-        args = cmdline_to_args(self.runtime + ' ' + self.script + ' --controller ' + self.controller + 
-                               ' --type ip --src ' + str(c[0].toStr()) + ' --dst ' + str(c[1].toStr()) + ' --add --name ' + str(circuit_id))
-#     args = cmdline_to_args('bash -c "ls -al; pwd"')
-        cmd = popen_background(circuit_id, args, self.cwd)
-#         event = popen_blocking(circuit_id, args, self.cwd)
-        print "Installing circuit in background: "+str(c[0].toStr()) + " <-> " + str(c[1].toStr() + " (id: " + str(circuit_id) + ")")
-        # we will get notified when it is done
-        self.pending_install.append(circuit_id)
-        data = {'action' : 'add', 'args' : args, 'id' : circuit_id}
-        fuzzer._log_input_event(sts.replay_event.AppEvent(self.app_name, data))
-        num_remaining -= 1
-#         self._process_terminated(event)
-    
-  def _remove_circuits(self, fuzzer, num_circuits):
-    with self.reentrantlock:
-      num_remaining = num_circuits
-      while len(self.installed) > 0 and num_remaining > 0:
-        circuit_id = fuzzer.random.choice(self.installed)
-        assert circuit_id not in self.pending_install
-        assert circuit_id not in self.pending_removal
-        assert circuit_id in self.installed
-        args = cmdline_to_args(self.runtime + ' ' + self.script + ' --controller ' + self.controller + 
-                               ' --delete --name ' + str(circuit_id))
-        cmd = popen_background(circuit_id, args, self.cwd)
-        print "Removing circuit in background: " + str(circuit_id)
-        # we will get notified when it is done
-        self.pending_removal.append(circuit_id)
-        self.installed.remove(circuit_id)
-        data = {'action' : 'del', 'args' : args, 'id' : circuit_id}
-        fuzzer._log_input_event(sts.replay_event.AppEvent(self.app_name, data))
-        num_remaining -= 1
+                self.free_ip_pairs.append(candidate)
+    print self.free_ip_pairs
 
   def check_app_before(self, fuzzer):
     pass
   
   def check_app_after(self, fuzzer):
-    if fuzzer.random.random() < fuzzer.params.app_floodlight_circuitpusher_add_rate:
-      # try to add circuits
-      self._install_circuits(fuzzer, fuzzer.params.app_floodlight_circuitpusher_add_parallelism)
-    if fuzzer.random.random() < fuzzer.params.app_floodlight_circuitpusher_del_rate:
-      # try to delete circuits
-      self._remove_circuits(fuzzer, fuzzer.params.app_floodlight_circuitpusher_del_parallelism)
+    now = time.time()
+    if self.last_action_time is None or (now - self.last_action_time) >= self.wait_secs:
+      self.last_action_time = now
+      if fuzzer.random.random() < fuzzer.params.app_floodlight_circuitpusher_add_rate:
+        # try to add circuits
+        self._install_circuits(fuzzer, fuzzer.params.app_floodlight_circuitpusher_add_parallelism)
+      if fuzzer.random.random() < fuzzer.params.app_floodlight_circuitpusher_del_rate:
+        # try to delete circuits
+        self._remove_circuits(fuzzer, fuzzer.params.app_floodlight_circuitpusher_del_parallelism)
   
   def proceed(self, event, simulation):
     # TODO(jm): integrate with Replayer. At the moment far this function is never called.

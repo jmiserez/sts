@@ -21,17 +21,17 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 num = 2
 # topology_class = StarTopology
 # topology_params = "num_hosts=%d" % num
-#topology_class = MeshTopology
-#topology_params = "num_switches=%d" % num
+topology_class = MeshTopology
+topology_params = "num_switches=%d" % num
 # topology_class = GridTopology
 # topology_params = "num_rows=3, num_columns=3"
 topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
-steps = 200
-results_dir = "traces/trace_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
+steps = 400
+results_dir = "paper/trace_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
-apps = [AppFloodlightCircuitPusher('circuitpusher', cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
+apps = [AppFloodlightCircuitPusher('circuitpusher', background_process=True, wait_secs=1, cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
 simulation_config = SimulationConfig(controller_configs=controllers,
                                      topology_class=topology_class,
