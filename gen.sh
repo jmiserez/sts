@@ -24,13 +24,13 @@ generate_results(){
   echo "==============================================="
   echo "Running HB Graph WITHOUT alt-barr and delta=inf"
   echo "==============================================="
-  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --data-deps 2>&1 | tee -a "$teefile"
+  ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --data-deps --ignore_ethertypes=0 2>&1 | tee -a "$teefile"
   for x in {0..10};
   do
     echo "=============================================="
     echo "Running HB Graph WITHOUT alt-barr and delta=$x"
     echo "=============================================="
-    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --hbt --data-deps 2>&1 | tee -a "$teefile"
+    ./sts/happensbefore/hb_graph.py ${result_dir}/hb.json  --no-dot-files --pkt --rw_delta=$x --ww_delta=$x --hbt --data-deps --ignore_ethertypes=0 2>&1 | tee -a "$teefile"
   done
 
 }
