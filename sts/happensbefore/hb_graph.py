@@ -318,6 +318,13 @@ class HappensBeforeGraph(object):
       #           to link the two events already during instrumentation, as this is 
       #           almost impossible to do here as we do not have enough information
       #           and the events might be recorded out of order in the trace.
+      
+      # TODO(jm): We should implement read-after-write data dependency edges
+      #           also for flow expiry messages, i.e. flows expire *after* they
+      #           have been written. This information is already partially 
+      #           available in the hb_shadow_table module, but not currently
+      #           used for flow expiry.
+      
 
       # create "dummy" operation that acts as a strict delete 
       class DummyObject(object):
