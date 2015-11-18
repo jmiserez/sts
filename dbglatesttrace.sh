@@ -44,4 +44,4 @@ function mytracefun() {
   cat $TRACEDIR/simulator.out | grep -i -c "XXXX3"
 }
 export -f mytracefun
-watch -n 2 bash -c "mytracefun"
+watch -n 1 bash -c "mytracefun"
