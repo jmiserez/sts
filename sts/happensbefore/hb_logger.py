@@ -394,6 +394,8 @@ class HappensBeforeLogger(EventMixin):
     self.add_operation_to_switch_event(event)
     
   def handle_switch_table_entry_expiry(self, event):
+    # TODO(jm): Add case for DELETEs that trigger notifications. For these (reason == delete),
+    #           we should add it to the regular switch event, not the async one.
     assert self.is_async_switch_event_started(event.dpid)
     self.add_operation_to_switch_event(event)
     

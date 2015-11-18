@@ -308,8 +308,17 @@ class HappensBeforeGraph(object):
       flow_table = expiry.flow_table # the flow table before the removal
       flow_mod = expiry.flow_mod # the removed entry
       reason = expiry.reason # Either idle or hard timeout. Deletes are not handled
-      duration = expiry.duration_sec*10^9 + expiry.duration_nsec      
+      duration = expiry.duration_sec*10^9 + expiry.duration_nsec
       
+      # TODO(JM): Handle deletes a different way? Currently deletes are recorded
+      #           to the trace as async switch events, same as timeouts. This means 
+      #           that the instrumentation does NOT add a HB edge between the delete
+      #           operation itself and the async delete notification to the controller.
+      #           We might want to add such an edge, to do this we need the hb_logger
+      #           to link the two events already during instrumentation, as this is 
+      #           almost impossible to do here as we do not have enough information
+      #           and the events might be recorded out of order in the trace.
+
       # create "dummy" operation that acts as a strict delete 
       class DummyObject(object):
         pass
