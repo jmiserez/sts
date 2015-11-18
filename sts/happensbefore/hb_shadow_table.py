@@ -161,6 +161,11 @@ class ShadowFlowTable(object):
             print exact_matches
           assert len(exact_matches) == 1
           
+          # TODO(jm): Instead of merely removing entries, we should also add a
+          #           data dependency edge here like for reads and writes.
+          #           Also see TODOs in hb_logger and hb_graph on how to do this
+          #           correctly for both regular timeouts as wella s explicit 
+          #           DELETES.
           self.table.remove_entries(exact_matches)
 
     deps = self.get_RaW_data_dependencies(event.eid)
