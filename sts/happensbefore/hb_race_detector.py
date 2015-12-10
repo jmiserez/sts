@@ -64,7 +64,7 @@ class RaceDetector(object):
     self.found_races_harmful = []
     self._races_harmful = []
     self.filtered_by_time = []
-    self.races_commute = []
+    self.races_commute_count = 0
     self.racing_events = set()
     self.racing_events_harmful = set()
     self.total_filtered = 0
@@ -90,7 +90,7 @@ class RaceDetector(object):
 
   @property
   def total_commute(self):
-    return len(self.races_commute)
+    return self.races_commute_count
 
   @property
   def total_covered(self):
@@ -185,7 +185,7 @@ class RaceDetector(object):
         self.all_races.append(race)
         if self.commutativity_checker.check_commutativity_ww(i_event, i_op,
                                                              k_event, k_op):
-          self.races_commute.append(race)
+          self.races_commute_count += 1
         else:
           self.found_races_harmful.append(race)
         self.racing_events.add(i_event)
@@ -219,7 +219,7 @@ class RaceDetector(object):
             self.all_races.append(race)
             if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
                                                                  k_event, k_op):
-              self.races_commute.append(race)
+              self.races_commute_count += 1
             else:
               self.found_races_harmful.append(race)
             self.racing_events.add(i_event)
@@ -252,7 +252,7 @@ class RaceDetector(object):
       print "Total read operations: {}".format(len(self.read_operations))
 
     self.found_races_harmful = []
-    self.races_commute = []
+    self.races_commute_count = 0
     self.racing_events = set()
     self.racing_events_harmful = set()
     self.total_filtered = 0
@@ -275,18 +275,18 @@ class RaceDetector(object):
 
   def print_races(self, verbose=False):
     if verbose:
-      for race in self.races_commute:
-        print "+-------------------------------------------+"
-        print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
-        print "+-------------------------------------------+"
-        print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
-        print "+-------------------------------------------+"
-        print "| " + op_to_str(race.i_op)
-        print "+-------------------------------------------+"
-        print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
-        print "+-------------------------------------------+"
-        print "| " + op_to_str(race.k_op)
-        print "+-------------------------------------------+"
+#       for race in self.races_commute:
+#         print "+-------------------------------------------+"
+#         print "| Commuting ({}):     {:>4} <---> {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
+#         print "+-------------------------------------------+"
+#         print "| op # {:<8} t={:<26}|".format(race.i_op.eid, race.i_op.t)
+#         print "+-------------------------------------------+"
+#         print "| " + op_to_str(race.i_op)
+#         print "+-------------------------------------------+"
+#         print "| op # {:<8} t={:<26}|".format(race.k_op.eid, race.k_op.t)
+#         print "+-------------------------------------------+"
+#         print "| " + op_to_str(race.k_op)
+#         print "+-------------------------------------------+"
       for race in self.found_races_harmful:
         print "+-------------------------------------------+"
         print "| Harmful   ({}):     {:>4} >-!-< {:>4}      |".format(race.rtype, race.i_event.eid, race.k_event.eid)
