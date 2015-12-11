@@ -19,9 +19,10 @@ from hb_utils import find_entries_in_flow_table
 
 class ShadowFlowTable(object):
 
-  def __init__(self, dpid):
+  def __init__(self, dpid, is_minimized_trace=False):
     self._ids = itertools.count(0)
     self.dpid = dpid
+    self.is_minimized_trace = is_minimized_trace
     self.table = SwitchFlowTable()
     
     self.latest_event_eid = None
@@ -110,7 +111,8 @@ class ShadowFlowTable(object):
     assert hasattr(event, "operations")
     for op in event.operations:
       if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
-        assert hasattr(op, "flow_table")
+        if not self.is_minimized_trace:
+          assert hasattr(op, "flow_table")
         assert hasattr(op, "flow_mod")
         if type(op) == TraceSwitchFlowTableRead:
           self.latest_event_was_async_expiry = False
@@ -118,7 +120,8 @@ class ShadowFlowTable(object):
           assert hasattr(op, "in_port")
           assert hasattr(op, "entry")
           # shadow table should agree with trace before op
-          assert compare_flow_table(self.table, op.flow_table)
+          if not self.is_minimized_trace:
+            assert compare_flow_table(self.table, op.flow_table)
           
           entry = read_flow_table(self.table, event.packet, event.in_port)
           
@@ -144,16 +147,18 @@ class ShadowFlowTable(object):
         elif type(op) == TraceSwitchFlowTableWrite:
           self.latest_event_was_async_expiry = False
           # shadow table should agree with trace before op
-          assert compare_flow_table(self.table, op.flow_table)
+          if not self.is_minimized_trace:
+            assert compare_flow_table(self.table, op.flow_table)
           write_flow_table(self.table, op.flow_mod)
 
         elif type(op) == TraceSwitchFlowTableEntryExpiry:
           self.latest_event_was_async_expiry = True
-          if not compare_flow_table(self.table, op.flow_table):
-            print self.table.table
-            print "--------------------"
-            print op.flow_table.table
-          assert compare_flow_table(self.table, op.flow_table)
+          if not self.is_minimized_trace:
+            if not compare_flow_table(self.table, op.flow_table):
+              print self.table.table
+              print "--------------------"
+              print op.flow_table.table
+            assert compare_flow_table(self.table, op.flow_table)
           exact_matches = find_entries_in_flow_table(self.table, op.flow_mod)
           # it is impossible to add two entries with the *exact* same match and
           # priority to the flow table, so we should always get exactly one entry

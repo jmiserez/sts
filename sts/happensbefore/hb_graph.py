@@ -55,7 +55,8 @@ class HappensBeforeGraph(object):
  
   def __init__(self, results_dir=None, add_hb_time=False, rw_delta=5,
                ww_delta=1, filter_rw=False, ignore_ethertypes=None,
-               no_race=False, alt_barr=False, disable_path_cache=True, data_deps=False):
+               no_race=False, alt_barr=False, disable_path_cache=True, data_deps=False,
+               verify_and_minimize_only=False, is_minimized=False):
     self.results_dir = results_dir
     
     self.g = nx.DiGraph()
@@ -110,6 +111,9 @@ class HappensBeforeGraph(object):
     self.shadow_tables = dict()
     
     self.covered_races = dict()
+    
+    self.verify_and_minimize_only = verify_and_minimize_only
+    self.is_minimized = is_minimized
 
   @property
   def events(self):
@@ -454,7 +458,7 @@ class HappensBeforeGraph(object):
 
   def _update_shadow_tables(self, event):
     if event.dpid not in self.shadow_tables:
-      self.shadow_tables[event.dpid] = ShadowFlowTable(event.dpid)
+      self.shadow_tables[event.dpid] = ShadowFlowTable(event.dpid, self.is_minimized)
     self.shadow_tables[event.dpid].apply_event(event)
 
   def unpack_line(self, line):
@@ -560,6 +564,34 @@ class HappensBeforeGraph(object):
     for event in unpacked_events:
       self.add_event(event)
     print "Added " + str(len(list(self.events))) + " events."
+  
+  def verify_and_minimize_trace(self, filename):
+    unpacked_events = 0
+    outfilename = filename + ".min"
+    with open(filename + ".min", 'w') as fout:
+      with open(filename) as f:
+        for line in f:
+          event = self.unpack_line(line)
+          if event:
+            unpacked_events += 1
+            has_reads_writes = False
+            if hasattr(event, 'operations'):
+              for op in event.operations:
+                if type(op) in [TraceSwitchFlowTableRead, TraceSwitchFlowTableWrite, TraceSwitchFlowTableEntryExpiry]:
+                  has_reads_writes = True
+                  break
+            if type(event) in [HbAsyncFlowExpiry, HbPacketHandle, HbMessageHandle]:
+              self._update_shadow_tables(event)
+            
+            # cleanup operations
+            if hasattr(event, 'operations'):
+              for op in event.operations:
+                if hasattr(op, "flow_table"):
+                  delattr(op, "flow_table")
+            # cleanup attributes
+            fout.write(str(event.to_json()) + '\n')
+      fout.flush()
+    print "Verified, minimized, and wrote " + str(unpacked_events) + " events to "+str(outfilename)
 
     
   def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
@@ -1279,7 +1311,8 @@ class Main(object):
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
                verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False,
-               no_dot_files=False):
+               no_dot_files=False, verify_and_minimize_only=False,
+               is_minimized=False):
     self.filename = os.path.realpath(filename)
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
@@ -1298,6 +1331,8 @@ class Main(object):
     self.disable_path_cache = disable_path_cache
     self.data_deps = data_deps
     self.no_dot_files = no_dot_files
+    self.verify_and_minimize_only = verify_and_minimize_only
+    self.is_minimized = is_minimized
 
   def run(self):
     self.graph = HappensBeforeGraph(results_dir=self.results_dir,
@@ -1309,187 +1344,209 @@ class Main(object):
                                     no_race=self.no_race,
                                     alt_barr=self.alt_barr,
                                     disable_path_cache=self.disable_path_cache,
-                                    data_deps=self.data_deps)
-    t0 = time.time()    
-
-    self.graph.load_trace(self.filename)
-    t1 = time.time()
+                                    data_deps=self.data_deps,
+                                    verify_and_minimize_only=self.verify_and_minimize_only,
+                                    is_minimized=self.is_minimized)
+    import resource
+    from guppy import hpy
+    import objgraph
+    import gc
     
-    self.graph.race_detector.detect_races(verbose=True)
-    self.graph.update_path_cache() # the race detector doesn't do it, so we do it ourself.
-    self.graph.race_detector.print_races(self.verbose)
-    t2 = time.time()
+    gc.collect()
+    print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    t0 = time.time()
     
-    packet_traces = self.graph.extract_traces(self.graph.g)
-    t3 = time.time()
-
-    reactive_cmds = self.graph.find_reactive_versions()
-    t4 = time.time()
-
-    proactive_cmds = self.graph.find_proactive_cmds(reactive_cmds)
-    versions = self.graph.find_versions()
-    t5 = time.time()
-
-    if self.data_deps:
-      covered_races = self.graph.find_covered_races()
+    if self.verify_and_minimize_only:
+      self.graph.verify_and_minimize_trace(self.filename)
+      gc.collect()
+      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     else:
-      covered_races = dict()
-    t6 = time.time()
-
-    packet_races, inconsistent_packet_traces, \
-           inconsistent_packet_traces_covered, \
-           inconsistent_packet_entry_version, summarized = \
-      self.graph.find_per_packet_inconsistent(covered_races, True)
-    t7 = time.time()
-
-    racing_versions, racing_versions_tuples = self.graph.find_inconsistent_updates()
-    t8 = time.time()
-    
-    if not self.no_dot_files:
-      self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
-      self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
-   
-      # Print traces
-      for trace, races in packet_races:
-        self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
-      for trace, races, _ in inconsistent_packet_traces:
-        self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
-      for trace, races, _ in inconsistent_packet_traces_covered:
-        self.graph.print_racing_packet_trace(trace, races, label='covered')
-      for trace, races, _ in inconsistent_packet_entry_version:
-        self.graph.print_racing_packet_trace(trace, races, label='entry')
-      for trace, races, _ in summarized:
-        self.graph.print_racing_packet_trace(trace, races, label='summarized')
-      self.graph.save_races_graph(self.print_pkt)
-
-#     self.graph.print_versions(versions)
-#     self.graph.print_covered_races()
-
-    print "Number of packet traces with races:", len(packet_races)
-    print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
-    print "Number of packet inconsistencies that are actually consistent (covered): ", len(inconsistent_packet_traces_covered)
-    print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
-    print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
-    print "Number of packet inconsistent updates: ", len(racing_versions)
-    print "Number of races: ", self.graph.race_detector.total_races
-    print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
-    print "Number of commuting races: ", self.graph.race_detector.races_commute_count
-    print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-    print "Number of covered races: ", self.graph.race_detector.total_covered
-    print "Number of versions:", len(versions)
-    print "Inconsistent updates:", len(racing_versions_tuples)
-
-    load_time = t1 - t0
-    detect_races_time = t2 - t1
-    extract_traces_time = t3 - t2
-    find_reactive_cmds_time = t4 - t3
-    find_proactive_cmds_time = t5 - t4
-    find_covered_races_time = t6 - t5
-    per_packet_inconsistent_time = t7 - t6
-    find_inconsistent_update_time = t7 - t8
-
-
-
-    t_final = time.time()
-    total_time = t_final - t0
-    print "Done. Time elapsed:",total_time,"s"
-    print "load_trace:", load_time, "s"
-    print "detect_races:", detect_races_time, "s"
-    print "extract_traces_time:", extract_traces_time, "s"
-    print "find_reactive_cmds_time:", find_reactive_cmds_time, "s"
-    print "find_proactive_cmds_time:", find_proactive_cmds_time, "s"
-    print "find_covered_races_time:", find_covered_races_time, "s"
-    print "per_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
-    print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
-    #print "print_races:"+(str(t3-t2))+"s"
-    #print "store_graph:"+(str(t4-t3))+"s"
-    #print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
-    #print "Finding inconsistent traces time: "+ (str(t6 - t5)) + "s"
-
-
-    # Printing dat file
-    hbt = self.add_hb_time
-    rw_delta = self.rw_delta if self.add_hb_time else 'inf'
-    ww_delta = self.ww_delta if self.add_hb_time else 'inf'
-    file_name = "results_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
-    file_name = os.path.join(self.results_dir, file_name)
-    timings_file_name = "timings_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
-    timings_file_name = os.path.join(self.results_dir, timings_file_name)
-
-
-    num_writes = len(self.graph.race_detector.write_operations)
-    num_read = len(self.graph.race_detector.read_operations)
-    num_ops = num_writes + num_read
-
-    num_harmful = self.graph.race_detector.total_harmful
-    num_commute = self.graph.race_detector.total_commute
-    num_races = self.graph.race_detector.total_races
-    num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
-    num_covered = self.graph.race_detector.total_covered
-
-    num_time_edges = self.graph.race_detector.time_edges_counter
-
-    num_per_pkt_races = len(packet_races)
-    num_per_pkt_inconsistent = len(inconsistent_packet_traces)
-    num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
-    num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
-    num_per_pkt_inconsistent_no_repeat = len(summarized)
-
-    def write_general_info_to_file(f):
-      # General info
-      f.write('key,value\n')
-      f.write('rw_delta,%s\n' % rw_delta)
-      f.write('ww_delta,%s\n' % ww_delta)
-      f.write('alt_barr,%s\n' % self.alt_barr)
-      f.write('data_deps,%s\n' % self.data_deps)
-
-    with open(file_name, 'w') as f:
-      write_general_info_to_file(f)
-
-      # Operations
-      f.write('num_events,%d\n' % self.graph.g.number_of_nodes())
-      f.write('num_edges,%d\n' % self.graph.g.number_of_edges())
-      f.write('num_read,%d\n' % num_read)
-      f.write('num_writes,%d\n' % num_writes)
-      f.write('num_ops,%d\n' % num_ops)
-
-      # HB time edges
-      f.write('num_time_edges,%d\n' % num_time_edges)
-
-      # Races info
-      # One last check
-      assert num_races == num_commute + num_covered + num_harmful + num_time_filtered_races
-      f.write('num_races,%d\n' % num_races)
-      f.write('num_harmful,%d\n' % num_harmful)
-      f.write('num_commute,%d\n' % num_commute)
-      f.write('num_time_filtered_races,%d\n' % num_time_filtered_races)
-      f.write('num_covered,%d\n' % num_covered)
-
-      # Inconsistency
-      f.write('num_pkts,%d\n' % len(self.graph.host_sends))
-      assert len(self.graph.host_sends) >= num_per_pkt_races
-      assert num_per_pkt_races == num_per_pkt_inconsistent + num_per_pkt_inconsistent_covered + num_per_pkt_entry_version_race
-      f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
-      f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
-      f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
-      f.write('num_per_pkt_entry_version_race,%d\n' % num_per_pkt_entry_version_race)
-      f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
-      f.write('num_versions,%d\n' % len(versions))
-      f.write('num_racing_versions,%d\n' % len(racing_versions_tuples))
-
-    with open(timings_file_name, 'w') as f:
-      write_general_info_to_file(f)
+      self.graph.load_trace(self.filename)
+      gc.collect()
+      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      t1 = time.time()
       
-      # Times
-      f.write('total_time_sec,%f\n'% total_time)
-      f.write('load_time_sec,%f\n' % load_time )
-      f.write('detect_races_time_sec,%f\n' % detect_races_time )
-      f.write('extract_traces_time_sec,%f\n' % extract_traces_time )
-      f.write('find_reactive_cmds_time_sec,%f\n' % find_reactive_cmds_time )
-      f.write('find_proactive_cmds_time_sec,%f\n' % find_proactive_cmds_time )
-      f.write('find_covered_races_time,%f\n' % find_covered_races_time )
-      f.write('per_packet_inconsistent_time_sec,%f\n' % per_packet_inconsistent_time )
-      f.write('find_inconsistent_update_time_sec,%f\n' % find_inconsistent_update_time )
+      self.graph.race_detector.detect_races(verbose=True)
+      gc.collect()
+      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      self.graph.update_path_cache() # the race detector doesn't do it, so we do it ourself.
+      gc.collect()
+      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      self.graph.race_detector.print_races(self.verbose)
+      gc.collect()
+      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      t2 = time.time()
+      
+      packet_traces = self.graph.extract_traces(self.graph.g)
+      t3 = time.time()
+  
+      reactive_cmds = self.graph.find_reactive_versions()
+      t4 = time.time()
+  
+      proactive_cmds = self.graph.find_proactive_cmds(reactive_cmds)
+      versions = self.graph.find_versions()
+      t5 = time.time()
+  
+      if self.data_deps:
+        covered_races = self.graph.find_covered_races()
+      else:
+        covered_races = dict()
+      t6 = time.time()
+  
+      packet_races, inconsistent_packet_traces, \
+             inconsistent_packet_traces_covered, \
+             inconsistent_packet_entry_version, summarized = \
+        self.graph.find_per_packet_inconsistent(covered_races, True)
+      t7 = time.time()
+  
+      racing_versions, racing_versions_tuples = self.graph.find_inconsistent_updates()
+      t8 = time.time()
+      
+      if not self.no_dot_files:
+        self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
+        self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
+     
+        # Print traces
+        for trace, races in packet_races:
+          self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
+        for trace, races, _ in inconsistent_packet_traces:
+          self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
+        for trace, races, _ in inconsistent_packet_traces_covered:
+          self.graph.print_racing_packet_trace(trace, races, label='covered')
+        for trace, races, _ in inconsistent_packet_entry_version:
+          self.graph.print_racing_packet_trace(trace, races, label='entry')
+        for trace, races, _ in summarized:
+          self.graph.print_racing_packet_trace(trace, races, label='summarized')
+        self.graph.save_races_graph(self.print_pkt)
+  
+  #     self.graph.print_versions(versions)
+  #     self.graph.print_covered_races()
+  
+      print "Number of packet traces with races:", len(packet_races)
+      print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
+      print "Number of packet inconsistencies that are actually consistent (covered): ", len(inconsistent_packet_traces_covered)
+      print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
+      print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
+      print "Number of packet inconsistent updates: ", len(racing_versions)
+      print "Number of races: ", self.graph.race_detector.total_races
+      print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
+      print "Number of commuting races: ", self.graph.race_detector.races_commute_count
+      print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
+      print "Number of covered races: ", self.graph.race_detector.total_covered
+      print "Number of versions:", len(versions)
+      print "Inconsistent updates:", len(racing_versions_tuples)
+  
+      load_time = t1 - t0
+      detect_races_time = t2 - t1
+      extract_traces_time = t3 - t2
+      find_reactive_cmds_time = t4 - t3
+      find_proactive_cmds_time = t5 - t4
+      find_covered_races_time = t6 - t5
+      per_packet_inconsistent_time = t7 - t6
+      find_inconsistent_update_time = t7 - t8
+  
+  
+  
+      t_final = time.time()
+      total_time = t_final - t0
+      print "Done. Time elapsed:",total_time,"s"
+      print "load_trace:", load_time, "s"
+      print "detect_races:", detect_races_time, "s"
+      print "extract_traces_time:", extract_traces_time, "s"
+      print "find_reactive_cmds_time:", find_reactive_cmds_time, "s"
+      print "find_proactive_cmds_time:", find_proactive_cmds_time, "s"
+      print "find_covered_races_time:", find_covered_races_time, "s"
+      print "per_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
+      print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
+      #print "print_races:"+(str(t3-t2))+"s"
+      #print "store_graph:"+(str(t4-t3))+"s"
+      #print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
+      #print "Finding inconsistent traces time: "+ (str(t6 - t5)) + "s"
+  
+  
+      # Printing dat file
+      hbt = self.add_hb_time
+      rw_delta = self.rw_delta if self.add_hb_time else 'inf'
+      ww_delta = self.ww_delta if self.add_hb_time else 'inf'
+      file_name = "results_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
+      file_name = os.path.join(self.results_dir, file_name)
+      timings_file_name = "timings_hbt_%s_altbarr_%s_dep_%s_rw_%s_ww_%s.dat" % (hbt, self.alt_barr, self.data_deps, rw_delta, ww_delta)
+      timings_file_name = os.path.join(self.results_dir, timings_file_name)
+  
+  
+      num_writes = len(self.graph.race_detector.write_operations)
+      num_read = len(self.graph.race_detector.read_operations)
+      num_ops = num_writes + num_read
+  
+      num_harmful = self.graph.race_detector.total_harmful
+      num_commute = self.graph.race_detector.total_commute
+      num_races = self.graph.race_detector.total_races
+      num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
+      num_covered = self.graph.race_detector.total_covered
+  
+      num_time_edges = self.graph.race_detector.time_edges_counter
+  
+      num_per_pkt_races = len(packet_races)
+      num_per_pkt_inconsistent = len(inconsistent_packet_traces)
+      num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
+      num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
+      num_per_pkt_inconsistent_no_repeat = len(summarized)
+  
+      def write_general_info_to_file(f):
+        # General info
+        f.write('key,value\n')
+        f.write('rw_delta,%s\n' % rw_delta)
+        f.write('ww_delta,%s\n' % ww_delta)
+        f.write('alt_barr,%s\n' % self.alt_barr)
+        f.write('data_deps,%s\n' % self.data_deps)
+  
+      with open(file_name, 'w') as f:
+        write_general_info_to_file(f)
+  
+        # Operations
+        f.write('num_events,%d\n' % self.graph.g.number_of_nodes())
+        f.write('num_edges,%d\n' % self.graph.g.number_of_edges())
+        f.write('num_read,%d\n' % num_read)
+        f.write('num_writes,%d\n' % num_writes)
+        f.write('num_ops,%d\n' % num_ops)
+  
+        # HB time edges
+        f.write('num_time_edges,%d\n' % num_time_edges)
+  
+        # Races info
+        # One last check
+        assert num_races == num_commute + num_covered + num_harmful + num_time_filtered_races
+        f.write('num_races,%d\n' % num_races)
+        f.write('num_harmful,%d\n' % num_harmful)
+        f.write('num_commute,%d\n' % num_commute)
+        f.write('num_time_filtered_races,%d\n' % num_time_filtered_races)
+        f.write('num_covered,%d\n' % num_covered)
+  
+        # Inconsistency
+        f.write('num_pkts,%d\n' % len(self.graph.host_sends))
+        assert len(self.graph.host_sends) >= num_per_pkt_races
+        assert num_per_pkt_races == num_per_pkt_inconsistent + num_per_pkt_inconsistent_covered + num_per_pkt_entry_version_race
+        f.write('num_per_pkt_races,%d\n' % num_per_pkt_races)
+        f.write('num_per_pkt_inconsistent,%d\n' % num_per_pkt_inconsistent)
+        f.write('num_per_pkt_inconsistent_covered,%d\n' % num_per_pkt_inconsistent_covered)
+        f.write('num_per_pkt_entry_version_race,%d\n' % num_per_pkt_entry_version_race)
+        f.write('num_per_pkt_inconsistent_no_repeat,%d\n' % num_per_pkt_inconsistent_no_repeat)
+        f.write('num_versions,%d\n' % len(versions))
+        f.write('num_racing_versions,%d\n' % len(racing_versions_tuples))
+  
+      with open(timings_file_name, 'w') as f:
+        write_general_info_to_file(f)
+        
+        # Times
+        f.write('total_time_sec,%f\n'% total_time)
+        f.write('load_time_sec,%f\n' % load_time )
+        f.write('detect_races_time_sec,%f\n' % detect_races_time )
+        f.write('extract_traces_time_sec,%f\n' % extract_traces_time )
+        f.write('find_reactive_cmds_time_sec,%f\n' % find_reactive_cmds_time )
+        f.write('find_proactive_cmds_time_sec,%f\n' % find_proactive_cmds_time )
+        f.write('find_covered_races_time,%f\n' % find_covered_races_time )
+        f.write('per_packet_inconsistent_time_sec,%f\n' % per_packet_inconsistent_time )
+        f.write('find_inconsistent_update_time_sec,%f\n' % find_inconsistent_update_time )
 
 
 
@@ -1534,6 +1591,10 @@ if __name__ == '__main__':
                       default=False, help="Use shadow tables for adding data dependency edges between reads/writes.")
   parser.add_argument('--no-dot-files', dest='no_dot_files', action='store_true',
                       default=False, help="Do not write any .dot files to the disk.")
+  parser.add_argument('--verify-and-minimize-only', dest='verify_and_minimize_only', action='store_true',
+                      default=False, help="Verify the input trace, then write out a minimized version.")
+  parser.add_argument('--is-minimized', dest='is_minimized', action='store_true',
+                      default=False, help="Process a minimized trace.")
 
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
@@ -1548,5 +1609,7 @@ if __name__ == '__main__':
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
               ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache, 
-              data_deps=args.data_deps, no_dot_files=args.no_dot_files)
+              data_deps=args.data_deps, no_dot_files=args.no_dot_files, 
+              verify_and_minimize_only=args.verify_and_minimize_only, 
+              is_minimized=args.is_minimized)
   main.run()

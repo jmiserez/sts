@@ -265,6 +265,7 @@ class RaceDetector(object):
       self.apply_time_filter(self.rw_delta)
 
     # Calculate true harmful
+    # TODO(jm): This line of code eats memory like crazy, and takes forever! Change this!
     self._races_harmful = [race for race in self.found_races_harmful if race not in self.filtered_by_time]
 
     self.racing_events_harmful = set()

@@ -219,7 +219,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
         self.raiseEvent(TraceAsyncSwitchFlowExpiryBegin(self.switch.dpid))
         duration_sec, duration_nsec = entry.duration_sec_nsec(now)
         flow_mod = entry.to_flow_mod()
-        self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, self, flow_mod, duration_sec, duration_nsec, reason))
+        self.raiseEvent(TraceSwitchFlowTableEntryExpiry(self.switch.dpid, flow_mod, duration_sec, duration_nsec, reason, flow_table=self))
         self.table.remove(entry)
         # NOTE(jm): We send one event for *each* removal, instead of grouping them together.
         self.raiseEvent(FlowTableModification(removed=[entry], reason=reason, now=now))
@@ -251,7 +251,7 @@ class TracingSwitchFlowTable(SwitchFlowTable, EventMixin):
     """ Process a flow mod sent to the switch
     @return a tuple (added|modified|removed, [list of affected entries])
     """
-    self.raiseEvent(TraceSwitchFlowTableWrite(self.switch.dpid, self, flow_mod))
+    self.raiseEvent(TraceSwitchFlowTableWrite(self.switch.dpid, flow_mod, flow_table=self))
     return super(TracingSwitchFlowTable, self).process_flow_mod(flow_mod)
 
 class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
@@ -348,14 +348,14 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     if(entry != None):
       now = time.time()
       plen = len(packet)
-      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, self.table, entry, plen, now))
+      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, entry, plen, now, flow_table=self.table))
       entry.touch_packet(plen, now)
       self._process_actions_for_packet(entry.actions, packet, in_port)
     else:
       if cause_is_ofpp_table:
         self.log.warn("Switch-controller recursion: out_port is OFPP_TABLE, but no entry was found and packet is going back to switch as packet in.")
       # no matching entry
-      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, self.table, None, None, None))
+      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, None, None, None, flow_table=self.table))
       buffer_id = self._buffer_packet(packet, in_port)
       self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
   
