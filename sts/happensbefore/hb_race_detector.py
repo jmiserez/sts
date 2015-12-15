@@ -63,7 +63,7 @@ class RaceDetector(object):
     self.all_races = []
     self.found_races_harmful = []
     self._races_harmful = []
-    self.filtered_by_time = []
+    self.filtered_by_time = set()
     self.races_commute_count = 0
     self.racing_events = set()
     self.racing_events_harmful = set()
@@ -227,11 +227,11 @@ class RaceDetector(object):
 
   def apply_time_filter(self, delta):
     self._time_edges_counter = 0
-    self.filtered_by_time = []
+    self.filtered_by_time = set()
     for race in self.found_races_harmful:
       d = abs(race.i_op.t - race.k_op.t)
       if d > delta:
-        self.filtered_by_time.append(race)
+        self.filtered_by_time.add(race)
         first = race.i_event if race.i_op.t < race.k_op.t else race.k_event
         second = race.k_event if first == race.i_event else race.i_event
         assert first != second
