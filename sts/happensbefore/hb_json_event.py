@@ -89,7 +89,7 @@ class JsonEvent(Event):
       if k in cls_type._from_json_attrs:
         vals[k] = cls_type._from_json_attrs[k](v)
     if 'make_copy' in inspect.getargspec(cls_type.__init__).args:
-      vals['make_copy'] = True
+      vals['make_copy'] = False
     obj = cls_type(**vals)
     return obj
 
