@@ -1430,7 +1430,7 @@ class Main(object):
       print "Number of packet inconsistent updates: ", len(racing_versions)
       print "Number of races: ", self.graph.race_detector.total_races
       print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
-      print "Number of commuting races: ", self.graph.race_detector.races_commute_count
+      print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
       print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
       print "Number of covered races: ", self.graph.race_detector.total_covered
       print "Number of versions:", len(versions)

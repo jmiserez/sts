@@ -64,7 +64,7 @@ class RaceDetector(object):
     self.found_races_harmful = []
     self._races_harmful = []
     self.filtered_by_time = set()
-    self.races_commute_count = 0
+    self.races_commute = []
     self.racing_events = set()
     self.racing_events_harmful = set()
     self.total_filtered = 0
@@ -90,7 +90,7 @@ class RaceDetector(object):
 
   @property
   def total_commute(self):
-    return self.races_commute_count
+    return len(self.races_commute)
 
   @property
   def total_covered(self):
@@ -185,7 +185,7 @@ class RaceDetector(object):
         self.all_races.append(race)
         if self.commutativity_checker.check_commutativity_ww(i_event, i_op,
                                                              k_event, k_op):
-          self.races_commute_count += 1
+          self.races_commute.append(race)
         else:
           self.found_races_harmful.append(race)
         self.racing_events.add(i_event)
@@ -219,7 +219,7 @@ class RaceDetector(object):
             self.all_races.append(race)
             if self.commutativity_checker.check_commutativity_rw(i_event, i_op,
                                                                  k_event, k_op):
-              self.races_commute_count += 1
+              self.races_commute.append(race)
             else:
               self.found_races_harmful.append(race)
             self.racing_events.add(i_event)
@@ -252,7 +252,7 @@ class RaceDetector(object):
       print "Total read operations: {}".format(len(self.read_operations))
 
     self.found_races_harmful = []
-    self.races_commute_count = 0
+    self.races_commute_count = []
     self.racing_events = set()
     self.racing_events_harmful = set()
     self.total_filtered = 0
