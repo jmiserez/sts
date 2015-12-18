@@ -1348,8 +1348,8 @@ class Main(object):
                                     verify_and_minimize_only=self.verify_and_minimize_only,
                                     is_minimized=self.is_minimized)
     import resource
-    from guppy import hpy
-    import objgraph
+#     from guppy import hpy
+#     import objgraph
     import gc
     
     gc.collect()
