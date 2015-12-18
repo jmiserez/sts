@@ -1376,7 +1376,7 @@ class Main(object):
       gc.collect()
       print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       t2 = time.time()
-      
+            
       packet_traces = self.graph.extract_traces(self.graph.g)
       t3 = time.time()
   
