@@ -1443,7 +1443,7 @@ class Main(object):
       find_proactive_cmds_time = t5 - t4
       find_covered_races_time = t6 - t5
       per_packet_inconsistent_time = t7 - t6
-      find_inconsistent_update_time = t7 - t8
+      find_inconsistent_update_time = t8 - t7
   
   
   
