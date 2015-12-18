@@ -28,8 +28,8 @@ topology_params = "num_switches=%d" % num
 topology_class = BinaryLeafTreeTopology
 topology_params = "num_levels=%d" % num
 
-steps = 400
-results_dir = "paper/trace_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
+steps = 12000
+results_dir = "next/next_floodlight_circuitpusher-%s%d-steps%s" % (topology_class.__name__, num, steps)
 
 apps = [AppFloodlightCircuitPusher('circuitpusher', background_process=True, wait_secs=1, cwd='../floodlight/apps/circuitpusher', runtime='python', script='circuitpusher.py', controller='localhost:8080')]
 
