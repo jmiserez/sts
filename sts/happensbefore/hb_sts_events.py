@@ -155,9 +155,8 @@ class TraceSwitchPacketSend(TraceSwitchEvent):
 
 
 class TraceSwitchFlowTableRead(TraceSwitchEvent):
-<<<<<<< HEAD
   def __init__(self, dpid, packet, in_port, flow_mod, flow_table=None,
-               touched_flow_bytes=None, touched_flow_now=None, t=None, eid=None
+               touched_flow_bytes=None, touched_flow_now=None, t=None, eid=None,
                make_copy=True):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
