@@ -3,6 +3,8 @@ from pox.lib.revent import Event
 from collections import OrderedDict
 import itertools
 import json
+import inspect
+
 
 class AttributeCombiningMetaclass(type):
   """
@@ -86,6 +88,8 @@ class JsonEvent(Event):
     for k, v in json_dict.iteritems():
       if k in cls_type._from_json_attrs:
         vals[k] = cls_type._from_json_attrs[k](v)
+    if 'make_copy' in inspect.getargspec(cls_type.__init__).args:
+      vals['make_copy'] = False
     obj = cls_type(**vals)
     return obj
 

@@ -42,8 +42,6 @@ class HappensBeforeLogger(EventMixin):
     # TODO(jm): a regular (non reentrant) lock would suffice here
     self.reentrantlock = RLock()
 
-    self.hb_graph = None
-
     self.output = None
     self.output_path = ""
     self.patch_panel = patch_panel
@@ -88,7 +86,6 @@ class HappensBeforeLogger(EventMixin):
       self.output_path = results_dir + "/" + output_filename
     else:
       raise ValueError("Default results_dir currently not supported")
-    self.hb_graph = HappensBeforeGraph(results_dir)
     self.output = open(self.output_path, 'w')
     
   def close(self):
@@ -106,8 +103,6 @@ class HappensBeforeLogger(EventMixin):
     if self.output is not None and not self.output.closed:
       self.output.write(str(msg) + '\n')
       self.output.flush()
-      if self.hb_graph is not None:
-        self.hb_graph.add_line(str(msg))
     else:
        raise Exception("Not opened -- call HappensBeforeLogger.open()")
   

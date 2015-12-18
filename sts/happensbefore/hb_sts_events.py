@@ -155,32 +155,47 @@ class TraceSwitchPacketSend(TraceSwitchEvent):
 
 
 class TraceSwitchFlowTableRead(TraceSwitchEvent):
+<<<<<<< HEAD
   def __init__(self, dpid, packet, in_port, flow_mod, flow_table=None,
-               touched_flow_bytes=None, touched_flow_now=None, t=None, eid=None):
+               touched_flow_bytes=None, touched_flow_now=None, t=None, eid=None
+               make_copy=True):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
-    self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
-    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
-    self.entry = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True)) #TODO(jm): unused
+    if make_copy:
+      self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+      self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
+      self.entry = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True)) #TODO(jm): unused
+    else:
+      self.flow_table = flow_table
+      self.flow_mod = flow_mod
+      self.entry = flow_mod
     self.touched_flow_bytes = touched_flow_bytes
     self.touched_flow_now = touched_flow_now
 
 
 class TraceSwitchFlowTableWrite(TraceSwitchEvent):
-  def __init__(self, dpid, flow_mod, flow_table=None, t=None, eid=None):
+  def __init__(self, dpid, flow_mod, flow_table=None, t=None, eid=None, make_copy=True):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
-    self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
-    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod))
+    if make_copy:
+      self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+      self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod))
+    else:
+      self.flow_table = flow_table
+      self.flow_mod = flow_mod
     
 class TraceSwitchFlowTableEntryExpiry(TraceSwitchEvent):
-  def __init__(self, dpid, flow_mod, duration_sec, duration_nsec, reason, flow_table=None, t=None, eid=None):
+  def __init__(self, dpid, flow_mod, duration_sec, duration_nsec, reason, flow_table=None, t=None, eid=None, make_copy=True):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
-    self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
-    self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
+    if make_copy:
+      self.flow_table = None if flow_table is None else decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+      self.flow_mod = decode_flow_mod(base64_encode_flow(flow_mod, set_zero_XID=True))
+    else:
+      self.flow_table = flow_table
+      self.flow_mod = flow_mod
     self.duration_sec = duration_sec
     self.duration_nsec = duration_nsec
     self.reason = reason
@@ -191,12 +206,15 @@ class TraceSwitchBarrier(TraceSwitchEvent):
     self.dpid = dpid
     
 class TraceSwitchPacketDrop(TraceSwitchEvent):
-  def __init__(self, dpid, packet, in_port, flow_table, t=None, eid=None):
+  def __init__(self, dpid, packet, in_port, flow_table, t=None, eid=None, make_copy=True):
     TraceSwitchEvent.__init__(self, t=t, eid=eid)
     self.dpid = dpid
     self.packet = packet
     self.in_port = in_port
-    self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+    if make_copy:
+      self.flow_table = decode_flow_table(base64_encode_flow_table(flow_table, set_zero_XID=True))
+    else:
+      self.flow_table = flow_table
     
 class TraceSwitchNoOp(TraceSwitchEvent):
   def __init__(self, dpid, t=None, eid=None):
