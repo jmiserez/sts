@@ -348,14 +348,14 @@ class TracingNXSoftwareSwitch(NXSoftwareSwitch, EventMixin):
     if(entry != None):
       now = time.time()
       plen = len(packet)
-      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, entry, plen, now, flow_table=self.table))
+      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, entry, touched_flow_bytes=plen, touched_flow_now=now, flow_table=self.table))
       entry.touch_packet(plen, now)
       self._process_actions_for_packet(entry.actions, packet, in_port)
     else:
       if cause_is_ofpp_table:
         self.log.warn("Switch-controller recursion: out_port is OFPP_TABLE, but no entry was found and packet is going back to switch as packet in.")
       # no matching entry
-      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, None, None, None, flow_table=self.table))
+      self.raiseEvent(TraceSwitchFlowTableRead(self.dpid, packet, in_port, None, flow_table=self.table))
       buffer_id = self._buffer_packet(packet, in_port)
       self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
   
