@@ -274,7 +274,7 @@ class RaceDetector(object):
       self.racing_events_harmful.add(race.k_event)
 
 
-  def print_races(self, verbose=False):
+  def print_races(self, verbose=False, print_races=False):
     if verbose:
 #       for race in self.races_commute:
 #         print "+-------------------------------------------+"
@@ -305,14 +305,15 @@ class RaceDetector(object):
         print "| {:>4}: {:28} (read) |".format(ev[0].eid, ev[0].type)
       for ev in self.write_operations:
         print "| {:>4}: {:27} (write) |".format(ev[0].eid, ev[0].type)
-    print "+-------------------------------------------+"
-    print "| Total operations:      {:<18} |".format(self.total_operations)
-    print "| Total write operations: {:<17} |".format(len(self.write_operations))
-    print "| Total read operations:  {:<17} |".format(len(self.read_operations))
-    print "+-------------------------------------------+"
-    print "| Total commuting races: {:<18} |".format(self.total_commute)
-    print "| Total harmful races:   {:<18} |".format(self.total_harmful)
-    print "| Total filtered races:  {:<18} |".format(self.total_filtered)
-    print "| Total Time Filtered races:  {:<13} |".format(self.total_time_filtered_races)
-    print "| Total Time Edges:      {:<18} |".format(self.time_edges_counter)
-    print "+-------------------------------------------+"
+    if print_races:
+      print "+-------------------------------------------+"
+      print "| Total operations:      {:<18} |".format(self.total_operations)
+      print "| Total write operations: {:<17} |".format(len(self.write_operations))
+      print "| Total read operations:  {:<17} |".format(len(self.read_operations))
+      print "+-------------------------------------------+"
+      print "| Total commuting races: {:<18} |".format(self.total_commute)
+      print "| Total harmful races:   {:<18} |".format(self.total_harmful)
+      print "| Total filtered races:  {:<18} |".format(self.total_filtered)
+      print "| Total Time Filtered races:  {:<13} |".format(self.total_time_filtered_races)
+      print "| Total Time Edges:      {:<18} |".format(self.time_edges_counter)
+      print "+-------------------------------------------+"
