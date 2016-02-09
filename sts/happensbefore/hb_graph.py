@@ -1421,20 +1421,57 @@ class Main(object):
   
   #     self.graph.print_versions(versions)
   #     self.graph.print_covered_races()
-  
-      print "Number of packet traces with races:", len(packet_races)
-      print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
-      print "Number of packet inconsistencies that are actually consistent (covered): ", len(inconsistent_packet_traces_covered)
-      print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
-      print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
-      print "Number of packet inconsistent updates: ", len(racing_versions)
-      print "Number of races: ", self.graph.race_detector.total_races
-      print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
-      print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
-      print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-      print "Number of covered races: ", self.graph.race_detector.total_covered
-      print "Number of versions:", len(versions)
-      print "Inconsistent updates:", len(racing_versions_tuples)
+
+      num_writes = len(self.graph.race_detector.write_operations)
+      num_read = len(self.graph.race_detector.read_operations)
+      num_ops = num_writes + num_read
+
+      num_harmful = self.graph.race_detector.total_harmful
+      num_commute = self.graph.race_detector.total_commute
+      num_races = self.graph.race_detector.total_races
+      num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
+      num_covered = self.graph.race_detector.total_covered
+
+      num_time_edges = self.graph.race_detector.time_edges_counter
+
+      num_per_pkt_races = len(packet_races)
+      num_per_pkt_inconsistent = len(inconsistent_packet_traces)
+      num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
+      num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
+      num_per_pkt_inconsistent_no_repeat = len(summarized)
+
+
+      print "\n########## Summary ###########"
+      print "* Race analysis *"
+      print "\tTotal number of events in the trace:", self.graph.g.number_of_nodes()
+      print "\tTotal number of events with read operations:", num_read
+      print "\tTotal number of events with write operations:", num_writes
+      print "\tTotal number of events with read or write operations:", num_ops
+      print "\tTotal number of observed races without any filters:", num_races
+      print "\tTotal number of commuting races:", num_commute
+      print "\tTotal number of races filtered by Time HB edges:", num_time_filtered_races
+      print "\tTotal number of races covered by data dependency:", num_covered
+      print "\tRemaining number of races after applying all enabled filters: %d (%.02f%%)" % (num_harmful, (num_harmful / float(num_races) * 100))
+
+      print "\n\n"
+      print "* Properties analysis *"
+      print "\tNumber of observed network updates:", len(versions)
+      print "\tNumber of update isolation violations:", len(racing_versions_tuples)
+      print ""
+      print "\tTotal number of packets in the traces:", len(self.graph.host_sends)
+      print "\tNumber of packet coherence violations:", len(packet_races)
+      print "\tNumber of packet coherence violations filtered due covered races: ", len(inconsistent_packet_traces_covered)
+      print "\tNumber of packet coherence but only on the first switch in the update: ", len(inconsistent_packet_entry_version)
+      print "\tNumber of packet coherence violations after filtering covered races: ", len(inconsistent_packet_traces)
+      #print "\tNumber of packet inconsistencies after trimming repeated races: ", len(summarized)
+      #print "\tNumber of packet inconsistent updates: ", len(racing_versions)
+      #print "\tNumber of races: ", self.graph.race_detector.total_races
+      #print "\tNumber of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
+      #print "\tNumber of commuting races: ", len(self.graph.race_detector.races_commute)
+      #print "\tNumber of harmful races: ", len(self.graph.race_detector.races_harmful)
+      #print "\tNumber of covered races: ", self.graph.race_detector.total_covered
+      #print "Number of versions:", len(versions)
+
   
       load_time = t1 - t0
       detect_races_time = t2 - t1
@@ -1474,24 +1511,7 @@ class Main(object):
       timings_file_name = os.path.join(self.results_dir, timings_file_name)
   
   
-      num_writes = len(self.graph.race_detector.write_operations)
-      num_read = len(self.graph.race_detector.read_operations)
-      num_ops = num_writes + num_read
-  
-      num_harmful = self.graph.race_detector.total_harmful
-      num_commute = self.graph.race_detector.total_commute
-      num_races = self.graph.race_detector.total_races
-      num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
-      num_covered = self.graph.race_detector.total_covered
-  
-      num_time_edges = self.graph.race_detector.time_edges_counter
-  
-      num_per_pkt_races = len(packet_races)
-      num_per_pkt_inconsistent = len(inconsistent_packet_traces)
-      num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
-      num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
-      num_per_pkt_inconsistent_no_repeat = len(summarized)
-  
+
       def write_general_info_to_file(f):
         # General info
         f.write('key,value\n')
