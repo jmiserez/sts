@@ -594,91 +594,12 @@ class HappensBeforeGraph(object):
     print "Verified, minimized, and wrote " + str(unpacked_events) + " events to "+str(outfilename)
 
     
-  def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
-    pass
-#     if self.results_dir is not None:
-#       filename = os.path.join(self.results_dir,filename)
-# 
-#     self.prep_draw(self.g, print_packets)
-#     nx.write_dot(self.g, os.path.join(self.results_dir, "g.dot"))
-# 
-#     interesting_msg_types = ['OFPT_PACKET_IN',
-#                             'OFPT_FLOW_REMOVED',
-#                             'OFPT_PACKET_OUT',
-#                             'OFPT_FLOW_MOD',
-#                             'OFPT_BARRIER_REQUEST',
-#                             'OFPT_BARRIER_REPLY',
-#                             'OFPT_HELLO',
-#                             ]
-#         
-#     pruned_events = []
-#     
-#     if print_only_racing:
-#       for i in self.events:
-#         if i not in self.race_detector.racing_events:
-#           pruned_events.append(i)
-#         else:
-#           if print_only_harmful and i not in self.race_detector.racing_events_harmful:
-#             pruned_events.append(i)
-#             
-#     dot_lines = []
-#     dot_lines.append("digraph G {\n");
-#     for i in self.events:
-#       if i not in pruned_events:
-#         optype = ""
-#         shape = ""
-#         if hasattr(i, 'operations'):
-#           for x in i.operations:
-#             if x.type == 'TraceSwitchFlowTableWrite':
-#               optype = 'FlowTableWrite'
-#               shape = '[shape=box style="bold"]'
-#               break
-#             if x.type == 'TraceSwitchFlowTableRead':
-#               optype = 'FlowTableRead'
-#               shape = '[shape="box"]'
-#               break
-#         
-#         event_info_lines = []
-#         if optype != "":
-#           event_info_lines.append("Op: " + optype)
-#         if (hasattr(i, 'msg_type')):
-#           event_info_lines.append("MsgType: " + i.msg_type_str)
-#         if (hasattr(i, 'in_port')):
-#           event_info_lines.append("InPort: " + str(i.in_port))
-#         if (hasattr(i, 'buffer_id')):
-#           event_info_lines.append("BufferId: " + str(i.buffer_id))
-#         if hasattr(i, 'packet'):
-#           if print_packets:
-#             pkt = pkt_info(i.packet)
-#             event_info_lines.append("Pkt: " + pkt)
-#         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-#             event_info_lines_str = ""
-#             for x in event_info_lines:
-#               event_info_lines_str += '\n'
-#               event_info_lines_str += str(x)
-#             dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
-#                 i.eid, 
-#                 "" if not hasattr(i, 'dpid') else i.dpid,
-#                 i.type,
-#                 event_info_lines_str,
-#                 shape))
-#     for k,v in self.predecessors:
-#       if k not in pruned_events:
-#         for i in v:
-#           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
-#             dot_lines.append('    {} -> {};\n'.format(i.eid,k.eid))
-#     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
-#     if not self.no_race:
-#       if not print_only_harmful:
-#         for race in self.race_detector.races_commute:
-#           if race[1] not in pruned_events and race[2] not in pruned_events:
-#             dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
-#       for race in self.race_detector.races_harmful:
-#         if race[1] not in pruned_events and race[2] not in pruned_events:
-#             dot_lines.append('    {1} -> {2} [style="bold", color="red"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
-#     dot_lines.append("}\n");
-#     with open(filename, 'w') as f:
-#       f.writelines(dot_lines)
+  def store_graph(self, filename="hb.dot",  print_packets=False):
+    if self.results_dir is not None:
+      filename = os.path.join(self.results_dir,filename)
+
+    self.prep_draw(self.g, print_packets)
+    nx.write_dot(self.g, os.path.join(self.results_dir, filename))
 
   @staticmethod
   def prep_draw(g, print_packets):
@@ -1307,7 +1228,7 @@ class HappensBeforeGraph(object):
 
 class Main(object):
   
-  def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
+  def __init__(self, filename, print_pkt,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
                verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False,
@@ -1317,8 +1238,6 @@ class Main(object):
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
     self.print_pkt = print_pkt
-    self.print_only_racing = print_only_racing
-    self.print_only_harmful = print_only_harmful
     self.add_hb_time = add_hb_time
     self.rw_delta = rw_delta
     self.ww_delta = ww_delta
@@ -1404,7 +1323,8 @@ class Main(object):
       
       if not self.no_dot_files:
         self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
-        self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
+        print "Saving HB graph to:", self.output_filename
+        self.graph.store_graph(self.output_filename, self.print_pkt)
      
         # Print traces
         for trace, races in packet_races:
@@ -1586,10 +1506,6 @@ if __name__ == '__main__':
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
                       help="Print packet headers in the produced dot files")
-  parser.add_argument('--racing', dest='print_only_racing', action='store_true', default=False,
-                      help="Print only races in the graph")
-  parser.add_argument('--harmful', dest='print_only_harmful', action='store_true', default=False,
-                      help="Print only harmful races (edges) in the graph")
   parser.add_argument('--rw_delta', dest='rw_delta', default=2, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--ww_delta', dest='ww_delta', default=2, type=int,
@@ -1626,7 +1542,7 @@ if __name__ == '__main__':
       assert args.rw_delta == args.ww_delta
     else:
       args.rw_delta = args.ww_delta = args.delta
-  main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
+  main = Main(args.trace_file, print_pkt=args.print_pkt,
               add_hb_time=not args.no_hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
