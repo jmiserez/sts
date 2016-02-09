@@ -1352,29 +1352,29 @@ class Main(object):
 #     import objgraph
     import gc
     
-    gc.collect()
-    print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    #gc.collect()
+    #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     t0 = time.time()
     
     if self.verify_and_minimize_only:
       self.graph.verify_and_minimize_trace(self.filename)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     else:
       self.graph.load_trace(self.filename)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       t1 = time.time()
       
       self.graph.race_detector.detect_races(verbose=True)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       self.graph.update_path_cache() # the race detector doesn't do it, so we do it ourself.
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       self.graph.race_detector.print_races(self.verbose)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       t2 = time.time()
             
       packet_traces = self.graph.extract_traces(self.graph.g)
