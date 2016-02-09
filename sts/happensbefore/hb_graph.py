@@ -712,20 +712,6 @@ class HappensBeforeGraph(object):
                                                       str(send.packet.src),
                                                       str(send.packet.dst), send.eid))
 
-#   def add_harmful_edges(self, bidir=False):
-#     for race in self.race_detector.races_harmful:
-#       props = dict(rel='race', rtype=race.rtype, harmful=True)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-# 
-#   def add_commute_edges(self, bidir=False):
-#     for race in self.race_detector.races_commute:
-#       props = dict(rel='race', rtype=race.rtype, harmful=False)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-
   def get_racing_events(self, trace, ignore_other_traces=True):
     """
     For a given packet trace, return all the races that races with its events
