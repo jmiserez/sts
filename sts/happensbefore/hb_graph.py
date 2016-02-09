@@ -1347,6 +1347,21 @@ class Main(object):
       num_per_pkt_inconsistent_no_repeat = len(summarized)
 
 
+      load_time = t1 - t0
+      detect_races_time = t2 - t1
+      extract_traces_time = t3 - t2
+      find_reactive_cmds_time = t4 - t3
+      find_proactive_cmds_time = t5 - t4
+      find_covered_races_time = t6 - t5
+      per_packet_inconsistent_time = t7 - t6
+      find_inconsistent_update_time = t8 - t7
+
+
+      ##### Final time, everything else is just print statements
+      t_final = time.time()
+      total_time = t_final - t0
+
+
       print "\n########## Summary ###########"
       print "* Race analysis *"
       print "\tTotal number of events in the trace:", self.graph.g.number_of_nodes()
@@ -1379,19 +1394,8 @@ class Main(object):
       #print "Number of versions:", len(versions)
 
   
-      load_time = t1 - t0
-      detect_races_time = t2 - t1
-      extract_traces_time = t3 - t2
-      find_reactive_cmds_time = t4 - t3
-      find_proactive_cmds_time = t5 - t4
-      find_covered_races_time = t6 - t5
-      per_packet_inconsistent_time = t7 - t6
-      find_inconsistent_update_time = t8 - t7
-  
-  
-  
-      t_final = time.time()
-      total_time = t_final - t0
+
+      print "* Timing information *"
       print "Done. Time elapsed:",total_time,"s"
       print "load_trace:", load_time, "s"
       print "detect_races:", detect_races_time, "s"
