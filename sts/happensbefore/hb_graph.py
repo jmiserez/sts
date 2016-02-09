@@ -1557,28 +1557,30 @@ def auto_int(x):
 if __name__ == '__main__':
   empty_delta = 1000000
   parser = argparse.ArgumentParser()
-  parser.add_argument('trace_file')
+  parser.add_argument('trace_file',
+                      help='Trace file produced by the instrumented sts, usually "hb.json"')
+
+  parser.add_argument('--no-hbt', dest='no_hbt', action='store_true', default=False,
+                      help="Don't add HB edges based on time")
+  parser.add_argument('--time-delta', dest='delta', default=2, type=int,
+                      help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
-                      help="Print packet headers in the graph")
+                      help="Print packet headers in the produced dot files")
   parser.add_argument('--racing', dest='print_only_racing', action='store_true', default=False,
                       help="Print only races in the graph")
   parser.add_argument('--harmful', dest='print_only_harmful', action='store_true', default=False,
-                      help="Print only harmful races (lines) in the graph")
-  parser.add_argument('--hbt', dest='hbt', action='store_true', default=False,
-                      help="Add HB edges based on tqime")
-  parser.add_argument('--rw_delta', dest='rw_delta', default=5, type=int,
+                      help="Print only harmful races (edges) in the graph")
+  parser.add_argument('--rw_delta', dest='rw_delta', default=2, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
-  parser.add_argument('--time-delta', dest='delta', default=empty_delta, type=int,
-                      help="delta time (in secs) for adding HB edges based on time")
-  parser.add_argument('--ww_delta', dest='ww_delta', default=5, type=int,
+  parser.add_argument('--ww_delta', dest='ww_delta', default=2, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--filter_rw', dest='filter_rw', action='store_true', default=False,
                       help="Filter Read/Write operations with HB relations")
-  parser.add_argument('--ignore_ethertypes', dest='ignore_ethertypes', nargs='*',
-                      type=auto_int, default=[ethernet.LLDP_TYPE, 0x8942],
+  parser.add_argument('--ignore-ethertypes', dest='ignore_ethertypes', nargs='*',
+                      type=auto_int, default=0,
                       help='Ether types to ignore from the graph')
   parser.add_argument('--no-race', dest='no_race', action='store_true', default=False,
-                      help="Don't add edge between racing events in the graph")
+                      help="Don't add edge between racing events in the visualized graph")
   parser.add_argument('--alt-barr', dest='alt_barr', action='store_true', default=False,
                       help="Use alternative barrier rules for purely reactive controllers")
   parser.add_argument('-v', dest='verbose', action='store_true', default=False,
@@ -1599,13 +1601,13 @@ if __name__ == '__main__':
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
   args = parser.parse_args()
-  if args.hbt:
+  if not args.no_hbt:
     if args.delta == empty_delta:
       assert args.rw_delta == args.ww_delta
     else:
       args.rw_delta = args.ww_delta = args.delta
   main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
-              add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
+              add_hb_time=not args.no_hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
               ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache, 
