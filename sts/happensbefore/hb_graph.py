@@ -1140,6 +1140,7 @@ class HappensBeforeGraph(object):
 
     # TODO(jm): Could we check the races directly instead of creating the ww_races variable?
     racing_versions_tuples = []
+    racing_versions_dict = {}
 
     ww_races = defaultdict(list)
     for race in self.race_detector.races_harmful_with_covered:
@@ -1166,11 +1167,28 @@ class HappensBeforeGraph(object):
       racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
       if set([v1, v2]) not in racing_versions_tuples:
         racing_versions_tuples.append(set([v1, v2]))
-    return racing_versions, racing_versions_tuples
+      ordered_versions = (v1, v2)
+      er1 = eid1
+      er2 = eid2
+      if ordered_versions not in racing_versions_dict:
+        ordered_versions = (v2, v1)
+        er1 = eid2
+        er2 = eid1
+      if ordered_versions not in racing_versions_dict:
+        racing_versions_dict[ordered_versions] = [[], []]
+      if er1 not in racing_versions_dict[ordered_versions][0] and\
+        er2 not in racing_versions_dict[ordered_versions][1]:
+        racing_versions_dict[ordered_versions][0].append(er1)
+        racing_versions_dict[ordered_versions][1].append(er2)
+    return racing_versions, racing_versions_tuples, racing_versions_dict
 
-  def print_versions(self, versions):
+  def print_versions(self, versions, selected_versions=[]):
     # Printing versions
+    if not selected_versions:
+      selected_versions = versions.keys()
     for v, cmds in versions.iteritems():
+      if v not in selected_versions:
+        continue
       print "IN Version", v
       if isinstance(v, HbMessageSend):
         print "React to Msg: ", v.msg_type_str
@@ -1304,7 +1322,7 @@ class Main(object):
         self.graph.find_per_packet_inconsistent(covered_races, True)
       t7 = time.time()
   
-      racing_versions, racing_versions_tuples = self.graph.find_inconsistent_updates()
+      racing_versions, racing_versions_tuples, racing_versions_tuples_dict = self.graph.find_inconsistent_updates()
       t8 = time.time()
       
       if not self.no_dot_files:
@@ -1314,15 +1332,16 @@ class Main(object):
      
         # Print traces
         for trace, races in packet_races:
-          self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
+          self.graph.print_racing_packet_trace(trace, races, label='incoherent', show_covered=False)
         for trace, races, _ in inconsistent_packet_traces:
-          self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
+          self.graph.print_racing_packet_trace(trace, races, label='incoherent_remaining')
         for trace, races, _ in inconsistent_packet_traces_covered:
           self.graph.print_racing_packet_trace(trace, races, label='covered')
         for trace, races, _ in inconsistent_packet_entry_version:
           self.graph.print_racing_packet_trace(trace, races, label='entry')
         for trace, races, _ in summarized:
-          self.graph.print_racing_packet_trace(trace, races, label='summarized')
+          #self.graph.print_racing_packet_trace(trace, races, label='summarized')
+          pass
         self.graph.save_races_graph(self.print_pkt)
   
   #     self.graph.print_versions(versions)
@@ -1360,6 +1379,22 @@ class Main(object):
       ##### Final time, everything else is just print statements
       t_final = time.time()
       total_time = t_final - t0
+
+      print "\n######## Update isolation violations ########"
+      for v1, v2 in racing_versions_tuples_dict:
+        if hasattr(v1, 'eid'):
+          pv1 = "React to event %s, %s" %  (v1.eid , getattr(v1, 'msg_type_str', ''))
+        else:
+          pv1 = "Practive version %d" % v1
+        if hasattr(v2, 'eid'):
+          pv2 = "React to event %d" % v2.eid
+        else:
+          pv2 = "Practive version %d" % v2
+        print "V1:{}".format(pv1)
+        print "\tEventing racing: {}".format(racing_versions_tuples_dict[(v1, v2)][0])
+        print "V2:{}".format(pv2)
+        print "\tEventing racing: {}".format(racing_versions_tuples_dict[(v1, v2)][1])
+        print ""
 
 
       print "\n########## Summary ###########"
