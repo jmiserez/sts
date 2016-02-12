@@ -4,13 +4,21 @@ This document will describe how to run the scenarios currently available for SDN
 
 ### Prerequisites
 
-These instructions were tested on a fresh install of Ubuntu 14.04.3 LTS 64bit inside a VM.
+These instructions were tested on a fresh install of Ubuntu 14.04.3 LTS 64bit Desktop inside a VM
+
+- Image:
+  - URL: http://releases.ubuntu.com/14.04/ubuntu-14.04.3-desktop-amd64.iso
+  - MD5 (please verify): cab6dd5ee6d649ed1b24e807c877c0ae
 
 - VM parameters: 
-  - VirtualBox 4.3.30
-  - 2GB RAM, 32GB HDD, default settings unless noted otherwise
-  - Installation of Ubuntu 14.04.03 LTS 64bit using default settings, updates enabled
-  - Latest updates installed (apt-get update; apt-get upgrade)
+  - VirtualBox Version 5.0.14 r105127
+  - 8GB RAM, 64GB HDD, 2 CPUs
+  - default settings unless noted otherwise
+  - Installation of Ubuntu 14.04.03 LTS 64bit (English, default partitioning settings)
+
+- User: iracer, Password: iracer
+
+- Install the VirtualBox guest additions
 
 - Install the following packages on top of the fresh install:
 
@@ -25,30 +33,65 @@ Dependencies due to:
 - STS: python-docutils
 - SDNRacer: python-networkx
 - Viewing .dot files: xdot, graphviz
+- Plotting: matplotlib, scipy
 
 ### Installation
 
 This assumes an install in the home directory, but any other directory works just as well.
 
+
 - Checkout STS and POX, install hassel:
 
+Without credentials: 
+
 ```
-$ cd ~
-$ git clone https://github.com/jmiserez/sts.git
-$ cd sts
-$ git checkout hb
-$ git submodule update --init --recursive
-$ ./tools/install_hassel_python.sh
+cd ~
+wget http://s3.miserez.org/iracer-pldiartifacteval/sts-hb.zip
+wget http://s3.miserez.org/iracer-pldiartifacteval/pox-hb.zip
+unzip sts-hb.zip
+unzip pox-hb.zip
+mv sts-hb sts
+rmdir sts/pox
+mv pox-hb sts/pox
+rmdir sts/sts/hassel
+cd sts
+git clone https://bitbucket.org/colin_scott/hassel-sts.git sts/hassel
+export ARCHFLAGS=-Wno-error=unused-command-line-argument-hard-error-in-future
+(cd sts/hassel/hsa-python && source setup.sh)
+```
+
+With credentials:
+
+```
+cd ~
+git clone https://github.com/jmiserez/sts.git
+cd sts
+git checkout hb
+git submodule update --init --recursive
+./tools/install_hassel_python.sh
 ```
 
 - Checkout Floodlight, and build the jar file:
 
+Without credentials:
+
 ```
-$ cd ~
-$ git clone https://github.com/jmiserez/floodlight.git
-$ cd floodlight
-$ git checkout hb
-$ ant
+cd ~
+wget http://s3.miserez.org/iracer-pldiartifacteval/floodlight-hb.zip
+unzip floodlight-hb.zip
+mv floodlight-hb floodlight
+cd floodlight
+ant
+```
+
+With credentials: 
+
+```
+cd ~
+git clone https://github.com/jmiserez/floodlight.git
+cd floodlight
+git checkout hb
+ant
 ```
 
 ### Scenarios
@@ -56,7 +99,7 @@ $ ant
 In the following chapters, the following scenarios are described:
 
 Fuzzer:
-- demo_floodlight_circuitpusher.py
+- trace_floodlight_circuitpusher.py
 - demo_pox_l2_learning.py
 
 Interactive (specific scenarios/races from the paper):
@@ -70,24 +113,24 @@ The first scenario is described in detail, the following ones only where the pro
 
 The circuitpusher scenario uses an external Floodlight process as the controller, and adds/removes circuits through the REST interface exposed by Floodlight. The topology used here is that of a binary tree, where the nodes are switches and the leaves are hosts. The BinaryLeafTreeTopology tree in this example has 3 levels of switches under the root, resulting in a total of 1+2+4+8=15 switches and 8*2=16 hosts.
 
-- Run the config (demo_floodlight_circuitpusher.py).
+- Run the config (trace_floodlight_circuitpusher.py).
 
 ```
 $ cd ~/sts
-$ ./simulator.py -L logging.cfg -c config/demo_floodlight_circuitpusher.py
+$ ./simulator.py -L logging.cfg -c config/trace_floodlight_circuitpusher.py
 ```
 
 - The prompt asking for Github credentials can be ignored (just press ENTER).
 
-- The simulation will terminate automatically after 100 rounds, this can be disabled by removing the steps=200 parameter to the Fuzzer object in the config file.
+- The simulation will terminate automatically after 200 rounds, this can be disabled by removing the steps=200 parameter to the Fuzzer object in the config file.
 
-- The trace directory is: sts/experiments/demo_floodlight_circuitpusher/
+- The trace directory is: sts/traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200
 - The trace file we are interested in is named 'hb.json'.
 
 - Run the race detection: on the hb.json file:
 
 ```
-$ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_circuitpusher/hb.json
+$ ./sts/happensbefore/hb_graph.py traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200/hb.json
 ```
 
 - The console output shows:
@@ -95,20 +138,20 @@ $ ./sts/happensbefore/hb_graph.py experiments/demo_floodlight_circuitpusher/hb.j
   * A list of event ids that contain operations (reads/writes)
   * A summary of the number of races.
 
-- A graphviz file is written to experiments/demo_floodlight_circuitpusher/hb.dot
+- A graphviz file is written to traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200/hb.dot
 
 Viewing the graphviz file is possible in several ways:
 
 - Recommended: view the file directly using 'xdot':
 
 ```
-$ xdot experiments/demo_floodlight_circuitpusher/hb.dot
+$ xdot traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200/hb.dot
 ```
 
 - Alternatively: create a PDF using 'dot'. Note that some viewers struggle a bit with large graphs.
 
 ```
-$ dot -Tpdf experiments/demo_floodlight_circuitpusher/hb.dot -o experiments/demo_floodlight_circuitpusher/hb.pdf
+$ dot -Tpdf traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200/hb.dot -o traces/trace_floodlight_circuitpusher-BinaryLeafTreeTopology1-steps200/hb.pdf
 ```
 
 #### Scenario #2: Running the POX learning switch
@@ -358,6 +401,5 @@ The analyzer supports a few arguments that can be passed to create smaller .dot 
 - ```--racing```: Print only races in the graph
 - ```--harmful```: Print only harmful races (lines) in the graph
 - ```--ignore_ethertypes```: Ignore specified ethertypes, by default LLDP and 0x8942 (BigSwitchNetwork) packets.
-
 
 
