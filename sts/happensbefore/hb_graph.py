@@ -602,12 +602,18 @@ class HappensBeforeGraph(object):
     nx.write_dot(self.g, os.path.join(self.results_dir, filename))
 
   @staticmethod
-  def prep_draw(g, print_packets):
+  def prep_draw(g, print_packets, allow_none_event=False):
     """
     Adds proper annotation for the graph to make drawing it more pleasant.
     """
     for eid, data in g.nodes_iter(data=True):
-      event = data['event']
+      event = data.get('event', None)
+      if not event and allow_none_event:
+        label = "N %s" % eid
+        shape = "oval"
+        g.node[eid]['label'] = label
+        g.node[eid]['shape'] = shape
+        continue
       label = "ID %d \\n %s" % (eid, event.type)
       if hasattr(event, 'hid'):
         label += "\\nHID: " + str(event.hid)
@@ -1229,6 +1235,51 @@ class HappensBeforeGraph(object):
     self.prep_draw(subg, True)
     nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
 
+  def racing_versions_graph(self, v1, cmd1, v2, cmd2):
+    versions = self.versions
+    nodes = []
+    extra_nodes = []
+    extra_edges = []
+    nodes.extend(cmd1)
+    nodes.extend(cmd2)
+    if hasattr(v1, 'eid') and self.g.has_node(v1.eid):
+      nodes.append(v1.eid)
+      for eid in cmd1:
+        paths = nx.all_simple_paths(self.g, v1.eid, eid)
+        for p in paths:
+          nodes.extend(p)
+    else:
+      vid = 'P%d' % v1
+      extra_nodes.append(vid)
+      for eid in cmd1:
+        extra_edges.append((vid, eid))
+
+    if hasattr(v2, 'eid') and self.g.has_node(v2.eid):
+      nodes.append(v2.eid)
+      for eid in cmd2:
+        paths = nx.all_simple_paths(self.g, v2.eid, eid)
+        for p in paths:
+          nodes.extend(p)
+    else:
+      vid = 'Proactive%d' % v2
+      extra_nodes.append(vid)
+      for eid in cmd2:
+        extra_edges.append((vid, eid))
+
+    vg = self.g.subgraph(nodes)
+    for n in extra_nodes:
+      vg.add_node(n)
+    for src, dst in extra_edges:
+      vg.add_edge(src, dst, rel='proactive')
+
+    races = self.race_detector.races_harmful
+    for rtype, i_event, i_op, k_event, k_op in races:
+      if i_event.eid in nodes and k_event.eid in nodes:
+        vg.add_edge(i_event.eid, k_event.eid, rel='race', harmful=True)
+        vg.add_edge(k_event.eid, i_event.eid, rel='race', harmful=True)
+
+    self.prep_draw(vg, True, allow_none_event=True)
+    return vg
 
 class Main(object):
   
@@ -1381,7 +1432,12 @@ class Main(object):
       total_time = t_final - t0
 
       print "\n######## Update isolation violations ########"
+      counter = 0
       for v1, v2 in racing_versions_tuples_dict:
+        rvg = self.graph.racing_versions_graph(v1, racing_versions_tuples_dict[(v1, v2)][0], v2, racing_versions_tuples_dict[(v1, v2)][1])
+        rvg_path = os.path.join(self.results_dir, 'isolation_violation_%d.dot' % counter)
+        print "Saving update isolation violation graph to %s" % rvg_path
+        nx.write_dot(rvg, rvg_path)
         if hasattr(v1, 'eid'):
           pv1 = "React to event %s, %s" %  (v1.eid , getattr(v1, 'msg_type_str', ''))
         else:
