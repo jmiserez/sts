@@ -1170,8 +1170,8 @@ class HappensBeforeGraph(object):
           v1 = version
         if eid2 in cmds:
           v2 = version
-      if v1 and v2 and v1 != v2:
-        break
+        if v1 and v2 and v1 != v2:
+          break
       racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
       if set([v1, v2]) not in racing_versions_tuples:
         racing_versions_tuples.append(set([v1, v2]))
