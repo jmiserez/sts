@@ -1023,7 +1023,7 @@ class HappensBeforeGraph(object):
       nodes = []
       # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
       # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
-      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type='OFPT_PACKET_IN')
       for src, dst in edges:
         src_event = self.g.node[src]['event']
         dst_event = self.g.node[dst]['event']
