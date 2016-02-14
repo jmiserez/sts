@@ -1238,7 +1238,6 @@ class HappensBeforeGraph(object):
     nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
 
   def racing_versions_graph(self, v1, cmd1, v2, cmd2):
-    versions = self.versions
     nodes = []
     extra_nodes = []
     extra_edges = []
@@ -1247,11 +1246,10 @@ class HappensBeforeGraph(object):
     if hasattr(v1, 'eid') and self.g.has_node(v1.eid):
       nodes.append(v1.eid)
       for eid in cmd1:
-        paths = nx.all_simple_paths(self.g, v1.eid, eid)
-        for p in paths:
-          nodes.extend(p)
+        nodes.append(eid)
+        extra_edges.append((v1.eid, eid))
     else:
-      vid = 'P%d' % v1
+      vid = 'Proactive%d' % v1
       extra_nodes.append(vid)
       for eid in cmd1:
         extra_edges.append((vid, eid))
@@ -1259,9 +1257,8 @@ class HappensBeforeGraph(object):
     if hasattr(v2, 'eid') and self.g.has_node(v2.eid):
       nodes.append(v2.eid)
       for eid in cmd2:
-        paths = nx.all_simple_paths(self.g, v2.eid, eid)
-        for p in paths:
-          nodes.extend(p)
+        nodes.append(eid)
+        extra_edges.append((v2.eid, eid))
     else:
       vid = 'Proactive%d' % v2
       extra_nodes.append(vid)
@@ -1272,7 +1269,7 @@ class HappensBeforeGraph(object):
     for n in extra_nodes:
       vg.add_node(n)
     for src, dst in extra_edges:
-      vg.add_edge(src, dst, rel='proactive')
+      vg.add_edge(src, dst, rel='version')
 
     races = self.race_detector.races_harmful
     for rtype, i_event, i_op, k_event, k_op in races:
@@ -1282,6 +1279,7 @@ class HappensBeforeGraph(object):
 
     self.prep_draw(vg, True, allow_none_event=True)
     return vg
+
 
 class Main(object):
   
@@ -1434,12 +1432,12 @@ class Main(object):
       total_time = t_final - t0
 
       print "\n######## Update isolation violations ########"
-      counter = 0
-      for v1, v2 in racing_versions_tuples_dict:
-        rvg = self.graph.racing_versions_graph(v1, racing_versions_tuples_dict[(v1, v2)][0], v2, racing_versions_tuples_dict[(v1, v2)][1])
-        rvg_path = os.path.join(self.results_dir, 'isolation_violation_%d.dot' % counter)
-        print "Saving update isolation violation graph to %s" % rvg_path
-        nx.write_dot(rvg, rvg_path)
+      for counter, (v1, v2) in enumerate(racing_versions_tuples_dict):
+        if not self.no_dot_files:
+          rvg = self.graph.racing_versions_graph(v1, racing_versions_tuples_dict[(v1, v2)][0], v2, racing_versions_tuples_dict[(v1, v2)][1])
+          rvg_path = os.path.join(self.results_dir, 'isolation_violation_%d.dot' % counter)
+          print "Saving update isolation violation graph to %s" % rvg_path
+          nx.write_dot(rvg, rvg_path)
         if hasattr(v1, 'eid'):
           pv1 = "React to event %s, %s" %  (v1.eid , getattr(v1, 'msg_type_str', ''))
         else:
