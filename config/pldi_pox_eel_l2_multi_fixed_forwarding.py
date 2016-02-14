@@ -17,7 +17,7 @@ start_cmd = (" ./pox.py --verbose openflow.of_01 --address=__address__ --port=__
 
 #start_cmd = '''echo "no-op"'''
 #controllers = [ControllerConfig(start_cmd, cwd="pox/", address="192.168.56.1", port=6633, controller_type='dummy')]
-controllers = [ControllerConfig(start_cmd, cwd="/home/ahassany/repos/pox/", port=6633)]
+controllers = [ControllerConfig(start_cmd, cwd="/home/sdnracer/Desktop/sdnracer/pox-eel/", port=6633)]
 
 #################################
 # Topologies used in PLDI paper #
