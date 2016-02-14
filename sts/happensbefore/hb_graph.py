@@ -1015,15 +1015,62 @@ class HappensBeforeGraph(object):
       barrier_replies.append((self.msgs[eid], nodes))
     return barrier_replies
 
+  def find_reactive_versions2(self):
+    considered = []
+    cmds = []
+    ordered_msgs = OrderedDict()
+    #sorted_msgs = sorted(self.msgs.values(), key=lambda m: m.operations[0].t if getattr(m, 'operations', None) else 0)
+    sorted_msgs = sorted(self.msgs.values(), key=lambda m: m.eid)
+    for m in sorted_msgs:
+      ordered_msgs[m.eid] = m
+    for eid in ordered_msgs:
+      if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
+        continue
+      if eid in considered:
+        continue
+      else:
+        considered.append(eid)
+      nodes = []
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
+      #edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type='OFPT_PACKET_IN')
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      for src, dst in edges:
+        src_event = self.g.node[src]['event']
+        dst_event = self.g.node[dst]['event']
+        if isinstance(dst_event, HbMessageSend):
+          considered.append(dst_event.eid)
+        if isinstance(src_event, HbMessageHandle) and src_event.eid not in considered:
+          nodes.append(src_event)
+          self.g.node[src]['cmd_type'] = "Reactive to %d" % eid
+        if isinstance(dst_event, HbMessageHandle) and dst_event.eid not in considered:
+          nodes.append(dst_event)
+          self.g.node[dst]['cmd_type'] = "Reactive to %d" % eid
+      # Get unique and sort by time
+      nodes = sorted(list(set(nodes)),
+                     key=lambda n: n.operations[0].t if n.operations else 0)
+      for n in nodes:
+        considered.append(n.eid)
+      cmds.append((self.msgs[eid], nodes))
+
+    for l, (x, i) in enumerate(cmds):
+      for k, (y, j) in enumerate(cmds):
+        if l == k:
+          continue
+      assert set(i).intersection(j), "l %s and k %s" % (l, k)
+    return cmds
+
   def find_reactive_versions(self):
     cmds = []
+    considered = []
+    cv = dict()
     for eid in self.msgs:
       if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
         continue
       nodes = []
-      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent
       # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
-      edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type='OFPT_PACKET_IN')
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type=HbMessageSend)
       for src, dst in edges:
         src_event = self.g.node[src]['event']
         dst_event = self.g.node[dst]['event']
@@ -1036,7 +1083,20 @@ class HappensBeforeGraph(object):
       # Get unique and sort by time
       nodes = sorted(list(set(nodes)),
                      key=lambda n: n.operations[0].t if n.operations else 0)
+      for n in nodes:
+        assert n.eid not in considered, "For event %d at eid %d it was considered at %d" % (n.eid, eid, cv[n.eid])
+        considered.append(n.eid)
+        cv[n.eid] = eid
+        considered.append(n.eid)
+
       cmds.append((self.msgs[eid], nodes))
+
+    for l, (x, i) in enumerate(cmds):
+      for k, (y, j) in enumerate(cmds):
+        if l == k:
+          continue
+        assert not set(i).intersection(j), "l %s and k%s" % (l, k)
+
     return cmds
 
   def find_proactive_cmds(self, reactive_versions=None):

@@ -299,7 +299,7 @@ def dfs_edge_filter(G, source, edges_iter_func=lambda g, start: iter(g[start]), 
       try:
         child = next(children)
         if filter_msg_type and \
-                getattr(G.node[child].get('event', None), 'msg_type_str', None) == filter_msg_type:
+                isinstance(G.node[child].get('event', None), filter_msg_type):
           continue
         if child not in visited:
           yield parent,child
