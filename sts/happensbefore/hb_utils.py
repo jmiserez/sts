@@ -275,7 +275,7 @@ def op_to_str(op):
   return opstr
 
 
-def dfs_edge_filter(G, source, edges_iter_func=lambda g, start: iter(g[start])):
+def dfs_edge_filter(G, source, edges_iter_func=lambda g, start: iter(g[start]), filter_msg_type=None):
   """
   Do DFS over graph G starting from optional source.
   edges_iter_func is a function that takes two arguments (graph and a node) then
@@ -298,6 +298,9 @@ def dfs_edge_filter(G, source, edges_iter_func=lambda g, start: iter(g[start])):
       parent,children = stack[-1]
       try:
         child = next(children)
+        if filter_msg_type and \
+                isinstance(G.node[child].get('event', None), filter_msg_type):
+          continue
         if child not in visited:
           yield parent,child
           visited.add(child)

@@ -594,99 +594,26 @@ class HappensBeforeGraph(object):
     print "Verified, minimized, and wrote " + str(unpacked_events) + " events to "+str(outfilename)
 
     
-  def store_graph(self, filename="hb.dot",  print_packets=False, print_only_racing=False, print_only_harmful=False):
-    pass
-#     if self.results_dir is not None:
-#       filename = os.path.join(self.results_dir,filename)
-# 
-#     self.prep_draw(self.g, print_packets)
-#     nx.write_dot(self.g, os.path.join(self.results_dir, "g.dot"))
-# 
-#     interesting_msg_types = ['OFPT_PACKET_IN',
-#                             'OFPT_FLOW_REMOVED',
-#                             'OFPT_PACKET_OUT',
-#                             'OFPT_FLOW_MOD',
-#                             'OFPT_BARRIER_REQUEST',
-#                             'OFPT_BARRIER_REPLY',
-#                             'OFPT_HELLO',
-#                             ]
-#         
-#     pruned_events = []
-#     
-#     if print_only_racing:
-#       for i in self.events:
-#         if i not in self.race_detector.racing_events:
-#           pruned_events.append(i)
-#         else:
-#           if print_only_harmful and i not in self.race_detector.racing_events_harmful:
-#             pruned_events.append(i)
-#             
-#     dot_lines = []
-#     dot_lines.append("digraph G {\n");
-#     for i in self.events:
-#       if i not in pruned_events:
-#         optype = ""
-#         shape = ""
-#         if hasattr(i, 'operations'):
-#           for x in i.operations:
-#             if x.type == 'TraceSwitchFlowTableWrite':
-#               optype = 'FlowTableWrite'
-#               shape = '[shape=box style="bold"]'
-#               break
-#             if x.type == 'TraceSwitchFlowTableRead':
-#               optype = 'FlowTableRead'
-#               shape = '[shape="box"]'
-#               break
-#         
-#         event_info_lines = []
-#         if optype != "":
-#           event_info_lines.append("Op: " + optype)
-#         if (hasattr(i, 'msg_type')):
-#           event_info_lines.append("MsgType: " + i.msg_type_str)
-#         if (hasattr(i, 'in_port')):
-#           event_info_lines.append("InPort: " + str(i.in_port))
-#         if (hasattr(i, 'buffer_id')):
-#           event_info_lines.append("BufferId: " + str(i.buffer_id))
-#         if hasattr(i, 'packet'):
-#           if print_packets:
-#             pkt = pkt_info(i.packet)
-#             event_info_lines.append("Pkt: " + pkt)
-#         if not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types:
-#             event_info_lines_str = ""
-#             for x in event_info_lines:
-#               event_info_lines_str += '\n'
-#               event_info_lines_str += str(x)
-#             dot_lines.append('{0} [label="ID: {0}\\nDPID: {1}\\nEvent: {2}\\n{3}"] {4};\n'.format(
-#                 i.eid, 
-#                 "" if not hasattr(i, 'dpid') else i.dpid,
-#                 i.type,
-#                 event_info_lines_str,
-#                 shape))
-#     for k,v in self.predecessors:
-#       if k not in pruned_events:
-#         for i in v:
-#           if i not in pruned_events and (not hasattr(i, 'msg_type') or i.msg_type_str in interesting_msg_types):
-#             dot_lines.append('    {} -> {};\n'.format(i.eid,k.eid))
-#     dot_lines.append('edge[constraint=false arrowhead="none"];\n')
-#     if not self.no_race:
-#       if not print_only_harmful:
-#         for race in self.race_detector.races_commute:
-#           if race[1] not in pruned_events and race[2] not in pruned_events:
-#             dot_lines.append('    {1} -> {2} [style="dotted"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
-#       for race in self.race_detector.races_harmful:
-#         if race[1] not in pruned_events and race[2] not in pruned_events:
-#             dot_lines.append('    {1} -> {2} [style="bold", color="red"];\n'.format(race.rtype, race.i_event.eid, race.k_event.eid))
-#     dot_lines.append("}\n");
-#     with open(filename, 'w') as f:
-#       f.writelines(dot_lines)
+  def store_graph(self, filename="hb.dot",  print_packets=False):
+    if self.results_dir is not None:
+      filename = os.path.join(self.results_dir,filename)
+
+    self.prep_draw(self.g, print_packets)
+    nx.write_dot(self.g, os.path.join(self.results_dir, filename))
 
   @staticmethod
-  def prep_draw(g, print_packets):
+  def prep_draw(g, print_packets, allow_none_event=False):
     """
     Adds proper annotation for the graph to make drawing it more pleasant.
     """
     for eid, data in g.nodes_iter(data=True):
-      event = data['event']
+      event = data.get('event', None)
+      if not event and allow_none_event:
+        label = "N %s" % eid
+        shape = "oval"
+        g.node[eid]['label'] = label
+        g.node[eid]['shape'] = shape
+        continue
       label = "ID %d \\n %s" % (eid, event.type)
       if hasattr(event, 'hid'):
         label += "\\nHID: " + str(event.hid)
@@ -790,20 +717,6 @@ class HappensBeforeGraph(object):
       nx.write_dot(subg, "%s/trace_%s_%s_%04d.dot" % (results_dir,
                                                       str(send.packet.src),
                                                       str(send.packet.dst), send.eid))
-
-#   def add_harmful_edges(self, bidir=False):
-#     for race in self.race_detector.races_harmful:
-#       props = dict(rel='race', rtype=race.rtype, harmful=True)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
-# 
-#   def add_commute_edges(self, bidir=False):
-#     for race in self.race_detector.races_commute:
-#       props = dict(rel='race', rtype=race.rtype, harmful=False)
-#       self.g.add_edge(race.i_event.eid, race.k_event.eid, attr_dict=props)
-#       if bidir:
-#         self.g.add_edge(race.k_event.eid, race.i_event.eid, attr_dict=props)
 
   def get_racing_events(self, trace, ignore_other_traces=True):
     """
@@ -1102,15 +1015,62 @@ class HappensBeforeGraph(object):
       barrier_replies.append((self.msgs[eid], nodes))
     return barrier_replies
 
+  def find_reactive_versions2(self):
+    considered = []
+    cmds = []
+    ordered_msgs = OrderedDict()
+    #sorted_msgs = sorted(self.msgs.values(), key=lambda m: m.operations[0].t if getattr(m, 'operations', None) else 0)
+    sorted_msgs = sorted(self.msgs.values(), key=lambda m: m.eid)
+    for m in sorted_msgs:
+      ordered_msgs[m.eid] = m
+    for eid in ordered_msgs:
+      if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
+        continue
+      if eid in considered:
+        continue
+      else:
+        considered.append(eid)
+      nodes = []
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
+      #edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type='OFPT_PACKET_IN')
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      for src, dst in edges:
+        src_event = self.g.node[src]['event']
+        dst_event = self.g.node[dst]['event']
+        if isinstance(dst_event, HbMessageSend):
+          considered.append(dst_event.eid)
+        if isinstance(src_event, HbMessageHandle) and src_event.eid not in considered:
+          nodes.append(src_event)
+          self.g.node[src]['cmd_type'] = "Reactive to %d" % eid
+        if isinstance(dst_event, HbMessageHandle) and dst_event.eid not in considered:
+          nodes.append(dst_event)
+          self.g.node[dst]['cmd_type'] = "Reactive to %d" % eid
+      # Get unique and sort by time
+      nodes = sorted(list(set(nodes)),
+                     key=lambda n: n.operations[0].t if n.operations else 0)
+      for n in nodes:
+        considered.append(n.eid)
+      cmds.append((self.msgs[eid], nodes))
+
+    for l, (x, i) in enumerate(cmds):
+      for k, (y, j) in enumerate(cmds):
+        if l == k:
+          continue
+      assert set(i).intersection(j), "l %s and k %s" % (l, k)
+    return cmds
+
   def find_reactive_versions(self):
     cmds = []
+    considered = []
+    cv = dict()
     for eid in self.msgs:
       if self.msgs[eid].msg_type_str == 'OFPT_BARRIER_REPLY':
         continue
       nodes = []
-      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent 
+      # TODO(jm): Are we sure just_mid_iter is correct? What about packets sent
       # out by a PACKET_OUT that then trigger a PACKET_IN -> ... -> BARRIER_REPLY?find_barrier_replies
-      edges = dfs_edge_filter(self.g, eid, just_mid_iter)
+      edges = dfs_edge_filter(self.g, eid, just_mid_iter, filter_msg_type=HbMessageSend)
       for src, dst in edges:
         src_event = self.g.node[src]['event']
         dst_event = self.g.node[dst]['event']
@@ -1123,7 +1083,20 @@ class HappensBeforeGraph(object):
       # Get unique and sort by time
       nodes = sorted(list(set(nodes)),
                      key=lambda n: n.operations[0].t if n.operations else 0)
+      for n in nodes:
+        assert n.eid not in considered, "For event %d at eid %d it was considered at %d" % (n.eid, eid, cv[n.eid])
+        considered.append(n.eid)
+        cv[n.eid] = eid
+        considered.append(n.eid)
+
       cmds.append((self.msgs[eid], nodes))
+
+    for l, (x, i) in enumerate(cmds):
+      for k, (y, j) in enumerate(cmds):
+        if l == k:
+          continue
+        assert not set(i).intersection(j), "l %s and k%s" % (l, k)
+
     return cmds
 
   def find_proactive_cmds(self, reactive_versions=None):
@@ -1233,6 +1206,7 @@ class HappensBeforeGraph(object):
 
     # TODO(jm): Could we check the races directly instead of creating the ww_races variable?
     racing_versions_tuples = []
+    racing_versions_dict = {}
 
     ww_races = defaultdict(list)
     for race in self.race_detector.races_harmful_with_covered:
@@ -1256,14 +1230,33 @@ class HappensBeforeGraph(object):
           v1 = version
         if eid2 in cmds:
           v2 = version
+        if v1 and v2 and v1 != v2:
+          break
       racing_versions.append((v1, v2, (eid1, eid2), (versions[v1], versions[v2])))
       if set([v1, v2]) not in racing_versions_tuples:
         racing_versions_tuples.append(set([v1, v2]))
-    return racing_versions, racing_versions_tuples
+      ordered_versions = (v1, v2)
+      er1 = eid1
+      er2 = eid2
+      if ordered_versions not in racing_versions_dict:
+        ordered_versions = (v2, v1)
+        er1 = eid2
+        er2 = eid1
+      if ordered_versions not in racing_versions_dict:
+        racing_versions_dict[ordered_versions] = [[], []]
+      if er1 not in racing_versions_dict[ordered_versions][0] and\
+        er2 not in racing_versions_dict[ordered_versions][1]:
+        racing_versions_dict[ordered_versions][0].append(er1)
+        racing_versions_dict[ordered_versions][1].append(er2)
+    return racing_versions, racing_versions_tuples, racing_versions_dict
 
-  def print_versions(self, versions):
+  def print_versions(self, versions, selected_versions=[]):
     # Printing versions
+    if not selected_versions:
+      selected_versions = versions.keys()
     for v, cmds in versions.iteritems():
+      if v not in selected_versions:
+        continue
       print "IN Version", v
       if isinstance(v, HbMessageSend):
         print "React to Msg: ", v.msg_type_str
@@ -1304,10 +1297,53 @@ class HappensBeforeGraph(object):
     self.prep_draw(subg, True)
     nx.write_dot(subg, os.path.join(self.results_dir, 'covered_races.dot'))
 
+  def racing_versions_graph(self, v1, cmd1, v2, cmd2):
+    nodes = []
+    extra_nodes = []
+    extra_edges = []
+    nodes.extend(cmd1)
+    nodes.extend(cmd2)
+    if hasattr(v1, 'eid') and self.g.has_node(v1.eid):
+      nodes.append(v1.eid)
+      for eid in cmd1:
+        nodes.append(eid)
+        extra_edges.append((v1.eid, eid))
+    else:
+      vid = 'Proactive%d' % v1
+      extra_nodes.append(vid)
+      for eid in cmd1:
+        extra_edges.append((vid, eid))
+
+    if hasattr(v2, 'eid') and self.g.has_node(v2.eid):
+      nodes.append(v2.eid)
+      for eid in cmd2:
+        nodes.append(eid)
+        extra_edges.append((v2.eid, eid))
+    else:
+      vid = 'Proactive%d' % v2
+      extra_nodes.append(vid)
+      for eid in cmd2:
+        extra_edges.append((vid, eid))
+
+    vg = self.g.subgraph(nodes)
+    for n in extra_nodes:
+      vg.add_node(n)
+    for src, dst in extra_edges:
+      vg.add_edge(src, dst, rel='version')
+
+    races = self.race_detector.races_harmful
+    for rtype, i_event, i_op, k_event, k_op in races:
+      if i_event.eid in nodes and k_event.eid in nodes:
+        vg.add_edge(i_event.eid, k_event.eid, rel='race', harmful=True)
+        vg.add_edge(k_event.eid, i_event.eid, rel='race', harmful=True)
+
+    self.prep_draw(vg, True, allow_none_event=True)
+    return vg
+
 
 class Main(object):
   
-  def __init__(self, filename, print_pkt, print_only_racing, print_only_harmful,
+  def __init__(self, filename, print_pkt,
                add_hb_time=True, rw_delta=5, ww_delta=5, filter_rw=False,
                ignore_ethertypes=None, no_race=False, alt_barr=False,
                verbose=True, ignore_first=False, disable_path_cache=False, data_deps=False,
@@ -1317,8 +1353,6 @@ class Main(object):
     self.results_dir = os.path.dirname(self.filename)
     self.output_filename = self.results_dir + "/" + "hb.dot"
     self.print_pkt = print_pkt
-    self.print_only_racing = print_only_racing
-    self.print_only_harmful = print_only_harmful
     self.add_hb_time = add_hb_time
     self.rw_delta = rw_delta
     self.ww_delta = ww_delta
@@ -1352,29 +1386,29 @@ class Main(object):
 #     import objgraph
     import gc
     
-    gc.collect()
-    print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    #gc.collect()
+    #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     t0 = time.time()
     
     if self.verify_and_minimize_only:
       self.graph.verify_and_minimize_trace(self.filename)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     else:
       self.graph.load_trace(self.filename)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       t1 = time.time()
       
       self.graph.race_detector.detect_races(verbose=True)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       self.graph.update_path_cache() # the race detector doesn't do it, so we do it ourself.
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       self.graph.race_detector.print_races(self.verbose)
-      gc.collect()
-      print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+      #gc.collect()
+      #print 'Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
       t2 = time.time()
             
       packet_traces = self.graph.extract_traces(self.graph.g)
@@ -1399,43 +1433,50 @@ class Main(object):
         self.graph.find_per_packet_inconsistent(covered_races, True)
       t7 = time.time()
   
-      racing_versions, racing_versions_tuples = self.graph.find_inconsistent_updates()
+      racing_versions, racing_versions_tuples, racing_versions_tuples_dict = self.graph.find_inconsistent_updates()
       t8 = time.time()
       
       if not self.no_dot_files:
         self.graph.store_traces(self.results_dir, print_packets=True, subgraphs=packet_traces)
-        self.graph.store_graph(self.output_filename, self.print_pkt, self.print_only_racing, self.print_only_harmful)
+        print "Saving HB graph to:", self.output_filename
+        self.graph.store_graph(self.output_filename, self.print_pkt)
      
         # Print traces
         for trace, races in packet_races:
-          self.graph.print_racing_packet_trace(trace, races, label='race', show_covered=False)
+          self.graph.print_racing_packet_trace(trace, races, label='incoherent', show_covered=False)
         for trace, races, _ in inconsistent_packet_traces:
-          self.graph.print_racing_packet_trace(trace, races, label='inconsistent')
+          self.graph.print_racing_packet_trace(trace, races, label='incoherent_remaining')
         for trace, races, _ in inconsistent_packet_traces_covered:
           self.graph.print_racing_packet_trace(trace, races, label='covered')
         for trace, races, _ in inconsistent_packet_entry_version:
           self.graph.print_racing_packet_trace(trace, races, label='entry')
         for trace, races, _ in summarized:
-          self.graph.print_racing_packet_trace(trace, races, label='summarized')
+          #self.graph.print_racing_packet_trace(trace, races, label='summarized')
+          pass
         self.graph.save_races_graph(self.print_pkt)
   
   #     self.graph.print_versions(versions)
   #     self.graph.print_covered_races()
-  
-      print "Number of packet traces with races:", len(packet_races)
-      print "Number of packet inconsistencies: ", len(inconsistent_packet_traces)
-      print "Number of packet inconsistencies that are actually consistent (covered): ", len(inconsistent_packet_traces_covered)
-      print "Number of packet inconsistencies the first race is already inconsistent: ", len(inconsistent_packet_entry_version)
-      print "Number of packet inconsistencies after trimming repeated races: ", len(summarized)
-      print "Number of packet inconsistent updates: ", len(racing_versions)
-      print "Number of races: ", self.graph.race_detector.total_races
-      print "Number of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
-      print "Number of commuting races: ", len(self.graph.race_detector.races_commute)
-      print "Number of harmful races: ", len(self.graph.race_detector.races_harmful)
-      print "Number of covered races: ", self.graph.race_detector.total_covered
-      print "Number of versions:", len(versions)
-      print "Inconsistent updates:", len(racing_versions_tuples)
-  
+
+      num_writes = len(self.graph.race_detector.write_operations)
+      num_read = len(self.graph.race_detector.read_operations)
+      num_ops = num_writes + num_read
+
+      num_harmful = self.graph.race_detector.total_harmful
+      num_commute = self.graph.race_detector.total_commute
+      num_races = self.graph.race_detector.total_races
+      num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
+      num_covered = self.graph.race_detector.total_covered
+
+      num_time_edges = self.graph.race_detector.time_edges_counter
+
+      num_per_pkt_races = len(packet_races)
+      num_per_pkt_inconsistent = len(inconsistent_packet_traces)
+      num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
+      num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
+      num_per_pkt_inconsistent_no_repeat = len(summarized)
+
+
       load_time = t1 - t0
       detect_races_time = t2 - t1
       extract_traces_time = t3 - t2
@@ -1444,20 +1485,77 @@ class Main(object):
       find_covered_races_time = t6 - t5
       per_packet_inconsistent_time = t7 - t6
       find_inconsistent_update_time = t8 - t7
-  
-  
-  
+
+
+      ##### Final time, everything else is just print statements
       t_final = time.time()
       total_time = t_final - t0
-      print "Done. Time elapsed:",total_time,"s"
-      print "load_trace:", load_time, "s"
-      print "detect_races:", detect_races_time, "s"
-      print "extract_traces_time:", extract_traces_time, "s"
-      print "find_reactive_cmds_time:", find_reactive_cmds_time, "s"
-      print "find_proactive_cmds_time:", find_proactive_cmds_time, "s"
-      print "find_covered_races_time:", find_covered_races_time, "s"
-      print "per_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
-      print "find_inconsistent_update_time:", find_inconsistent_update_time, "s"
+
+      print "\n######## Update isolation violations ########"
+      for counter, (v1, v2) in enumerate(racing_versions_tuples_dict):
+        if not self.no_dot_files:
+          rvg = self.graph.racing_versions_graph(v1, racing_versions_tuples_dict[(v1, v2)][0], v2, racing_versions_tuples_dict[(v1, v2)][1])
+          rvg_path = os.path.join(self.results_dir, 'isolation_violation_%d.dot' % counter)
+          print "Saving update isolation violation graph to %s" % rvg_path
+          nx.write_dot(rvg, rvg_path)
+        if hasattr(v1, 'eid'):
+          pv1 = "React to event %s, %s" %  (v1.eid , getattr(v1, 'msg_type_str', ''))
+        else:
+          pv1 = "Practive version %d" % v1
+        if hasattr(v2, 'eid'):
+          pv2 = "React to event %d" % v2.eid
+        else:
+          pv2 = "Practive version %d" % v2
+        print "V1:{}".format(pv1)
+        print "\tEventing racing: {}".format(racing_versions_tuples_dict[(v1, v2)][0])
+        print "V2:{}".format(pv2)
+        print "\tEventing racing: {}".format(racing_versions_tuples_dict[(v1, v2)][1])
+        print ""
+
+
+      print "\n########## Summary ###########"
+      print "* Race analysis *"
+      print "\tTotal number of events in the trace:", self.graph.g.number_of_nodes()
+      print "\tTotal number of events with read operations:", num_read
+      print "\tTotal number of events with write operations:", num_writes
+      print "\tTotal number of events with read or write operations:", num_ops
+      print "\tTotal number of observed races without any filters:", num_races
+      print "\tTotal number of commuting races:", num_commute
+      print "\tTotal number of races filtered by Time HB edges:", num_time_filtered_races
+      print "\tTotal number of races covered by data dependency:", num_covered
+      print "\tRemaining number of races after applying all enabled filters: %d (%.02f%%)" % (num_harmful, (num_harmful / float(num_races) * 100))
+
+      print "\n\n"
+      print "* Properties analysis *"
+      print "\tNumber of observed network updates:", len(versions)
+      print "\tNumber of update isolation violations:", len(racing_versions_tuples)
+      print ""
+      print "\tTotal number of packets in the traces:", len(self.graph.host_sends)
+      print "\tNumber of packet coherence violations:", len(packet_races)
+      print "\tNumber of packet coherence violations filtered due covered races: ", len(inconsistent_packet_traces_covered)
+      print "\tNumber of packet coherence but only on the first switch in the update: ", len(inconsistent_packet_entry_version)
+      print "\tNumber of packet coherence violations after filtering covered races: ", len(inconsistent_packet_traces)
+      #print "\tNumber of packet inconsistencies after trimming repeated races: ", len(summarized)
+      #print "\tNumber of packet inconsistent updates: ", len(racing_versions)
+      #print "\tNumber of races: ", self.graph.race_detector.total_races
+      #print "\tNumber of races filtered by time: ", self.graph.race_detector.total_time_filtered_races
+      #print "\tNumber of commuting races: ", len(self.graph.race_detector.races_commute)
+      #print "\tNumber of harmful races: ", len(self.graph.race_detector.races_harmful)
+      #print "\tNumber of covered races: ", self.graph.race_detector.total_covered
+      #print "Number of versions:", len(versions)
+
+  
+
+      print "* Timing information *"
+      print "\tDone. Time elapsed:",total_time,"s"
+      print "\tload_trace:", load_time, "s"
+      print "\tdetect_races:", detect_races_time, "s"
+      print "\textract_traces_time:", extract_traces_time, "s"
+      print "\tfind_reactive_cmds_time:", find_reactive_cmds_time, "s"
+      print "\tfind_proactive_cmds_time:", find_proactive_cmds_time, "s"
+      print "\tfind_covered_races_time:", find_covered_races_time, "s"
+      print "\tper_packet_inconsistent_time:", per_packet_inconsistent_time, "s"
+      print "\tfind_inconsistent_update_time:", find_inconsistent_update_time, "s"
       #print "print_races:"+(str(t3-t2))+"s"
       #print "store_graph:"+(str(t4-t3))+"s"
       #print "Extracting Packet traces time: "+ (str(t5 - t4)) + "s"
@@ -1474,24 +1572,7 @@ class Main(object):
       timings_file_name = os.path.join(self.results_dir, timings_file_name)
   
   
-      num_writes = len(self.graph.race_detector.write_operations)
-      num_read = len(self.graph.race_detector.read_operations)
-      num_ops = num_writes + num_read
-  
-      num_harmful = self.graph.race_detector.total_harmful
-      num_commute = self.graph.race_detector.total_commute
-      num_races = self.graph.race_detector.total_races
-      num_time_filtered_races = self.graph.race_detector.total_time_filtered_races
-      num_covered = self.graph.race_detector.total_covered
-  
-      num_time_edges = self.graph.race_detector.time_edges_counter
-  
-      num_per_pkt_races = len(packet_races)
-      num_per_pkt_inconsistent = len(inconsistent_packet_traces)
-      num_per_pkt_inconsistent_covered = len(inconsistent_packet_traces_covered)
-      num_per_pkt_entry_version_race = len(inconsistent_packet_entry_version)
-      num_per_pkt_inconsistent_no_repeat = len(summarized)
-  
+
       def write_general_info_to_file(f):
         # General info
         f.write('key,value\n')
@@ -1557,28 +1638,26 @@ def auto_int(x):
 if __name__ == '__main__':
   empty_delta = 1000000
   parser = argparse.ArgumentParser()
-  parser.add_argument('trace_file')
+  parser.add_argument('trace_file',
+                      help='Trace file produced by the instrumented sts, usually "hb.json"')
+
+  parser.add_argument('--no-hbt', dest='no_hbt', action='store_true', default=False,
+                      help="Don't add HB edges based on time")
+  parser.add_argument('--time-delta', dest='delta', default=2, type=int,
+                      help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--pkt', dest='print_pkt', action='store_true', default=False,
-                      help="Print packet headers in the graph")
-  parser.add_argument('--racing', dest='print_only_racing', action='store_true', default=False,
-                      help="Print only races in the graph")
-  parser.add_argument('--harmful', dest='print_only_harmful', action='store_true', default=False,
-                      help="Print only harmful races (lines) in the graph")
-  parser.add_argument('--hbt', dest='hbt', action='store_true', default=False,
-                      help="Add HB edges based on tqime")
-  parser.add_argument('--rw_delta', dest='rw_delta', default=5, type=int,
+                      help="Print packet headers in the produced dot files")
+  parser.add_argument('--rw_delta', dest='rw_delta', default=2, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
-  parser.add_argument('--time-delta', dest='delta', default=empty_delta, type=int,
-                      help="delta time (in secs) for adding HB edges based on time")
-  parser.add_argument('--ww_delta', dest='ww_delta', default=5, type=int,
+  parser.add_argument('--ww_delta', dest='ww_delta', default=2, type=int,
                       help="delta time (in secs) for adding HB edges based on time")
   parser.add_argument('--filter_rw', dest='filter_rw', action='store_true', default=False,
                       help="Filter Read/Write operations with HB relations")
-  parser.add_argument('--ignore_ethertypes', dest='ignore_ethertypes', nargs='*',
-                      type=auto_int, default=[ethernet.LLDP_TYPE, 0x8942],
+  parser.add_argument('--ignore-ethertypes', dest='ignore_ethertypes', nargs='*',
+                      type=auto_int, default=0,
                       help='Ether types to ignore from the graph')
   parser.add_argument('--no-race', dest='no_race', action='store_true', default=False,
-                      help="Don't add edge between racing events in the graph")
+                      help="Don't add edge between racing events in the visualized graph")
   parser.add_argument('--alt-barr', dest='alt_barr', action='store_true', default=False,
                       help="Use alternative barrier rules for purely reactive controllers")
   parser.add_argument('-v', dest='verbose', action='store_true', default=False,
@@ -1599,13 +1678,13 @@ if __name__ == '__main__':
   # TODO(jm): Make option naming consistent (use _ everywhere, not a mixture of - and _).
 
   args = parser.parse_args()
-  if args.hbt:
+  if not args.no_hbt:
     if args.delta == empty_delta:
       assert args.rw_delta == args.ww_delta
     else:
       args.rw_delta = args.ww_delta = args.delta
-  main = Main(args.trace_file, args.print_pkt, args.print_only_racing, args.print_only_harmful,
-              add_hb_time=args.hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
+  main = Main(args.trace_file, print_pkt=args.print_pkt,
+              add_hb_time=not args.no_hbt, rw_delta=args.rw_delta, ww_delta=args.ww_delta,
               filter_rw=args.filter_rw, ignore_ethertypes=args.ignore_ethertypes,
               no_race=args.no_race, alt_barr=args.alt_barr, verbose=args.verbose,
               ignore_first=args.ignore_first, disable_path_cache=args.disable_path_cache, 
