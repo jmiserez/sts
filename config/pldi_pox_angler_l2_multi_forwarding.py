@@ -26,9 +26,9 @@ controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 ############
 # "Single" #
 # ############
-# num = 2
-# topology_class = StarTopology #
-# topology_params = "num_hosts=%d" % num
+num = 2
+topology_class = StarTopology #
+topology_params = "num_hosts=%d" % num
 
 #############
 # "Single4" #
@@ -47,9 +47,9 @@ controllers = [ControllerConfig(start_cmd, cwd="pox/")]
 ############
 # "BinTree" #
 ############
-num = 2
-topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=%d" % num
+# num = 2
+# topology_class = BinaryLeafTreeTopology
+# topology_params = "num_levels=%d" % num
 
 # Increase this value to get longer traces
 steps = 200

@@ -37,10 +37,10 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 
 #############
 # "Single4" #
-#############
-# num = 4
-# topology_class = StarTopology #
-# topology_params = "num_hosts=%d" % num
+############
+num = 4
+topology_class = StarTopology #
+topology_params = "num_hosts=%d" % num
 
 ############
 # "Linear" #
@@ -52,9 +52,9 @@ controllers = [ControllerConfig(start_cmd, cwd='../floodlight', address="127.0.0
 ############
 # "BinTree" #
 ############
-num = 2
-topology_class = BinaryLeafTreeTopology
-topology_params = "num_levels=%d" % num
+# num = 2
+# topology_class = BinaryLeafTreeTopology
+# topology_params = "num_levels=%d" % num
 
 # Increase this value to get longer traces
 steps = 200
