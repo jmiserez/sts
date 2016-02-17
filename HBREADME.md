@@ -1,3 +1,5 @@
+# (This guide is currently out-of-date.)
+
 ### Running SDNRacer and example scenarios.
 
 This document will describe how to run the scenarios currently available for SDNRacer.
