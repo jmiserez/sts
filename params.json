@@ -1,0 +1,6 @@
+{
+  "name": "SDNRacer",
+  "tagline": "",
+  "body": "# SDNRacer\r\nIn only few years, Software-Defined Networking (SDN) has managed to impose itself as the new way to design and operate computer networks. While the premises of SDN are simple, realizing this vision relies on the ability of developers to build highly sophisticated and reliable SDN control software operating on top of a network: a highly asynchronous and distributed environment. Building such highly asynchronous programs is known to be a very difficult problem due to inadvertently introducing harmful errors. In particular, concurrency violations are an important source of bugs in SDNs, often leading to policy or invariant violations such as blackholes, forwarding loops or non-deterministic forwarding.\r\n\r\nWe present SDNRacer, the first comprehensive dynamic and controller-agnostic concurrency analyzer for production-grade SDNs aimed to discover concurrency violation that are notoriously difficult to avoid, detect and debug. SDNRacer checks for a variety of errors including: (high-level) data races, per-packet consistency, and update consistency. ",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}
