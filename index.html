@@ -1,46 +1,150 @@
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>SDNRacer by nsg-ethz</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SDNRacer, SDN, Concurrency Analysis">
+  <meta name="author" content="Ahmed El-Hassany" >
+  <title>SDNRacer: Concurrency Analysis for Software-Defined Networks</title>
 
-    <link rel="stylesheet" href="stylesheets/styles.css">
-    <link rel="stylesheet" href="stylesheets/github-light.css">
-    <meta name="viewport" content="width=device-width">
-    <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+
+  <!-- Optional theme -->
+  <link rel="stylesheet" href="css/bootstrap-theme.min.css">
+
+  <!-- Custom styles for this template -->
+  <link href="css/custom.css" rel="stylesheet">
+
+  <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
     <![endif]-->
   </head>
+
   <body>
-    <div class="wrapper">
-      <header>
-        <h1>SDNRacer</h1>
-        <p></p>
+    <div class="container">
 
-        <p class="view"><a href="https://github.com/nsg-ethz/SDNRacer">View the Project on GitHub <small>nsg-ethz/SDNRacer</small></a></p>
+      <div class="text-center lead">
+        <h3><span class="text-danger">SDNRacer: Concurrency Analysis for Software-Defined Networks</span></h3>
+      </div>
 
+      <p></p>
+
+      <p></p>
+
+      <div class="jumbotron voffset4">
+        <p class="text-left lead"><b>SDNRacer</b> the first comprehensive dynamic and controller-agnostic concurrency analyzer for production-grade SDN controllers. SDNRacer checks for a variety of errors including (high-level) data races, packet coherence violations, and update isolation violations. 
+        </p>
+
+        <p class="voffset4"><b>SDNRacer</b> precisely captures the asynchrony of SDN environments thanks to the first formulation of a happens-before (HB) model for the most commonly used OpenFlow features.
+        </p>
+        <!--
+        <p class="text-center voffset5"><img width="350" src="pictures/gadget_firewall_right.jpg"></p>
+        <br />
+        -->
+        <p class="text-center">
+          <a class="btn btn-primary" href="#papers" role="button">Read the papers</a>
+          <!--<a class="btn btn-info" href="#presentations" role="button">Look at the presentations</a><br/>
+          <a class="btn btn-warning" data-toggle="modal" data-target="#videoModal" role="button">Watch the demo</a>  -->
+          <a class="btn btn-info" href="https://github.com/nsg-ethz/SDNRacer/wiki/PLDI-Tutorial" role="button">Read the Documentation</a>  
+          <a class="btn btn-success" href="https://github.com/nsg-ethz/sdnracer" role="button">Get the code</a>
+        </p>
+      </div>
+
+        <style type="text/css">
+          video {
+            position:absolute;
+            left:0;
+            right:0;
+            margin-left:auto;
+            margin-right:auto;
+            margin-top:3%;
+            margin-bottom:auto;
+        } 
+        </style>
+        <!-- Video Modal -->
+        <!--
+        <div class="modal fade" id="videoModal" tabindex="-1" role="dialog">
+               <video width="1280" height="720" controls="controls">
+                  <source src="files/fibbing.mp4" type="video/mp4" />
+                  You browser does not support the playback of this video,
+                  you can however download it by <a href="files/fibbing.mp4">right clicking this and selecting save as ...</a> and play it locally with e.g. VLC.
+                </video> 
+        </div>
+     -->
+      <div class="row marketing">
+        <div class="col-lg-6">
+          <h4>SDNControllers are hard to build and to troubleshoot.</h4>
+
+          <p> In only few years, Software-Defined Networking (SDN) has managed to impose itself as the new way to design and operate computer networks. While the premises of SDN are simple, realizing this vision relies on the ability of developers to build highly sophisticated and reliable SDN control software operating on top of a network: a highly asynchronous and distributed environment. Building such highly asynchronous programs is known to be a very difficult problem due to inadvertently introducing harmful errors. In particular, concurrency violations are an important source of bugs in SDNs, often leading to policy or invariant violations such as blackholes, forwarding loops or non-deterministic forwarding.</p>
+
+        </div>
+        
+        <!--
+        <div class="col-lg-6">
+          <h4>Software-Defined Networking is challenging</h4>
+
+          <p> Software-Defined Networking (SDN) promises to significantly improve network manageability by enabling direct, and centralized control over the network forwarding state via a well-defined Application Programming Interface (API). Fulfilling this promise though is a challenge for network operators as it often requires heavy modifications to their current network architecture, including: i) equipment upgrades, as the vast majority of the installed base of network equipments (e.g., routers) do not support SDN protocols; ii) new management, monitoring and provisioning systems; but also iii) the need for operators training as managing and debugging a SDN network requires essentially completely different skill sets. Finally, full centralization of network control comes with scalability and robustness challenges.
+
+        </div>
+          -->
+      </div>
+
+     
+      <section id="papers">
+        <div class="page-header">
+          <h3>Publications</h3>
+        </div>
+
+        <blockquote>
+          <p><a href="files/pldi16.pdf">SDNRacer: Concurrency Analysis for Software-Defined Networks</a>, <a href="http://conf.researchr.org/home/pldi-2016">PLDI'16</a>, Santa Barbara, CA, USA June 2016.</p>
+          <p class="text-right text-muted">by Ahmed El-Hassany, Jeremie Miserez, Pavol Bielik, Laurent Vanbever, and Martin Vechev</p>
+        </blockquote>
+
+        <hr>
+
+        <blockquote>
+          <p><a href="files/sosr15.pdf">SDNRacer: Detecting Concurrency Violations in Software-Defined Networkss.</a>, <a href="http://opennetsummit.org/2015-archive/sosr/">SOSR'16</a>, Santa Clara, CA, USA June 2015. (<a href="files/sosr15.bib">bibtex</a>)</p>
+          <p class="text-right text-muted">by Jeremie Miserez, Pavol Bielik, Ahmed El-Hassany, Martin Vechev, and Laurent Vanbever</p>
+        </blockquote>
+        
+       
+        <hr>
+
+      <section id="people">
+        <div class="page-header">
+          <h3>People</h3>
+        </div>
 
         <ul>
-          <li><a href="https://github.com/nsg-ethz/SDNRacer/zipball/master">Download <strong>ZIP File</strong></a></li>
-          <li><a href="https://github.com/nsg-ethz/SDNRacer/tarball/master">Download <strong>TAR Ball</strong></a></li>
-          <li><a href="https://github.com/nsg-ethz/SDNRacer">View On <strong>GitHub</strong></a></li>
+          <li><a href="http://hassany.ps">Ahmed El-Hassany</a>, ETH Z&uuml;rich, <code>eahmed at ethz dot ch</code></li>
+          <li><a href="http://www.srl.inf.ethz.ch/bielik.php">Pavol Bielik</a>, ETH Z&uuml;rich, <code>pavol dot bielik at inf dot ethz dot ch</code></li>
+          <li><a href="http://www.srl.inf.ethz.ch/vechev.php">Martin Vechev</a>, ETH Z&uuml;rich, <code>martin dot vechev at inf dot ethz dot ch</code></li>
+          <li><a href="http://www.vanbever.eu">Laurent Vanbever</a>, ETH Z&uuml;rich, <code>lvanbever at ethz dot ch</code></li>
         </ul>
-      </header>
-      <section>
-        <h1>
-<a id="sdnracer" class="anchor" href="#sdnracer" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>SDNRacer</h1>
-
-<p>In only few years, Software-Defined Networking (SDN) has managed to impose itself as the new way to design and operate computer networks. While the premises of SDN are simple, realizing this vision relies on the ability of developers to build highly sophisticated and reliable SDN control software operating on top of a network: a highly asynchronous and distributed environment. Building such highly asynchronous programs is known to be a very difficult problem due to inadvertently introducing harmful errors. In particular, concurrency violations are an important source of bugs in SDNs, often leading to policy or invariant violations such as blackholes, forwarding loops or non-deterministic forwarding.</p>
-
-<p>We present SDNRacer, the first comprehensive dynamic and controller-agnostic concurrency analyzer for production-grade SDNs aimed to discover concurrency violation that are notoriously difficult to avoid, detect and debug. SDNRacer checks for a variety of errors including: (high-level) data races, per-packet consistency, and update consistency. </p>
       </section>
-      <footer>
-        <p>This project is maintained by <a href="https://github.com/nsg-ethz">nsg-ethz</a></p>
-        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
-      </footer>
-    </div>
-    <script src="javascripts/scale.fix.js"></script>
-    
-  </body>
+
+<div class="footer voffset4">
+  <p class="text-right">Webmaster: <a href="http://hassany.ps">Ahmed El-Hassany</a>, 2016</p>
+</div>
+
+<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="js/bootstrap.min.js"></script>
+<!--
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-55630163-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+-->
+</body>
 </html>
