@@ -1,175 +1,150 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset='utf-8'>
-    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SDNRacer, SDN, Concurrency Analysis">
+  <meta name="author" content="Ahmed El-Hassany" >
+  <title>SDNRacer: Concurrency Analysis for Software-Defined Networks</title>
 
-    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
-    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
-    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+  <link rel="stylesheet" href="css/bootstrap.min.css">
 
-    <title>STS by ucb-sts</title>
+  <!-- Optional theme -->
+  <link rel="stylesheet" href="css/bootstrap-theme.min.css">
+
+  <!-- Custom styles for this template -->
+  <link href="css/custom.css" rel="stylesheet">
+
+  <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
   </head>
 
   <body>
-
-    <header>
-      <div class="container">
-        <h1>STS</h1>
-        <h2>SDN Troubleshooting System</h2>
-
-        <section id="downloads">
-          <a href="https://github.com/ucb-sts/sts/zipball/master" class="btn">Download as .zip</a>
-          <a href="https://github.com/ucb-sts/sts/tarball/master" class="btn">Download as .tar.gz</a>
-          <a href="https://github.com/ucb-sts/sts" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
-        </section>
-      </div>
-    </header>
-
     <div class="container">
-      <section id="main_content">
-        <p>Ever had to manually dig through logs to find the one or two inputs that lead your controller software to break? STS seeks to eliminate this need, freeing you to debug the problematic code itself.</p>
 
-<p>STS simulates the devices of your network, allowing you to programmatically generate tricky test cases, interactively examine the state of the network, and automatically find the exact inputs that are responsible for triggering a given bug.</p>
+      <div class="text-center lead">
+        <h3><span class="text-danger">SDNRacer: Concurrency Analysis for Software-Defined Networks</span></h3>
+      </div>
 
-<p><img src="http://www.eecs.berkeley.edu/%7Ercs/research/debugger_architecture.jpg" alt="sts architecture"></p>
+      <p></p>
 
-<h3>
-<a name="installation" class="anchor" href="#installation"><span class="octicon octicon-link"></span></a>Installation</h3>
+      <p></p>
 
-<p>STS depends on <a href="http://www.noxrepo.org/pox/about-pox/">pox</a>. To install STS, you'll just need to clone both repositories and load the hassel submodule:</p>
+      <div class="jumbotron voffset4">
+        <p class="text-left lead"><b>SDNRacer</b> the first comprehensive dynamic and controller-agnostic concurrency analyzer for production-grade SDN controllers. SDNRacer checks for a variety of errors including (high-level) data races, packet coherence violations, and update isolation violations. 
+        </p>
 
-<pre><code>$ git clone git://github.com/ucb-sts/sts.git
-$ cd sts
-$ git clone -b debugger git://github.com/ucb-sts/pox.git
-$ ./tools/install_hassel_python.sh
-</code></pre>
+        <p class="voffset4"><b>SDNRacer</b> precisely captures the asynchrony of SDN environments thanks to the first formulation of a happens-before (HB) model for the most commonly used OpenFlow features.
+        </p>
+        <!--
+        <p class="text-center voffset5"><img width="350" src="pictures/gadget_firewall_right.jpg"></p>
+        <br />
+        -->
+        <p class="text-center">
+          <a class="btn btn-primary" href="#papers" role="button">Read the papers</a>
+          <!--<a class="btn btn-info" href="#presentations" role="button">Look at the presentations</a><br/>
+          <a class="btn btn-warning" data-toggle="modal" data-target="#videoModal" role="button">Watch the demo</a>  -->
+          <a class="btn btn-info" href="https://github.com/nsg-ethz/SDNRacer/wiki/PLDI-Tutorial" role="button">Read the Documentation</a>  
+          <a class="btn btn-success" href="https://github.com/nsg-ethz/sdnracer" role="button">Get the code</a>
+        </p>
+      </div>
 
-<h3>
-<a name="running-sts" class="anchor" href="#running-sts"><span class="octicon octicon-link"></span></a>Running STS</h3>
+        <style type="text/css">
+          video {
+            position:absolute;
+            left:0;
+            right:0;
+            margin-left:auto;
+            margin-right:auto;
+            margin-top:3%;
+            margin-bottom:auto;
+        } 
+        </style>
+        <!-- Video Modal -->
+        <!--
+        <div class="modal fade" id="videoModal" tabindex="-1" role="dialog">
+               <video width="1280" height="720" controls="controls">
+                  <source src="files/fibbing.mp4" type="video/mp4" />
+                  You browser does not support the playback of this video,
+                  you can however download it by <a href="files/fibbing.mp4">right clicking this and selecting save as ...</a> and play it locally with e.g. VLC.
+                </video> 
+        </div>
+     -->
+      <div class="row marketing">
+        <div class="col-lg-6">
+          <h4>SDNControllers are hard to build and to troubleshoot.</h4>
 
-<p>For a detailed step-by-step walkthrough of STS's use cases, see this <a href="http://ucb-sts.github.io/sts/walkthrough">page</a>.</p>
+          <p> In only few years, Software-Defined Networking (SDN) has managed to impose itself as the new way to design and operate computer networks. While the premises of SDN are simple, realizing this vision relies on the ability of developers to build highly sophisticated and reliable SDN control software operating on top of a network: a highly asynchronous and distributed environment. Building such highly asynchronous programs is known to be a very difficult problem due to inadvertently introducing harmful errors. In particular, concurrency violations are an important source of bugs in SDNs, often leading to policy or invariant violations such as blackholes, forwarding loops or non-deterministic forwarding.</p>
 
-<p>For the impatient, take STS for a test drive with:</p>
+        </div>
+        
+        <!--
+        <div class="col-lg-6">
+          <h4>Software-Defined Networking is challenging</h4>
 
-<pre><code>$ ./simulator.py
-</code></pre>
+          <p> Software-Defined Networking (SDN) promises to significantly improve network manageability by enabling direct, and centralized control over the network forwarding state via a well-defined Application Programming Interface (API). Fulfilling this promise though is a challenge for network operators as it often requires heavy modifications to their current network architecture, including: i) equipment upgrades, as the vast majority of the installed base of network equipments (e.g., routers) do not support SDN protocols; ii) new management, monitoring and provisioning systems; but also iii) the need for operators training as managing and debugging a SDN network requires essentially completely different skill sets. Finally, full centralization of network control comes with scalability and robustness challenges.
 
-<p>This will boot up pox, generate a simple 2-switch mesh topology, and begin feeding in random inputs.</p>
+        </div>
+          -->
+      </div>
 
-<p>You can also run STS interactively:</p>
+     
+      <section id="papers">
+        <div class="page-header">
+          <h3>Publications</h3>
+        </div>
 
-<pre><code>$ ./simulator.py -c config/interactive.py
-</code></pre>
+        <blockquote>
+          <p><a href="files/pldi16.pdf">SDNRacer: Concurrency Analysis for Software-Defined Networks</a>, <a href="http://conf.researchr.org/home/pldi-2016">PLDI'16</a>, Santa Barbara, CA, USA June 2016.</p>
+          <p class="text-right text-muted">by Ahmed El-Hassany, Jeremie Miserez, Pavol Bielik, Laurent Vanbever, and Martin Vechev</p>
+        </blockquote>
 
-<p>STS can be used to replay previous executions:</p>
+        <hr>
 
-<pre><code># Assumes that ./simulator.py has been invoked.
-$ ./simulator.py -c experiments/fuzz_pox_mesh/replay_config.py
-</code></pre>
+        <blockquote>
+          <p><a href="files/sosr15.pdf">SDNRacer: Detecting Concurrency Violations in Software-Defined Networkss.</a>, <a href="http://opennetsummit.org/2015-archive/sosr/">SOSR'16</a>, Santa Clara, CA, USA June 2015. (<a href="files/sosr15.bib">bibtex</a>)</p>
+          <p class="text-right text-muted">by Jeremie Miserez, Pavol Bielik, Ahmed El-Hassany, Martin Vechev, and Laurent Vanbever</p>
+        </blockquote>
+        
+       
+        <hr>
 
-<p>Finally, STS is able to identify the minimal set of inputs that trigger a given bug:</p>
+      <section id="people">
+        <div class="page-header">
+          <h3>People</h3>
+        </div>
 
-<pre><code># Assumes that ./simulator.py has been invoked, and terminated by finding an invariant violation.
-$ ./simulator.py -c experiments/fuzz_pox_mesh/mcs_config.py
-</code></pre>
-
-<p>You can turn up the verbosity of the simulator's console output by passing the '-v' flag to simulator.py. </p>
-
-<h3>
-<a name="configuring-your-own-experiments" class="anchor" href="#configuring-your-own-experiments"><span class="octicon octicon-link"></span></a>Configuring your own experiments</h3>
-
-<p>The simulator automatically copies your configuration parameters, event logs, and console output into the <code>experiments/</code> directory for later examination.</p>
-
-<p>The <a href="https://github.com/ucb-sts/sts/tree/master/config">config/</a> directory contains sample configurations. You can specify your own config file by passing its path:</p>
-
-<pre><code>$ ./simulator.py -c config/my_config.py
-</code></pre>
-
-<p>See <a href="https://github.com/ucb-sts/sts/blob/master/config/README">config/README</a> for more information on how to write configuration files. </p>
-
-<h3>
-<a name="dependencies" class="anchor" href="#dependencies"><span class="octicon octicon-link"></span></a>Dependencies</h3>
-
-<p>STS requires python 2.7+</p>
-
-<p>To check network invariants with headerspace analysis, you will need to load <a href="https://bitbucket.org/peymank/hassel-public">hassel</a> as a submodule and build it: </p>
-
-<pre><code>$ ./tools/install_hassel_python.sh
-$ (cd sts/hassel/hassel-c &amp;&amp; make -j)
-</code></pre>
-
-<p>Note that Hassel-C may not compile on Macintosh computers.</p>
-
-<p>To use the advanced replay features of STS, you may need to install pytrie:</p>
-
-<pre><code>$ sudo pip install pytrie
-</code></pre>
-
-<p>The topology GUI depends on
-<a href="http://movingthelamppost.com/blog/html/2013/07/12/installing_pyqt____because_it_s_too_good_for_pip_or_easy_install_.html">PyQt4</a>.</p>
-
-<p>For remote controllers, we use the paramiko ssh client:</p>
-
-<pre><code>$ sudo pip install paramiko
-</code></pre>
-
-<p>Interactive mode depends on the readline module:</p>
-
-<pre><code>$ sudo pip install readline
-</code></pre>
-
-<p>To enable checkpointing of controller state, you will need to install psutil:</p>
-
-<pre><code>$ sudo pip install psutil
-</code></pre>
-
-<p>Unit tests depends on the mock module:</p>
-
-<pre><code>$ sudo pip install mock
-</code></pre>
-
-<h3>
-<a name="will-i-need-to-modify-my-controller-to-use-sts" class="anchor" href="#will-i-need-to-modify-my-controller-to-use-sts"><span class="octicon octicon-link"></span></a>Will I need to modify my controller to use sts?</h3>
-
-<p>If your controller supports OpenFlow 1.0, STS works out of the box. You'll only need to change one line in the config file to instruct STS how to launch your controller process(es).</p>
-
-<h3>
-<a name="documentation" class="anchor" href="#documentation"><span class="octicon octicon-link"></span></a>Documentation</h3>
-
-<p>For a high-level overview of STS's software architecture, see this <a href="http://ucb-sts.github.io/sts/software_architecture.html">page</a>.</p>
-
-<p>For searchable code documentation, see this <a href="http://ucb-sts.github.io/documentation/">page</a>.</p>
-
-<p>For an overview of how to generate dataplane traffic in STS, see this <a href="http://ucb-sts.github.io/sts/traffic_generation">page</a>.</p>
-
-<h3>
-<a name="interested-in-contributing" class="anchor" href="#interested-in-contributing"><span class="octicon octicon-link"></span></a>Interested in contributing?</h3>
-
-<p>Check out this <a href="http://ucb-sts.github.io/sts/contribute.html">page</a>.</p>
-
-<h3>
-<a name="research" class="anchor" href="#research"><span class="octicon octicon-link"></span></a>Research</h3>
-
-<p>For more information about the research behind STS, see our 
-<a href="http://www.eecs.berkeley.edu/%7Ercs/research/sts.pdf">paper</a> or our talk
-<a href="http://www.eecs.berkeley.edu/%7Ercs/research/troubleshooting_with_mcses.pptx">slides</a>.</p>
-
-<p>You should also check out our
-<a href="http://ucb-sts.github.io/experiments/">collection</a> of replayable
-experiments that have been used to find and troubleshoot real bugs in SDN
-controllers:</p>
-
-<pre><code>$ git clone git://github.com/ucb-sts/experiments.git
-</code></pre>
-
-<h3>
-<a name="questions" class="anchor" href="#questions"><span class="octicon octicon-link"></span></a>Questions?</h3>
-
-<p>Send questions or feedback to: <a href="mailto:sts-dev@googlegroups.com">sts-dev@googlegroups.com</a></p>
+        <ul>
+          <li><a href="http://hassany.ps">Ahmed El-Hassany</a>, ETH Z&uuml;rich, <code>eahmed at ethz dot ch</code></li>
+          <li><a href="http://www.srl.inf.ethz.ch/bielik.php">Pavol Bielik</a>, ETH Z&uuml;rich, <code>pavol dot bielik at inf dot ethz dot ch</code></li>
+          <li><a href="http://www.srl.inf.ethz.ch/vechev.php">Martin Vechev</a>, ETH Z&uuml;rich, <code>martin dot vechev at inf dot ethz dot ch</code></li>
+          <li><a href="http://www.vanbever.eu">Laurent Vanbever</a>, ETH Z&uuml;rich, <code>lvanbever at ethz dot ch</code></li>
+        </ul>
       </section>
-    </div>
 
-    
-  </body>
+<div class="footer voffset4">
+  <p class="text-right">Webmaster: <a href="http://hassany.ps">Ahmed El-Hassany</a>, 2016</p>
+</div>
+
+<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="js/bootstrap.min.js"></script>
+<!--
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-55630163-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+-->
+</body>
 </html>
